@@ -1,0 +1,184 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+
+body {
+    font-family: 'Pretendard', sans-serif;
+    background-color: #0f172a;
+    color: #e2e8f0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.glass-panel {
+    background: rgba(30, 41, 59, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+input,
+select,
+textarea {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+    color: #f8fafc !important;
+    font-size: 14px;
+    outline: none;
+}
+
+input:focus,
+select:focus {
+    border-color: #3b82f6 !important;
+}
+
+.matrix-input {
+    text-align: center;
+    font-weight: bold;
+    border: 1px solid #475569;
+    width: 100%;
+    border-radius: 6px;
+    padding: 6px;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.nav-container {
+    padding-bottom: max(env(safe-area-inset-bottom), 10px);
+}
+
+.nav-btn {
+    color: #64748b;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px;
+}
+
+.nav-btn.active {
+    color: white;
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.ticker-tab {
+    background-color: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    transition: all 0.2s;
+}
+
+.ticker-tab.active {
+    background-color: #2563eb;
+    color: white;
+    border-color: #3b82f6;
+    box-shadow: 0 0 15px rgba(37, 99, 235, 0.5);
+}
+
+.badge-3x {
+    background-color: #991b1b;
+    color: #fecaca;
+    border: 1px solid #ef4444;
+}
+
+.badge-2x {
+    background-color: #1e40af;
+    color: #bfdbfe;
+    border: 1px solid #3b82f6;
+}
+
+.badge-inv {
+    background-color: #6b21a8;
+    color: #e9d5ff;
+    border: 1px solid #d8b4fe;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+
+.status-live {
+    background-color: #22c55e;
+    box-shadow: 0 0 8px #22c55e;
+}
+
+.status-error {
+    background-color: #ef4444;
+    box-shadow: 0 0 8px #ef4444;
+}
+
+.status-sync {
+    background-color: #3b82f6;
+    box-shadow: 0 0 8px #3b82f6;
+    animation: pulse-blue 2s infinite;
+}
+
+@keyframes pulse-blue {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.gauge-container {
+    position: relative;
+    width: 80px;
+    height: 40px;
+    overflow: hidden;
+    margin: 0 auto;
+}
+
+.gauge-bg {
+    width: 100%;
+    height: 100%;
+    background: conic-gradient(from 180deg, #ef4444 0deg, #eab308 90deg, #22c55e 180deg);
+    border-radius: 100px 100px 0 0;
+    opacity: 0.8;
+}
+
+.gauge-needle {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 2px;
+    height: 35px;
+    background: white;
+    transform-origin: bottom center;
+    transform: rotate(-90deg);
+    transition: transform 1s ease-out;
+}
+
+.gauge-cover {
+    position: absolute;
+    bottom: 0;
+    left: 20%;
+    width: 60%;
+    height: 60%;
+    background: #1e293b;
+    border-radius: 50px 50px 0 0;
+}
+
+@keyframes progress {
+    0% {
+        width: 0%;
+    }
+    100% {
+        width: 100%;
+    }
+}
+
+.animate-progress {
+    animation: progress 1.5s ease-in-out forwards;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+

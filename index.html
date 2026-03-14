@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>UMT V25.1 Rock Solid</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
+
+    <div class="fixed top-0 left-0 w-full z-50 bg-[#0f172a]/95 backdrop-blur border-b border-slate-800 shadow-xl">
+        <div class="h-12 flex justify-between items-center px-4 max-w-lg mx-auto">
+            <div class="flex items-center gap-3 overflow-hidden flex-1">
+                <div class="bg-slate-900 border border-slate-700 rounded-full px-2 py-0.5 flex items-center shrink-0">
+                    <span class="status-dot status-error" id="statusDot"></span>
+                    <span class="text-[9px] font-black text-slate-400 tracking-wider" id="statusText">WAIT</span>
+                </div>
+                <div class="bg-slate-900 border border-slate-700 rounded-full px-2 py-0.5 flex items-center shrink-0" id="syncBadge" title="클라우드 동기화 상태">
+                    <i class="fa-solid fa-cloud text-[10px] text-slate-500" id="syncIcon"></i>
+                </div>
+                <div class="flex-1 overflow-hidden h-6 flex items-center cursor-pointer" onclick="openNewsModal()">
+                    <div id="newsDisplay" class="text-xs text-slate-300 font-medium truncate w-full">시스템 준비 중...</div>
+                </div>
+            </div>
+            <button onclick="location.reload()" class="ml-2 w-8 h-8 flex items-center justify-center bg-slate-800 rounded-full text-slate-400 border border-slate-700 active:bg-slate-700 active:text-white transition"><i class="fa-solid fa-rotate-right text-xs"></i></button>
+            <button onclick="openNewsModal()" class="ml-2 w-8 h-8 flex items-center justify-center bg-slate-800 rounded-full text-slate-400 border border-slate-700 active:bg-slate-700 active:text-white transition"><i class="fa-solid fa-list text-xs"></i></button>
+        </div>
+        <div class="h-8 bg-black border-b border-slate-800 relative z-10">
+            <div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>{ "symbols": [ { "proName": "FOREXCOM:DJI", "title": "다우" }, { "proName": "FOREXCOM:NSXUSD", "title": "나스닥" }, { "proName": "KRX:KOSPI", "title": "코스피" }, { "proName": "FX_IDC:USDKRW", "title": "원달러" }, { "proName": "CBOE:VIX", "title": "VIX" } ], "showSymbolLogo": true, "colorTheme": "dark", "isTransparent": true, "displayMode": "regular", "locale": "kr" }</script></div>
+        </div>
+    </div>
+
+    <div class="max-w-lg mx-auto px-4 space-y-5 mt-2 pt-24" id="mainContent">
+
+        <div id="tab-home" class="space-y-5">
+            <div class="glass-panel rounded-2xl p-4 flex items-center justify-between">
+                <div>
+                    <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Market Sentiment</h2>
+                    <div class="text-2xl font-black text-white leading-none" id="fgLabel">데이터 대기</div>
+                    <div class="text-[10px] text-blue-300 font-bold mt-1" id="fgDesc">-</div>
+                    <div class="mt-2 inline-flex items-center px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] text-slate-400 font-bold">VIX: <span id="vixValue" class="text-white ml-1">--.--</span></div>
+                </div>
+                <div class="gauge-container transform scale-110"><div class="gauge-bg"></div><div class="gauge-cover"></div><div class="gauge-needle" id="fgNeedle"></div></div>
+            </div>
+            
+            <div class="glass-panel rounded-2xl p-5 border-t-2 border-blue-500 relative overflow-hidden bg-gradient-to-b from-slate-800/50 to-slate-900/50">
+                <h2 class="text-sm font-bold text-white mb-3">전체 포트폴리오 요약</h2>
+                <div class="grid grid-cols-2 gap-3 text-xs mb-3">
+                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 자산</div><div class="font-black text-white text-base" id="dashTotalAssets">$0</div><div class="text-[11px] text-slate-500" id="dashTotalAssetsKrw">₩0</div></div>
+                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 투자금</div><div class="font-black text-blue-400 text-base" id="dashTotalInvested">$0</div><div class="text-[11px] text-slate-500" id="dashTotalInvestedKrw">₩0</div></div>
+                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 현금</div><div class="font-black text-emerald-400 text-base" id="dashTotalCash">$0</div><div class="text-[11px] text-slate-500" id="dashTotalCashKrw">₩0</div></div>
+                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">전체 집행률</div><div class="font-black text-yellow-400 text-base" id="dashExecutionRate">0%</div></div>
+                </div>
+                <div class="text-[11px] text-slate-400 mb-1.5">종목별 할당 / 현재 투자 / 집행률</div>
+                <div class="space-y-1.5 text-xs mb-3" id="dashTickerAllocList"></div>
+                <div class="mt-3 flex items-center gap-4 border-t border-slate-800 pt-3">
+                    <div class="w-14 h-14 shrink-0 relative"><canvas id="portfolioChart"></canvas></div>
+                    <div class="flex-1 space-y-1 text-[10px]" id="portfolioLegend"></div>
+                </div>
+            </div>
+
+            <div>
+                <div class="flex justify-between items-center px-1 mb-2"><h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-microchip text-purple-500"></i> AI 매수 포착</h3></div>
+                <div class="space-y-2" id="recommendationList">
+                    <div class="glass-panel p-4 text-center text-slate-500 text-xs">종목 데이터 수신 중...</div>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-2xl p-4 border border-slate-700">
+                <button type="button" onclick="toggleHeatmap()" class="w-full flex justify-between items-center text-left py-1">
+                    <span class="text-sm font-bold text-white"><i class="fa-solid fa-grid-2 mr-2 text-amber-500"></i>S&P500 주식 히트맵</span>
+                    <span class="text-slate-500 text-sm" id="heatmapToggleIcon"><i class="fa-solid fa-chevron-down"></i></span>
+                </button>
+                <div id="heatmapContent" class="hidden mt-3 pt-3 border-t border-slate-700">
+                    <div class="text-xs text-slate-500 mb-2">시장 분위기 참고용 (접기/펼치기)</div>
+                    <div id="heatmapWidgetContainer" class="rounded-xl overflow-hidden border border-slate-700 bg-slate-900" style="height:380px;width:100%;min-height:320px;"></div>
+                    <div id="heatmapLoadError" class="hidden mt-2 p-3 rounded-lg bg-red-900/30 border border-red-800 text-red-300 text-sm text-center">히트맵을 불러오지 못했습니다.</div>
+                </div>
+            </div>
+
+            <div class="space-y-3 pb-6">
+                <div class="flex justify-between items-center px-1">
+                    <h3 class="text-sm font-bold text-white">ETF 섹터별 리스트</h3>
+                    <span class="text-[10px] text-slate-500">시장 참고용</span>
+                </div>
+                <div id="marketList" class="space-y-3"></div>
+            </div>
+        </div>
+
+        <div id="tab-strategy" class="space-y-4 hidden">
+            <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1" id="tickerBar"></div>
+            
+            <div id="strategyProgressCard" class="glass-panel rounded-2xl p-3 border border-slate-700 hidden">
+                <h3 class="text-sm font-bold text-white mb-1.5">투자 진행 요약</h3>
+                <div class="grid grid-cols-2 gap-1.5 text-xs">
+                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5"><span class="text-slate-500 text-[10px] leading-tight block">할당 비중</span><div class="font-black text-white text-sm leading-tight" id="progressAllocPct">0%</div></div>
+                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5"><span class="text-slate-500 text-[10px] leading-tight block">할당 금액</span><div class="font-black text-blue-400 text-sm leading-tight" id="progressAllocUsd">$0</div><div class="text-slate-500 text-[10px] leading-tight" id="progressAllocKrw">₩0</div></div>
+                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5"><span class="text-slate-500 text-[10px] leading-tight block">현재 매수 금액</span><div class="font-black text-white text-sm leading-tight" id="progressInvestedUsd">$0</div><div class="text-slate-500 text-[10px] leading-tight" id="progressInvestedKrw">₩0</div></div>
+                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5 flex justify-between items-start gap-2">
+                        <div class="min-w-0">
+                            <span class="text-slate-500 text-[10px] leading-tight block">보유 수량 / 평단가</span>
+                            <div class="font-black text-white text-sm leading-tight" id="progressQtyAvg">0 / $0</div>
+                        </div>
+                        <div id="progressPnlWrap" class="hidden text-right shrink-0">
+                            <span class="text-slate-500 text-[10px] leading-tight block">수익률</span>
+                            <div class="font-black text-sm leading-tight" id="progressPnlPct">0%</div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5"><span class="text-slate-500 text-[10px] leading-tight block">진행 단계</span><div class="font-black text-yellow-400 text-sm leading-tight" id="progressStage">- / -</div></div>
+                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5">
+                        <span class="text-slate-500 text-[10px] leading-tight block">집행률</span>
+                        <div class="font-black text-emerald-400 text-sm leading-tight" id="progressExecRate">0%</div>
+                        <div class="mt-1 h-[3px] rounded-full bg-slate-700 overflow-hidden"><div id="progressExecBar" class="h-full rounded-full bg-emerald-500/80 transition-all duration-300" style="width:0%"></div></div>
+                    </div>
+                    <div class="col-span-2 bg-slate-800/40 rounded-lg px-3 py-1 flex items-center justify-between gap-2">
+                        <span class="text-slate-500 text-[10px] shrink-0">남은 투자 가능 금액</span>
+                        <span class="font-black text-white text-sm" id="progressRemainUsd">$0</span>
+                        <span class="text-slate-500 text-[10px]" id="progressRemainKrw">₩0</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="glass-panel rounded-2xl overflow-hidden h-[280px] border border-slate-700 bg-black relative shadow-lg">
+                <div id="tv_chart_container" class="w-full h-full flex items-center justify-center text-slate-500 text-xs">차트 로딩 대기...</div>
+            </div>
+            
+            <div class="glass-panel rounded-2xl p-4" id="signalCard">
+                <div class="flex justify-between mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center font-black text-white text-xs shadow-inner" id="activeTickerIcon">-</div>
+                        <div>
+                            <h2 class="text-lg font-black text-white leading-none" id="activeTickerSym">-</h2>
+                            <div class="text-[10px] text-slate-400 mt-1" id="activeTickerDesc">-</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-2xl font-black text-white" id="dispPrice">대기중..</div>
+                        <div class="text-xs font-bold text-slate-500" id="dispChange">-</div>
+                        <button onclick="deleteActiveTicker()" class="text-[10px] text-red-400 hover:text-red-300 mt-1 underline">종목 삭제</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-4 gap-2 mb-3 text-center">
+                    <div class="bg-slate-900/80 p-2 rounded border border-slate-800"><div class="text-[9px] text-slate-500 uppercase">RSI</div><div class="text-xs font-bold text-slate-500" id="dispRSI">-</div></div>
+                    <div class="bg-slate-900/80 p-2 rounded border border-slate-800"><div class="text-[9px] text-slate-500 uppercase">Trend</div><div class="text-xs font-bold text-slate-500" id="dispTrend">-</div></div>
+                    <div class="bg-slate-900/80 p-2 rounded border border-slate-800"><div class="text-[9px] text-slate-500 uppercase">EMA8</div><div class="text-xs font-bold text-slate-500" id="dispEMA">-</div></div>
+                    <div class="bg-slate-900/80 p-2 rounded border border-slate-800"><div class="text-[9px] text-slate-500 uppercase">MA200</div><div class="text-xs font-bold text-slate-500" id="dispSMA">-</div></div>
+                </div>
+                <div class="flex justify-between items-center bg-slate-800 p-3 rounded-xl border border-slate-700/50">
+                    <div class="text-center"><span class="text-[10px] text-slate-500 block">보유 수량</span><span class="text-lg font-black text-white" id="myQty">0</span></div>
+                    <div class="w-px h-8 bg-slate-700"></div>
+                    <div class="text-center"><span class="text-[10px] text-slate-500 block">평단가</span><span class="text-lg font-black text-blue-400" id="myAvg">$0.00</span></div>
+                    <div class="w-px h-8 bg-slate-700"></div>
+                    <div class="text-center"><span class="text-[10px] text-slate-500 block">수익금</span><span class="text-lg font-black text-slate-500" id="myPnL">$0.00</span></div>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-2xl p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-chess-board text-emerald-500"></i> MDD 매수 시나리오</h2>
+                    <button onclick="startAiSimulation()" class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs shadow-lg hover:shadow-purple-500/30 transition transform active:scale-95"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>스마트 최적화</button>
+                </div>
+                
+                <div class="bg-slate-800/50 p-3 rounded-xl border border-slate-700 mb-4 flex justify-between items-center cursor-pointer hover:bg-slate-800 transition" onclick="openAllocationModal(activeTicker)">
+                    <span class="text-xs text-slate-400 font-bold"><i class="fa-solid fa-sack-dollar mr-1.5"></i>투자 자금 할당</span>
+                    <div class="text-right">
+                        <span class="text-blue-300 font-black text-sm" id="infoAllocPct">0%</span>
+                        <span class="text-slate-600 mx-1">|</span>
+                        <span class="text-yellow-400 font-bold text-sm" id="infoAllocUsd">$0.00</span>
+                        <div class="text-[10px] text-slate-500 mt-0.5" id="infoAllocUsdKrw">₩0</div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-2 mb-3 items-end">
+                    <div class="min-w-0 flex-[1.6] sm:flex-[1.8]" style="min-width:120px">
+                        <label class="text-[9px] text-slate-500 block mb-1 font-bold text-center">전략 모드</label>
+                        <select id="configMode" class="w-full bg-slate-900 p-2 rounded-lg text-emerald-400 font-bold border border-slate-700 text-center text-xs" onchange="updateConfig()">
+                            <option value="GRID">그리드 (상승)</option>
+                            <option value="BOOSTER" class="text-red-400">부스터 (하락)</option>
+                        </select>
+                    </div>
+                    <div class="min-w-0 flex-[0.7] w-14 sm:w-16"><label class="text-[9px] text-slate-500 block mb-1 font-bold text-center">MDD(%)</label><input type="number" id="configMdd" value="20" class="w-full bg-slate-900 p-2 rounded-lg text-white font-bold text-xs border border-slate-700 text-center"></div>
+                    <div class="min-w-0 flex-[0.7] w-14 sm:w-16"><label class="text-[9px] text-slate-500 block mb-1 font-bold text-center">단계</label><select id="configStages" class="w-full bg-slate-900 p-2 rounded-lg text-white font-bold text-xs border border-slate-700 text-center"><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></div>
+                    <div class="shrink-0"><button onclick="applyManualConfig()" class="h-[36px] px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-xs shadow-lg transition whitespace-nowrap">계산 적용</button></div>
+                </div>
+                <div id="boosterConfigSection" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 p-3 rounded-xl bg-slate-800/50 border border-slate-700">
+                    <label class="col-span-2 sm:col-span-1 flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" id="boosterOn" class="accent-red-500"> 부스터 사용</label>
+                    <div><label class="text-[9px] text-slate-500 block mb-0.5">추가 할당(%)</label><input type="number" id="boosterAllocPct" value="0" min="0" class="w-full bg-slate-900 p-2 rounded text-sm text-red-400 border border-slate-700"></div>
+                    <div><label class="text-[9px] text-slate-500 block mb-0.5">추가 단계</label><input type="number" id="boosterStages" value="2" min="1" max="5" class="w-full bg-slate-900 p-2 rounded text-sm text-white border border-slate-700"></div>
+                    <div><label class="text-[9px] text-slate-500 block mb-0.5">부스터 추가 하락폭(%)</label><input type="number" id="boosterMdd" value="10" min="0" class="w-full bg-slate-900 p-2 rounded text-sm text-red-400 border border-slate-700" placeholder="예: 10"></div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="text-[9px] text-slate-500 block mb-1 font-bold ml-1">1차(진입) 기준가 설정 ($)</label>
+                    <input type="number" id="planBasePrice" class="w-full bg-slate-900 p-2.5 rounded-lg text-white font-bold border border-slate-700 pl-3">
+                </div>
+                
+                <div id="stageConfigContainer" class="space-y-1.5 mb-4"></div>
+                <div class="overflow-x-auto rounded-xl border border-slate-700 shadow-inner">
+                    <table class="w-full text-xs whitespace-nowrap text-slate-400">
+                        <thead class="bg-slate-900 text-slate-500 font-bold">
+                            <tr><th class="p-2.5 text-center">단계</th><th class="p-2.5 text-right text-blue-400">계획가</th><th class="p-2.5 text-right text-white">수량</th><th class="p-2.5 text-center">상태</th></tr>
+                        </thead>
+                        <tbody id="planTableBody" class="divide-y divide-slate-800 bg-slate-900/30"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="sellPlanPanel" class="glass-panel rounded-2xl p-4 border border-blue-500/30">
+                <div class="flex justify-between items-center mb-3"><h2 class="text-sm font-bold text-white">🔥 익절 및 리밸런싱</h2></div>
+                <div class="space-y-2 text-xs mb-3">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="bg-slate-900 p-2 rounded-lg border border-slate-700 flex justify-between items-center"><span class="text-slate-400 font-bold">1차 목표수익률</span><div class="flex items-center"><input type="number" id="sellTargetPct1" class="w-10 bg-transparent text-right font-black text-white outline-none">%</div></div>
+                        <div class="bg-slate-900 p-2 rounded-lg border border-slate-700 flex justify-between items-center"><span class="text-slate-400 font-bold">1차 매도 비중</span><div class="flex items-center"><input type="number" id="sellTargetRatio1" class="w-10 bg-transparent text-right font-black text-white outline-none">%</div></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="bg-slate-900 p-2 rounded-lg border border-slate-700 flex justify-between items-center"><span class="text-slate-400 font-bold">2차 목표수익률</span><div class="flex items-center"><input type="number" id="sellTargetPct2" class="w-10 bg-transparent text-right font-black text-white outline-none">%</div></div>
+                        <div class="bg-slate-900 p-2 rounded-lg border border-slate-700 flex justify-between items-center"><span class="text-slate-400 font-bold">2차 매도 비중</span><div class="flex items-center"><input type="number" id="sellTargetRatio2" class="w-10 bg-transparent text-right font-black text-white outline-none">%</div></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="bg-slate-900 p-2 rounded-lg border border-slate-700 flex justify-between items-center"><span class="text-slate-400 font-bold">3차 목표수익률</span><div class="flex items-center"><input type="number" id="sellTargetPct3" class="w-10 bg-transparent text-right font-black text-white outline-none">%</div></div>
+                        <div class="bg-slate-900 p-2 rounded-lg border border-slate-700 flex justify-between items-center"><span class="text-slate-400 font-bold">3차 매도 비중</span><div class="flex items-center"><input type="number" id="sellTargetRatio3" class="w-10 bg-transparent text-right font-black text-white outline-none">%</div></div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 mb-3">
+                    <button type="button" onclick="applySellPlanUpdate()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg font-bold text-xs">매도 전략 업데이트</button>
+                    <span id="sellStrategySaveMessage" class="text-emerald-400 text-xs font-bold"></span>
+                </div>
+                <div class="space-y-2 text-xs">
+                    <div class="flex justify-between items-center bg-slate-800 p-2 rounded-lg"><span class="text-slate-400">1차 목표가 (익절)</span><span class="text-blue-300 font-bold" id="sellTargetPrice1">$0.00</span></div>
+                    <div class="flex justify-between items-center bg-slate-800 p-2 rounded-lg"><span class="text-slate-400">2차 목표가 (익절)</span><span class="text-blue-300 font-bold" id="sellTargetPrice2">$0.00</span></div>
+                    <div class="flex justify-between items-center bg-slate-800 p-2 rounded-lg"><span class="text-slate-400">3차 목표가 (익절)</span><span class="text-blue-300 font-bold" id="sellTargetPrice3">$0.00</span></div>
+                    <div class="flex justify-between items-center bg-slate-800 p-2 rounded-lg"><span class="text-slate-400">추세 이탈가 (8일선)</span><span class="text-orange-400 font-bold" id="sellTrailPrice">$0.00</span></div>
+                    <div class="flex justify-between items-center bg-slate-800 p-2 rounded-lg border border-purple-500/30"><span class="text-purple-400 font-bold">💡 AI 조언</span><span class="text-slate-300" id="sellAdviceText">RSI 70 도달 시 부분 익절 권장</span></div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+                <button onclick="openTradeModal('BUY')" class="py-3.5 bg-blue-600 rounded-xl text-white font-black text-sm shadow-lg shadow-blue-900/30 active:scale-95 transition">매수</button>
+                <button onclick="openTradeModal('SELL')" class="py-3.5 bg-red-600 rounded-xl text-white font-black text-sm shadow-lg shadow-red-900/30 active:scale-95 transition">매도</button>
+                <button onclick="openTradeModal('DIV')" class="py-3.5 bg-yellow-600 rounded-xl text-white font-black text-sm shadow-lg shadow-yellow-900/30 active:scale-95 transition">배당</button>
+            </div>
+            
+            <div class="glass-panel rounded-2xl p-4">
+                <div class="flex justify-between items-center mb-3"><h2 class="text-sm font-bold text-white">📝 매매 일지</h2><button onclick="toggleCalendar()" class="text-[10px] bg-slate-700 px-2 py-1 rounded text-slate-300 hover:text-white transition">📅 캘린더 보기</button></div>
+                <div id="calendarView" class="hidden mb-3 bg-slate-900 p-2 rounded-xl border border-slate-700"><div class="text-center text-xs text-slate-400 mb-2">수익 현황</div><div id="calendarGrid" class="grid grid-cols-7 gap-1 text-[10px] text-center text-slate-500"></div></div>
+                <div class="max-h-[300px] overflow-y-auto space-y-2 pr-1" id="journalList"></div>
+            </div>
+            
+            <div id="rescuePlanPanel" class="hidden glass-panel rounded-2xl p-4 border-2 border-red-600 bg-red-900/10 mt-4"><div class="flex justify-between mb-2"><h2 class="text-sm font-black text-red-500"><i class="fa-solid fa-life-ring animate-bounce"></i> 구조대 출동</h2><span class="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded font-bold" id="rescueBadge">-MDD 돌파</span></div><table class="w-full text-xs text-left text-red-200"><tbody id="rescueTableBody"></tbody></table></div>
+        </div>
+
+        <div id="tab-tradelog" class="space-y-4 hidden">
+            <div class="glass-panel rounded-2xl p-4 border border-slate-700">
+                <h2 class="text-sm font-bold text-white mb-3 flex items-center gap-2"><i class="fa-solid fa-book-open text-amber-500"></i> 매매일지 (Trade Log)</h2>
+                <div class="flex flex-wrap gap-2 mb-3">
+                    <select id="tradelogTicker" class="bg-slate-900 border border-slate-600 rounded-lg text-white text-xs font-bold px-2 py-1.5" onchange="renderTradeLog()">
+                        <option value="">전체 종목</option>
+                    </select>
+                    <select id="tradelogType" class="bg-slate-900 border border-slate-600 rounded-lg text-white text-xs font-bold px-2 py-1.5" onchange="renderTradeLog()">
+                        <option value="">전체</option>
+                        <option value="BUY">BUY</option>
+                        <option value="SELL">SELL</option>
+                        <option value="DIV">DIV</option>
+                    </select>
+                    <input type="date" id="tradelogDateFrom" class="bg-slate-900 border border-slate-600 rounded-lg text-white text-xs px-2 py-1.5">
+                    <span class="text-slate-500 text-xs self-center">~</span>
+                    <input type="date" id="tradelogDateTo" class="bg-slate-900 border border-slate-600 rounded-lg text-white text-xs px-2 py-1.5">
+                    <button type="button" onclick="renderTradeLog()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg">적용</button>
+                </div>
+                <div class="overflow-x-auto rounded-xl border border-slate-700 max-h-[60vh] overflow-y-auto">
+                    <table class="w-full text-xs whitespace-nowrap">
+                        <thead class="bg-slate-900 text-slate-400 font-bold sticky top-0 z-10">
+                            <tr>
+                                <th class="p-2 text-center">날짜</th>
+                                <th class="p-2 text-center">종목</th>
+                                <th class="p-2 text-center">구분</th>
+                                <th class="p-2 text-right">가격</th>
+                                <th class="p-2 text-right">수량</th>
+                                <th class="p-2 text-right">총금액</th>
+                                <th class="p-2 text-right">수익률</th>
+                                <th class="p-2 text-left max-w-[80px]">매매 이유</th>
+                                <th class="p-2 text-left max-w-[100px]">심리 메모</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tradelogTableBody" class="divide-y divide-slate-800 bg-slate-900/50"></tbody>
+                    </table>
+                </div>
+                <div class="text-[10px] text-slate-500 mt-2 text-right" id="tradelogCount">0건</div>
+            </div>
+        </div>
+
+        <div id="tab-settings" class="space-y-4 hidden">
+            <div class="glass-panel rounded-2xl p-5 border-t-4 border-gray-500">
+                <h2 class="text-sm font-bold text-white mb-4">자본금 & 환경 설정</h2>
+                
+                <div class="mb-4 border-b border-slate-700 pb-4">
+                    <label class="block text-[10px] text-slate-500 font-bold mb-1 ml-1 flex justify-between">
+                        <span>구글 시트 연동 URL (Cloud DB)</span>
+                        <span class="text-emerald-400" id="syncStatusText"></span>
+                    </label>
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <input type="text" id="globalSyncUrl" class="min-w-0 flex-1 p-2.5 rounded-lg bg-slate-900 text-white text-xs border border-slate-700" placeholder="https://script.google.com/macros/s/..." onchange="saveSyncUrl()" style="min-width:120px">
+                        <button onclick="manualLoadFromCloud()" class="shrink-0 bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg font-bold text-xs shadow-lg transition whitespace-nowrap"><i class="fa-solid fa-cloud-arrow-down mr-1"></i>불러오기</button>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800 p-4 rounded-xl mb-4 flex justify-between items-center border border-slate-700"><div><span class="text-xs text-slate-400 block mb-1">누적 순입금 (원금)</span><span class="text-lg font-bold text-slate-200" id="totalPrincipalDisplay">0 원</span></div><div class="text-right"><span class="text-xs text-slate-400 block mb-1">순수익 (PnL)</span><span class="text-lg font-black text-green-400" id="totalProfitDisplay">+0 원</span></div></div>
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div><label class="block text-[10px] text-slate-500 font-bold mb-1 ml-1">기본 환율 (USD/KRW)</label><input type="number" id="globalRate" class="w-full p-3 rounded-lg bg-slate-900 text-right font-bold text-yellow-400 border border-slate-700" placeholder="1300" oninput="updateGlobalCalc()"></div>
+                    <div><label class="block text-[10px] text-slate-500 font-bold mb-1 ml-1">초기 시드머니 (원)</label><input type="number" id="globalSeedKRW" class="w-full p-3 rounded-lg bg-slate-900 text-right font-bold text-white border border-slate-700" placeholder="0" oninput="updateGlobalCalc()"></div>
+                </div>
+                <button type="button" onclick="saveSettings()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white font-bold text-sm mb-4 transition">설정 저장</button>
+
+                <div class="mb-4"><label class="block text-[10px] text-slate-500 font-bold mb-1 ml-1">증권사 수수료 프리셋</label><select id="feePreset" class="w-full p-3 rounded-lg bg-slate-900 text-white text-sm border border-slate-700 mb-2" onchange="applyFeePreset()"><option value="custom">직접 입력</option><option value="0.07">키움/미래에셋/삼성 (0.07%)</option><option value="0.1">토스증권 (0.1%)</option><option value="0.25">나무/NH (0.25%)</option></select><div class="flex items-center gap-2"><input type="number" id="globalFeeRate" class="w-24 p-2 rounded bg-slate-800 text-right text-white text-xs border border-slate-600" placeholder="%"><label class="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" id="useSecFee" checked class="accent-blue-500"> SEC Fee 포함</label></div></div>
+                <div class="mb-4"><label class="block text-[10px] text-slate-500 font-bold mb-1 ml-1">허용 계좌 전체 MDD (%)</label><input type="number" id="globalMDD" value="25" class="w-full p-3 rounded-lg text-right font-bold text-red-400 border border-red-900 bg-slate-900" oninput="saveAll()"></div>
+                <button onclick="openCashFlowModal()" class="w-full py-3.5 bg-emerald-700 hover:bg-emerald-600 rounded-xl text-white font-bold text-sm shadow-lg transition mb-2">💵 입출금 내역 관리</button>
+                
+                <div class="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-700"><button onclick="exportData()" class="py-3 bg-slate-800 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 hover:text-white transition"><i class="fa-solid fa-download mr-1"></i> 백업 저장</button><label class="py-3 bg-slate-800 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 text-center cursor-pointer hover:text-white transition"><i class="fa-solid fa-upload mr-1"></i> 데이터 복구<input type="file" class="hidden" onchange="importData(this)"></label></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="fixed bottom-0 left-0 w-full bg-[#0f172a]/95 backdrop-blur border-t border-slate-800 h-[70px] flex justify-around items-center z-50 shadow-2xl nav-container px-1">
+        <button onclick="switchTab('home')" class="nav-btn active flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-home"><i class="fa-solid fa-house text-lg"></i><span class="text-[9px] font-bold">홈</span></button>
+        <button onclick="switchTab('strategy')" class="nav-btn flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-strategy"><i class="fa-solid fa-crosshairs text-lg"></i><span class="text-[9px] font-bold">전략</span></button>
+        <button onclick="switchTab('tradelog')" class="nav-btn flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-tradelog"><i class="fa-solid fa-book-open text-lg"></i><span class="text-[9px] font-bold">매매일지</span></button>
+        <button onclick="switchTab('settings')" class="nav-btn flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-settings"><i class="fa-solid fa-gear text-lg"></i><span class="text-[9px] font-bold">설정</span></button>
+    </div>
+
+    <div id="aiSimModal" class="fixed inset-0 bg-black/90 z-[100] hidden items-center justify-center p-6 backdrop-blur-sm"><div class="bg-slate-900 rounded-2xl w-full max-w-xs p-6 space-y-5 border border-slate-700 text-center shadow-2xl"><i class="fa-solid fa-robot text-4xl text-purple-500 animate-bounce"></i><h3 class="font-black text-white text-xl">AI Strategy Optimization</h3><div class="relative w-full h-3 bg-slate-800 rounded-full overflow-hidden"><div class="absolute top-0 left-0 h-full bg-gradient-to-r from-purple-600 to-blue-500 animate-progress"></div></div><div id="simStatusText" class="text-xs text-slate-400 font-bold animate-pulse">Calculating Volatility...</div></div></div>
+    <div id="allocationModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm"><div class="bg-slate-900 rounded-2xl w-full max-w-xs p-5 space-y-4 border border-slate-600 shadow-2xl"><h3 class="font-bold text-white text-lg flex items-center gap-2"><i class="fa-solid fa-coins text-yellow-500"></i> 자금 할당 설정</h3><div class="text-xs text-slate-400 bg-slate-800 p-2 rounded">총 운용 자산: <span id="allocTotalAsset" class="text-white font-bold float-right">$0.00</span><div id="allocTotalAssetKrw" class="text-[10px] text-slate-500 text-right mt-0.5">₩0</div></div><div class="space-y-3"><div class="bg-slate-800 p-3 rounded-lg border border-slate-700"><label class="block text-[10px] text-slate-400 mb-1 font-bold">할당 비중 (%)</label><input type="number" id="allocPercent" class="w-full p-2 rounded bg-slate-900 text-white border border-slate-600 font-bold text-lg text-center focus:border-blue-500" oninput="calcAllocFromPct()"></div><div class="text-center text-slate-500"><i class="fa-solid fa-arrow-down-long"></i></div><div class="bg-slate-800 p-3 rounded-lg border border-slate-700"><label class="block text-[10px] text-slate-400 mb-1 font-bold">할당 금액 ($)</label><input type="number" id="allocAmount" class="w-full p-2 rounded bg-slate-900 text-white border border-slate-600 font-bold text-lg text-center focus:border-blue-500" oninput="calcAllocFromAmt()"></div><div id="allocKRWHint" class="text-right text-[10px] text-yellow-400 font-bold">≈ 0 원</div></div><div class="flex gap-2 mt-2"><button onclick="document.getElementById('allocationModal').classList.add('hidden');document.getElementById('allocationModal').classList.remove('flex')" class="flex-1 py-3 bg-slate-700 rounded-xl text-slate-300 font-bold text-sm">취소</button><button onclick="confirmAllocation()" class="flex-1 py-3 bg-blue-600 rounded-xl text-white font-bold text-sm shadow-lg">확인</button></div></div></div>
+    <div id="newsModal" class="fixed inset-0 bg-slate-900/95 z-[100] hidden flex-col backdrop-blur-md"><div class="h-14 bg-slate-900 border-b border-slate-700 flex justify-between px-4 items-center shrink-0"><h3 class="font-bold text-white text-lg">Market News</h3><button onclick="closeNewsModal()" class="w-8 h-8 flex items-center justify-center bg-slate-800 rounded-full text-slate-400"><i class="fa-solid fa-xmark"></i></button></div><div class="flex-1 overflow-y-auto p-4 space-y-3" id="fullNewsList"></div></div>
+    <div id="analysisModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-end justify-center sm:items-center p-4 backdrop-blur-sm"><div class="bg-slate-900 w-full max-w-sm rounded-2xl border border-slate-700 shadow-2xl overflow-hidden"><div class="p-5"><div class="flex justify-between items-start mb-4"><div><h2 class="text-2xl font-black text-white" id="modalTicker">Ticker</h2><span class="text-xs text-slate-400" id="modalName">Name</span></div><div class="text-right"><div class="text-xl font-bold text-white" id="modalPrice">$0.00</div><div class="text-xs font-bold" id="modalChange">0.00%</div></div></div><div id="modalChartContainer" class="h-[200px] w-full bg-slate-800 rounded-xl border border-slate-700 mb-4 overflow-hidden relative"></div><div class="grid grid-cols-3 gap-2 mb-4 text-center"><div class="bg-slate-800 p-2 rounded-lg border border-slate-700"><div class="text-[9px] text-slate-500">RSI</div><div class="text-sm font-bold text-purple-400" id="modalRSI">-</div></div><div class="bg-slate-800 p-2 rounded-lg border border-slate-700"><div class="text-[9px] text-slate-500">Trend</div><div class="text-sm font-bold" id="modalTrend">-</div></div><div class="bg-slate-800 p-2 rounded-lg border border-slate-700"><div class="text-[9px] text-slate-500">Signal</div><div class="text-sm font-bold" id="modalSTrend">-</div></div></div><div class="p-3 bg-slate-800/80 rounded-xl mb-4 border border-slate-700"><div class="text-xs text-slate-400 font-bold mb-1 flex items-center gap-2"><i class="fa-solid fa-robot"></i> AI Analysis</div><div class="text-sm font-bold text-white" id="modalSignal">분석 중...</div></div><div class="flex gap-2"><button onclick="closeAnalysisModal()" class="flex-1 py-3 bg-slate-800 rounded-xl text-slate-400 font-bold text-sm">닫기</button><button onclick="addToStrategy()" class="flex-2 py-3 bg-blue-600 rounded-xl text-white font-bold text-sm shadow-lg w-2/3">전략 수립 (추가)</button></div></div></div></div>
+    <div id="tradeModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm"><div class="bg-slate-900 rounded-2xl w-full max-w-xs p-5 space-y-3 border border-slate-600 shadow-2xl"><div class="flex justify-between items-center mb-2"><h3 class="font-bold text-white text-lg" id="tradeModalTitle">매매 기록</h3><button onclick="closeTradeModal()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button></div><input type="hidden" id="tradeType"><div class="bg-slate-800 p-2 rounded border border-slate-700"><label class="text-[10px] text-slate-400 block mb-1 ml-1">계획 선택 (자동입력)</label><select id="tradeStageSelect" class="w-full p-2 bg-slate-900 border border-slate-600 rounded text-white text-xs font-bold" onchange="autoFillTrade()"><option value="">직접 입력</option></select></div><input type="date" id="tradeDate" class="w-full p-2.5 rounded bg-slate-900 text-white border border-slate-600"><div class="grid grid-cols-2 gap-2"><div class="col-span-1"><label class="text-[10px] text-slate-400 block mb-1 ml-1">체결가 ($)</label><input type="number" id="tradePrice" class="w-full p-3 rounded bg-slate-900 text-white border border-slate-600 font-bold" placeholder="Price" oninput="calcTradeTotal()"></div><div class="col-span-1"><label class="text-[10px] text-slate-400 block mb-1 ml-1">수량</label><input type="number" id="tradeQty" class="w-full p-3 rounded bg-slate-900 text-white border border-slate-600 font-bold" placeholder="Qty" oninput="calcTradeTotal()"></div></div><div class="flex justify-between text-xs text-slate-400 px-1"><span>예상 수수료</span> <span class="text-white font-bold" id="tradeFeeDisplay">$0.00</span></div><div class="text-[10px] text-slate-500 text-right -mt-1" id="tradeFeeKrw">₩0</div><div class="bg-slate-950 p-3 rounded-xl text-right border border-slate-700"><span class="text-xs text-slate-500 mr-2 block">총 정산 금액</span><span class="text-xl font-black text-white" id="tradeTotal">$0.00</span><div class="text-[10px] text-slate-500 mt-0.5" id="tradeTotalKrw">₩0</div></div><select id="tradeTag" class="w-full p-2 bg-slate-800 border border-slate-600 rounded text-white text-xs"><option value="QUANT">🔵 퀀트/계획 매매</option><option value="FOMO">🔴 뇌동/추격 매매</option><option value="RESCUE">🟠 구조대/물타기</option><option value="DIV">🟡 배당금 수령</option></select><textarea id="tradeMemo" class="w-full p-2 bg-slate-900 text-xs text-white rounded border border-slate-600" rows="2" placeholder="메모 (선택사항)"></textarea><button onclick="submitTrade()" class="w-full py-3.5 bg-blue-600 rounded-xl text-white font-bold text-sm shadow-lg mt-1 hover:bg-blue-500 transition">기록 저장</button></div></div>
+    <div id="cashFlowModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm"><div class="bg-slate-900 rounded-2xl w-full max-w-sm border border-slate-600 shadow-2xl overflow-hidden"><div class="bg-slate-800 p-4 flex justify-between items-center border-b border-slate-700"><h3 class="font-bold text-white flex items-center gap-2"><i class="fa-solid fa-money-bill-transfer"></i> 입출금 관리</h3><button onclick="closeCashFlowModal()" class="text-slate-400"><i class="fa-solid fa-xmark fa-lg"></i></button></div><div class="p-5 space-y-4"><div class="flex gap-2 p-1 bg-slate-950 rounded-lg border border-slate-700"><label class="flex-1 text-center py-2.5 rounded-md cursor-pointer bg-blue-600 text-white font-bold transition"><input type="radio" name="cfType" value="IN" class="hidden" checked onchange="toggleCfType(this)">입금 (Deposit)</label><label class="flex-1 text-center py-2.5 rounded-md cursor-pointer text-slate-400 font-bold hover:text-white transition"><input type="radio" name="cfType" value="OUT" class="hidden" onchange="toggleCfType(this)">출금 (Withdraw)</label></div><input type="hidden" id="cfId"><div class="space-y-3"><input type="date" id="cfDate" class="w-full p-3 rounded bg-slate-900 border border-slate-600 text-white"><label class="block text-[10px] text-slate-500 mt-2 mb-0.5">해당 일자 적용 환율 (개별)</label><input type="number" id="cfRate" class="w-full p-3 rounded bg-slate-900 border border-slate-600 text-white font-bold" placeholder="예: 1300"><input type="number" id="cfAmount" class="w-full p-3 rounded bg-slate-900 border border-slate-600 text-white font-bold text-lg" placeholder="원화 금액 (KRW)" oninput="calcCfUSD()"></div><div class="bg-slate-950 border border-slate-700 rounded-xl p-4 flex justify-between items-center"><span class="text-slate-400 text-xs font-bold">환산 달러 (EST)</span><span class="text-emerald-400 font-black text-xl" id="cfCalcUSD">$0.00</span></div><div class="h-40 overflow-y-auto bg-slate-950 rounded-xl border border-slate-700" id="cfHistoryList"></div><div class="flex gap-2"><button onclick="deleteCashFlow()" id="btnCfDel" class="hidden flex-1 py-3 bg-red-900/80 text-red-100 rounded-xl font-bold border border-red-700">삭제</button><button onclick="saveCashFlow()" class="flex-1 py-3 bg-blue-600 rounded-xl text-white font-bold shadow-lg hover:bg-blue-500">저장하기</button></div></div></div></div>
+    <div id="tradelogDetailModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-slate-900 rounded-2xl w-full max-w-sm p-5 border border-slate-600 shadow-2xl">
+            <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-white text-sm" id="tradelogDetailTitle">상세</h3><button type="button" onclick="closeTradeLogDetailModal()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button></div>
+            <div id="tradelogDetailContent" class="text-sm text-slate-300 whitespace-pre-wrap break-words max-h-[50vh] overflow-y-auto p-2 bg-slate-800 rounded-lg"></div>
+        </div>
+    </div>
+    <div id="etfSearchModal" class="fixed inset-0 bg-black/90 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm"><div class="bg-slate-900 rounded-2xl w-full max-w-lg h-[80vh] flex flex-col border border-slate-700 shadow-2xl"><div class="p-4 border-b border-slate-700 flex justify-between items-center"><h3 class="font-bold text-white text-lg">ETF 종목 추가</h3><button onclick="closeEtfSearchModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark fa-lg"></i></button></div><div class="p-3 bg-slate-800"><div class="relative"><i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-500"></i><input type="text" id="etfSearchInput" placeholder="심볼 또는 이름 검색 (예: TQQQ)" class="w-full p-3 pl-10 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold" onkeyup="filterEtfSearch()"></div></div><div class="flex-1 overflow-y-auto p-3 grid gap-2 content-start" id="etfSearchGrid"></div></div></div>
+    
+<script src="script.js"></script>
+</body>
+</html>
