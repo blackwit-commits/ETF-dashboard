@@ -1234,6 +1234,15 @@ function toggleNewsDeep(idx) {
     if (chev) chev.style.transform = isHidden ? 'rotate(180deg)' : '';
 }
 
+function toggleGuide(id) {
+    var el = document.getElementById(id);
+    var chev = document.getElementById(id + 'Chev');
+    if (!el) return;
+    var isHidden = el.classList.contains('hidden');
+    el.classList.toggle('hidden');
+    if (chev) chev.style.transform = isHidden ? 'rotate(180deg)' : '';
+}
+
 // ── 6. 보유 종목 상태 카드 ──
 function renderHoldingStatus() {
     var section = document.getElementById('holdingStatusSection');

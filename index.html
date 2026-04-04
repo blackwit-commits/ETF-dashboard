@@ -414,6 +414,105 @@
                 
                 <div class="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-700"><button onclick="exportData()" class="py-3 bg-slate-800 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 hover:text-white transition"><i class="fa-solid fa-download mr-1"></i> 백업 저장</button><label class="py-3 bg-slate-800 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 text-center cursor-pointer hover:text-white transition"><i class="fa-solid fa-upload mr-1"></i> 데이터 복구<input type="file" class="hidden" onchange="importData(this)"></label></div>
             </div>
+
+            <!-- 가이드 / 용어 사전 -->
+            <div class="glass-panel rounded-2xl p-5 border-t-4 border-indigo-500">
+                <h2 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-book text-indigo-400"></i> 가이드 & 용어 사전</h2>
+
+                <!-- Quad 프레임워크 -->
+                <div class="mb-3">
+                    <button type="button" onclick="toggleGuide('guideQuad')" class="w-full flex justify-between items-center py-2.5 px-3 bg-slate-800 rounded-xl border border-slate-700 hover:bg-slate-700 transition">
+                        <span class="text-xs font-bold text-white"><i class="fa-solid fa-compass mr-2 text-green-400"></i>Quad 프레임워크 (경제 4국면)</span>
+                        <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 transition-transform" id="guideQuadChev"></i>
+                    </button>
+                    <div id="guideQuad" class="hidden mt-2 space-y-2 px-1">
+                        <div class="bg-green-900/20 border border-green-800/30 rounded-lg p-3">
+                            <div class="text-xs font-black text-green-400 mb-1"><i class="fa-solid fa-sun mr-1"></i>Quad 1 — 골디락스</div>
+                            <div class="text-[11px] text-slate-300 leading-relaxed">성장 가속 + 인플레 감속. 가장 좋은 구간.<br>유리 자산: 성장주, 테크, 반도체<br>수혜 ETF: TQQQ, SOXL, TNA, SPXL<br>키워드: 금리 인하 기대, 기업 실적 호조</div>
+                        </div>
+                        <div class="bg-yellow-900/20 border border-yellow-800/30 rounded-lg p-3">
+                            <div class="text-xs font-black text-yellow-400 mb-1"><i class="fa-solid fa-fire mr-1"></i>Quad 2 — 과열</div>
+                            <div class="text-[11px] text-slate-300 leading-relaxed">성장 가속 + 인플레 가속. 경제 과열 구간.<br>유리 자산: 원자재, 에너지, 금<br>수혜 ETF: NRGU, GUSH, NUGT, DRN<br>키워드: 유가 상승, 인플레 우려, 금리 인상</div>
+                        </div>
+                        <div class="bg-red-900/20 border border-red-800/30 rounded-lg p-3">
+                            <div class="text-xs font-black text-red-400 mb-1"><i class="fa-solid fa-cloud-bolt mr-1"></i>Quad 3 — 스태그플레이션</div>
+                            <div class="text-[11px] text-slate-300 leading-relaxed">성장 감속 + 인플레 가속. 최악의 구간.<br>유리 자산: 금, 인버스<br>수혜 ETF: GLD, UGL, GDXU, SQQQ<br>키워드: Fed 딜레마, 비용 증가, 수요 감소</div>
+                        </div>
+                        <div class="bg-blue-900/20 border border-blue-800/30 rounded-lg p-3">
+                            <div class="text-xs font-black text-blue-400 mb-1"><i class="fa-solid fa-snowflake mr-1"></i>Quad 4 — 침체/디플레</div>
+                            <div class="text-[11px] text-slate-300 leading-relaxed">성장 감속 + 인플레 감속. 경기 침체 구간.<br>유리 자산: 채권, 달러, 방어주<br>수혜 ETF: TMF, CURE, UUP<br>키워드: 금리 인하 사이클, 안전자산 선호</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 기술적 지표 -->
+                <div class="mb-3">
+                    <button type="button" onclick="toggleGuide('guideTech')" class="w-full flex justify-between items-center py-2.5 px-3 bg-slate-800 rounded-xl border border-slate-700 hover:bg-slate-700 transition">
+                        <span class="text-xs font-bold text-white"><i class="fa-solid fa-chart-line mr-2 text-purple-400"></i>기술적 지표</span>
+                        <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 transition-transform" id="guideTechChev"></i>
+                    </button>
+                    <div id="guideTech" class="hidden mt-2 px-1">
+                        <div class="bg-slate-800/50 rounded-lg p-3 space-y-2.5 text-[11px] text-slate-300">
+                            <div><span class="text-purple-400 font-bold">TREND</span> — 3개월+ 중기 추세. MA200(200일 이동평균) 위면 상승추세, 아래면 하락추세.</div>
+                            <div><span class="text-purple-400 font-bold">TRADE</span> — 3주 이내 단기 진입 타이밍. RSI + EMA8 기반. 과매도 + 단기반등 시 매수 신호.</div>
+                            <div><span class="text-purple-400 font-bold">RSI</span> — 상대강도지수 (0~100). <span class="text-green-400">30 이하 과매도</span>(매수 기회), <span class="text-red-400">70 이상 과매수</span>(주의).</div>
+                            <div><span class="text-purple-400 font-bold">EMA8</span> — 8일 지수이동평균. 최근 가격에 가중치를 둔 단기 추세선.</div>
+                            <div><span class="text-purple-400 font-bold">MA200</span> — 200일 이동평균. 장기 추세의 기준선. 이 위에 있으면 강세장.</div>
+                            <div><span class="text-purple-400 font-bold">MDD</span> — 최대 낙폭(Maximum Drawdown). 고점에서 저점까지의 하락폭(%).</div>
+                            <div><span class="text-purple-400 font-bold">ATR</span> — 평균 실제 변동폭(Average True Range). 하루 평균 가격 움직임 크기.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 매크로 지표 -->
+                <div class="mb-3">
+                    <button type="button" onclick="toggleGuide('guideMacro')" class="w-full flex justify-between items-center py-2.5 px-3 bg-slate-800 rounded-xl border border-slate-700 hover:bg-slate-700 transition">
+                        <span class="text-xs font-bold text-white"><i class="fa-solid fa-globe mr-2 text-cyan-400"></i>매크로 지표</span>
+                        <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 transition-transform" id="guideMacroChev"></i>
+                    </button>
+                    <div id="guideMacro" class="hidden mt-2 px-1">
+                        <div class="bg-slate-800/50 rounded-lg p-3 space-y-2.5 text-[11px] text-slate-300">
+                            <div><span class="text-cyan-400 font-bold">FedWatch</span> — CME 금리 인하/인상 확률. 선물시장에서 파생된 시장 기대치.</div>
+                            <div><span class="text-cyan-400 font-bold">VIX</span> — 공포지수. <span class="text-green-400">20 이하 안정</span>, <span class="text-yellow-400">20~30 경계</span>, <span class="text-red-400">30+ 공포</span>, 40+ 패닉.</div>
+                            <div><span class="text-cyan-400 font-bold">CPI</span> — 소비자물가지수. 인플레이션의 핵심 지표. 매월 발표.</div>
+                            <div><span class="text-cyan-400 font-bold">PCE</span> — 개인소비지출물가. Fed가 가장 중시하는 인플레 지표.</div>
+                            <div><span class="text-cyan-400 font-bold">ISM PMI</span> — 구매관리자지수. <span class="text-green-400">50 이상 경기 확장</span>, <span class="text-red-400">50 이하 수축</span>.</div>
+                            <div><span class="text-cyan-400 font-bold">NFP</span> — 비농업 고용 지표. 매월 첫째 금요일 발표. 고용 시장 건전성 판단.</div>
+                            <div><span class="text-cyan-400 font-bold">DXY</span> — 달러 인덱스. 주요 6개 통화 대비 달러 가치.</div>
+                            <div><span class="text-cyan-400 font-bold">US10Y</span> — 미국 10년물 국채 금리. 장기 금리의 벤치마크.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 시스템 용어 -->
+                <div class="mb-1">
+                    <button type="button" onclick="toggleGuide('guideSystem')" class="w-full flex justify-between items-center py-2.5 px-3 bg-slate-800 rounded-xl border border-slate-700 hover:bg-slate-700 transition">
+                        <span class="text-xs font-bold text-white"><i class="fa-solid fa-gears mr-2 text-amber-400"></i>시스템 용어</span>
+                        <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 transition-transform" id="guideSystemChev"></i>
+                    </button>
+                    <div id="guideSystem" class="hidden mt-2 px-1">
+                        <div class="bg-slate-800/50 rounded-lg p-3 space-y-2.5 text-[11px] text-slate-300">
+                            <div><span class="text-amber-400 font-bold">비중 모드</span> — 분할매수 시 단계별 비중 배분 방식.<br>
+                                <span class="text-red-400 ml-2">공격형</span>: 초반 40% 집중 (Quad 순풍 + 과매도)<br>
+                                <span class="text-yellow-400 ml-2">균등형</span>: 25%씩 균등 배분 (방향 맞지만 타이밍 불확실)<br>
+                                <span class="text-blue-400 ml-2">방어형</span>: 후반 집중 (역풍 or VIX 높음)</div>
+                            <div><span class="text-amber-400 font-bold">이벤트 오버레이</span> — Quad 기본 판정 위에 돌발 변수(전쟁, 관세, 은행위기 등) 반영.</div>
+                            <div><span class="text-amber-400 font-bold">HOLD / WATCH / EXIT</span> — 보유 종목 상태.<br>
+                                <span class="text-green-400 ml-2">HOLD</span>: Quad 순풍 + 추세 유지 → 가만히<br>
+                                <span class="text-yellow-400 ml-2">WATCH</span>: Quad 전환 조짐 → 추가매수 중단<br>
+                                <span class="text-red-400 ml-2">EXIT</span>: Quad 전환 확정 or 추세 이탈 → 매도</div>
+                            <div><span class="text-amber-400 font-bold">변동성 Tier</span> — ETF별 변동성 등급 (1~4).<br>
+                                <span class="ml-2">Tier 1</span>: 일 5~15% (SOXL, SQQQ 등)<br>
+                                <span class="ml-2">Tier 2</span>: 일 3~8% (TQQQ, TMF 등)<br>
+                                <span class="ml-2">Tier 3</span>: 일 1~4% (UDOW, UGL 등)<br>
+                                <span class="ml-2">Tier 4</span>: 일 0.5~2% (GLD, UUP)</div>
+                            <div><span class="text-amber-400 font-bold">GRID / BOOSTER</span> — 분할매수 전략 모드.<br>
+                                <span class="ml-2">GRID</span>: 기본 분할매수 (정해진 간격으로 매수)<br>
+                                <span class="ml-2">BOOSTER</span>: 하락장에서 추가 매수 레이어</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
