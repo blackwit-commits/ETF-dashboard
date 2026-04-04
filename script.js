@@ -2062,30 +2062,28 @@ function runAiResultLogic() {
     reasons.push('📏 ATR 기반 간격: $' + atr.toFixed(2) + ' (' + levStr + ' · ' + tierLabel + ')');
     reasons.push('💡 비중 모드: ' + modeLabels[weightMode] + ' — 수동 변경 시 경고가 표시됩니다.');
 
-    const msg = `[🤖 Quad 기반 스마트 최적화]\n\n${reasons.join('\n')}\n\n👉 비중 모드: ${modeLabels[weightMode]}\n👉 추천 목표 MDD: -${mddRecommend.toFixed(0)}%\n👉 분할 단계: ${stages}단계 (비중: ${weights.join('-')})\n👉 매수 간격(참고): 약 -${gapApprox.toFixed(1)}%\n\n이 전략으로 즉시 적용하시겠습니까?`;
+    // 바로 적용 (confirm 없이)
+    const d = portfolios[activeTicker];
+    d.config.mode = mode; d.config.stages = stages; d.config.mdd = mddRecommend;
+    d.config.drops = drops;
+    d.config.weights = weights;
+    d.config.weightMode = weightMode;
+    d.config.boosterOn = boosterOn === true;
+    d.config.boosterStages = boosterStages;
+    d.config.boosterAllocPct = boosterAllocPct;
+    d.config.boosterMdd = boosterMdd;
 
-    if(confirm(msg)) {
-        const d = portfolios[activeTicker];
-        d.config.mode = mode; d.config.stages = stages; d.config.mdd = mddRecommend;
-        d.config.drops = drops;
-        d.config.weights = weights;
-        d.config.weightMode = weightMode; // 비중 모드 저장
-        d.config.boosterOn = boosterOn === true;
-        d.config.boosterStages = boosterStages;
-        d.config.boosterAllocPct = boosterAllocPct;
-        d.config.boosterMdd = boosterMdd;
+    document.getElementById('configMode').value = mode;
+    document.getElementById('configStages').value = stages;
+    document.getElementById('configMdd').value = mddRecommend;
+    const onEl = document.getElementById('boosterOn'); if (onEl) onEl.checked = d.config.boosterOn === true;
+    const stEl = document.getElementById('boosterStages'); if (stEl) stEl.value = d.config.boosterStages != null ? d.config.boosterStages : 2;
+    const apEl = document.getElementById('boosterAllocPct'); if (apEl) apEl.value = d.config.boosterAllocPct != null ? d.config.boosterAllocPct : 0;
+    const mdEl = document.getElementById('boosterMdd'); if (mdEl) mdEl.value = d.config.boosterMdd != null ? d.config.boosterMdd : 10;
+    if(d.config.basePrice === 0) d.config.basePrice = currentPrice;
 
-        document.getElementById('configMode').value = mode;
-        document.getElementById('configStages').value = stages; 
-        document.getElementById('configMdd').value = mddRecommend;
-        const onEl = document.getElementById('boosterOn'); if (onEl) onEl.checked = d.config.boosterOn === true;
-        const stEl = document.getElementById('boosterStages'); if (stEl) stEl.value = d.config.boosterStages != null ? d.config.boosterStages : 2;
-        const apEl = document.getElementById('boosterAllocPct'); if (apEl) apEl.value = d.config.boosterAllocPct != null ? d.config.boosterAllocPct : 0;
-        const mdEl = document.getElementById('boosterMdd'); if (mdEl) mdEl.value = d.config.boosterMdd != null ? d.config.boosterMdd : 10;
-        if(d.config.basePrice === 0) d.config.basePrice = currentPrice;
-        
-        saveAll(); renderStageInputs(); renderSellPlan();
-    }
+    saveAll(); renderStageInputs(); renderSellPlan();
+    showToast(modeLabels[weightMode] + ' · MDD -' + mddRecommend.toFixed(0) + '% · ' + stages + '단계 적용');
 }
 
 function startAiSimulation() {
