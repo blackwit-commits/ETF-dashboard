@@ -205,32 +205,34 @@ select:focus {
 
 .plan-actual-wrap{
     display:grid;
-    grid-template-columns:minmax(68px, 1fr) minmax(68px, 1fr);
+    grid-template-columns:auto auto;
     justify-items:center;
     align-items:center;
-    column-gap:18px;
-    width:min(100%, 180px);
+    column-gap:6px;
+    width:auto;
     margin:0 auto;
 }
 
 #planTableBody .plan-price{
     display:block;
-    min-width:68px;
+    min-width:0;
     text-align:center;
     line-height:1.15;
     letter-spacing:-0.01em;
     color:#93c5fd !important;
     font-weight:700;
+    font-size:12px;
 }
 
 #planTableBody .actual-price{
     display:block;
-    min-width:68px;
+    min-width:0;
     text-align:center;
     line-height:1.15;
     letter-spacing:-0.01em;
     color:#facc15 !important;
     font-weight:800;
+    font-size:12px;
 }
 
 #planTableBody .actual-price.empty{
