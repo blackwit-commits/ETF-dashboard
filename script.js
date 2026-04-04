@@ -112,8 +112,14 @@ async function fetchMacroData(forceRefresh) {
     }
 
     console.log('[Macro] API 호출 시작...');
+    // 로딩 상태 표시
+    var briefList = document.getElementById('newsBriefingList');
+    if (briefList) briefList.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Gemini AI가 매크로 데이터를 분석 중입니다... (최대 60초)</div>';
     try {
-        const resp = await fetch(API_BASE_URL + '/macro', { signal: AbortSignal.timeout(120000) });
+        var controller = new AbortController();
+        var timeoutId = setTimeout(function() { controller.abort(); }, 120000);
+        const resp = await fetch(API_BASE_URL + '/macro', { signal: controller.signal });
+        clearTimeout(timeoutId);
         if (!resp.ok) {
             const errBody = await resp.text();
             throw new Error('HTTP ' + resp.status + ': ' + errBody);
@@ -127,14 +133,18 @@ async function fetchMacroData(forceRefresh) {
         return data;
     } catch (e) {
         console.error('[Macro] API 호출 실패:', e.message);
+        var bl = document.getElementById('newsBriefingList');
+        if (bl) bl.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i>매크로 분석 실패: ' + escapeHtml(e.message).substring(0,80) + '<br><button onclick="fetchMacroData(true).then(d=>{if(d)updateMacroDashboard()})" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
         // 만료된 캐시라도 폴백으로 사용
         const raw = localStorage.getItem(MACRO_CACHE_KEY);
         if (raw) {
             try {
                 const stale = JSON.parse(raw);
-                MACRO_DATA = stale;
-                console.log('[Macro] 만료 캐시 폴백 사용');
-                return stale;
+                if (stale && stale.quad) {
+                    MACRO_DATA = stale;
+                    console.log('[Macro] 만료 캐시 폴백 사용');
+                    return stale;
+                }
             } catch {}
         }
         return null;
