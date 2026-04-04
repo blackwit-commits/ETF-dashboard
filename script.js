@@ -985,6 +985,16 @@ function renderSignalDots(sig) {
 }
 
 function updateFearGreed() {
+    // 실시간 VIX는 항상 업데이트 (매크로 데이터 유무와 관계없이)
+    var vixData = MARKET_SNAPSHOT['^VIX'];
+    if (vixData && !vixData.error && vixData.price > 0) {
+        var vixEl = document.getElementById('vixValue');
+        if (vixEl) vixEl.innerText = vixData.price.toFixed(1);
+        // 시장 지표 VIX 칸도 업데이트
+        var mkVixEl = document.getElementById('mkVix');
+        if (mkVixEl && mkVixEl.innerText === '--') mkVixEl.innerText = vixData.price.toFixed(1);
+    }
+
     // 매크로 데이터가 있으면 Quad 대시보드 우선
     if (MACRO_DATA && MACRO_DATA.quad) {
         updateMacroDashboard();
@@ -992,7 +1002,6 @@ function updateFearGreed() {
     }
 
     // 폴백: 기존 VIX 기반 공포/탐욕
-    let vixData = MARKET_SNAPSHOT['^VIX'];
     if(!vixData || vixData.error || vixData.price === 0) {
         const el = document.getElementById('vixValue');
         const lbl = document.getElementById('fgLabel');
