@@ -182,3 +182,81 @@ select:focus {
     display: none;
 }
 
+/* 전략탭 계획가/실제매수가 표시(2열 고정) */
+.strategy-plan-table{
+    table-layout: fixed;
+}
+
+.strategy-plan-table th,
+.strategy-plan-table td{
+    vertical-align: middle;
+}
+
+.strategy-plan-table th:nth-child(2),
+.strategy-plan-table td:nth-child(2){
+    text-align: center;
+}
+
+.plan-actual-cell{
+    display:flex;
+    justify-content:center;
+    width:100%;
+}
+
+.plan-actual-wrap{
+    display:grid;
+    grid-template-columns:minmax(68px, 1fr) minmax(68px, 1fr);
+    justify-items:center;
+    align-items:center;
+    column-gap:18px;
+    width:min(100%, 180px);
+    margin:0 auto;
+}
+
+#planTableBody .plan-price{
+    display:block;
+    min-width:68px;
+    text-align:center;
+    line-height:1.15;
+    letter-spacing:-0.01em;
+    color:#93c5fd !important;
+    font-weight:700;
+}
+
+#planTableBody .actual-price{
+    display:block;
+    min-width:68px;
+    text-align:center;
+    line-height:1.15;
+    letter-spacing:-0.01em;
+    color:#facc15 !important;
+    font-weight:800;
+}
+
+#planTableBody .actual-price.empty{
+    color:#64748b !important;
+}
+
+/* Quad Dashboard */
+#quadDashboardCard {
+    transition: border-color 0.5s ease;
+}
+
+#newsDeep0, #newsDeep1, #newsDeep2, #newsDeep3, #newsDeep4 {
+    animation: fadeSlide 0.25s ease-out;
+}
+
+@keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+#newsBriefingList .fa-chevron-down {
+    transition: transform 0.2s ease;
+}
+
+/* 보유종목 상태카드 hover */
+#holdingStatusList > div:active {
+    background: rgba(30, 41, 59, 0.8);
+}
+
