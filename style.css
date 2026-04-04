@@ -205,12 +205,18 @@ select:focus {
 
 .plan-actual-wrap{
     display:grid;
-    grid-template-columns:auto auto;
+    grid-template-columns:auto auto auto;
     justify-items:center;
     align-items:center;
-    column-gap:6px;
+    column-gap:3px;
     width:auto;
     margin:0 auto;
+}
+
+.plan-slash{
+    color:#475569;
+    font-weight:400;
+    font-size:11px;
 }
 
 #planTableBody .plan-price{

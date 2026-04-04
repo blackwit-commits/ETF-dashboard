@@ -2144,6 +2144,7 @@ function calculatePlan() {
                 <div class="plan-actual-cell">
                     <div class="plan-actual-wrap">
                         <span class="plan-price">$${targetPrice.toFixed(2)}</span>
+                        <span class="plan-slash">/</span>
                         <span class="actual-price${actualBuyPrice != null ? '' : ' empty'}">
                             ${actualBuyPrice != null ? ('$' + actualBuyPrice.toFixed(2)) : '—'}
                         </span>
@@ -2190,6 +2191,7 @@ function calculatePlan() {
                 <div class="plan-actual-cell">
                     <div class="plan-actual-wrap">
                         <span class="plan-price">$${targetPrice.toFixed(2)}</span>
+                        <span class="plan-slash">/</span>
                         <span class="actual-price${actualBuyPrice != null ? '' : ' empty'}">
                             ${actualBuyPrice != null ? ('$' + actualBuyPrice.toFixed(2)) : '—'}
                         </span>
