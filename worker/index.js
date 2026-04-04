@@ -118,16 +118,16 @@ export default {
         }
     }
 
-    // 3. 매크로 분석 요청 (/macro) - Claude API 웹서치로 Quad 판정 + 뉴스 브리핑
+    // 3. 매크로 분석 요청 (/macro) - Gemini Flash 2.5 + Google Search Grounding
     if (path === "/macro") {
-      if (!env.CLAUDE_API_KEY) {
-        return new Response(JSON.stringify({ error: "CLAUDE_API_KEY not configured" }), {
+      if (!env.GEMINI_API_KEY) {
+        return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
 
       try {
-        const macroResult = await callClaudeMacroAnalysis(env.CLAUDE_API_KEY);
+        const macroResult = await callGeminiMacroAnalysis(env.GEMINI_API_KEY);
         return new Response(JSON.stringify(macroResult), {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
@@ -142,161 +142,68 @@ export default {
   },
 };
 
-// --- Claude API 매크로 분석 ---
+// --- Gemini Flash 2.5 매크로 분석 ---
 
-const MACRO_SYSTEM_PROMPT = `당신은 Hedgeye 스타일의 매크로 경제 분석 전문가입니다.
+const MACRO_PROMPT = `당신은 Hedgeye 스타일의 매크로 경제 분석 전문가입니다.
 경제를 성장(Growth)과 인플레이션(Inflation) 두 축의 방향(가속/감속)으로 4국면(Quad)을 판정합니다.
 
 Quad 정의:
-- Quad 1 (골디락스): 성장 가속 + 인플레 감속. 성장주/테크 강세, 금리 인하 기대.
-- Quad 2 (과열): 성장 가속 + 인플레 가속. 원자재/에너지/금 강세, 인플레 우려.
-- Quad 3 (스태그플레이션): 성장 감속 + 인플레 가속. 금/인버스만 버팀, Fed 딜레마.
-- Quad 4 (침체/디플레): 성장 감속 + 인플레 감속. 채권/달러 강세, 금리 인하 사이클.
+- Quad 1 (골디락스): 성장 가속 + 인플레 감속
+- Quad 2 (과열): 성장 가속 + 인플레 가속
+- Quad 3 (스태그플레이션): 성장 감속 + 인플레 가속
+- Quad 4 (침체/디플레): 성장 감속 + 인플레 감속
 
-ETF 유니버스 (20개):
-- Quad 1 수혜: TQQQ(나스닥3x), SOXL(반도체3x), TNA(소형주3x), SPXL(S&P500 3x)
-- Quad 2 수혜: NRGU(에너지3x), GUSH(시추2x), NUGT(금광2x), DRN(리츠3x)
-- Quad 3 수혜: GLD(금1x), UGL(금2x), GDXU(금광3x), SQQQ(나스닥인버스-3x)
-- Quad 4 수혜: TMF(장기국채3x), CURE(헬스케어3x), UUP(달러1x)
-- 특수: UVXY(VIX헤지), BITX(비트코인2x)
-- 전Quad공용: UDOW(다우3x), FAS(금융3x), LABU(바이오3x)
+ETF 유니버스: TQQQ,SOXL,TNA,SPXL,NRGU,GUSH,NUGT,DRN,GLD,UGL,GDXU,SQQQ,TMF,CURE,UUP,UVXY,BITX,UDOW,FAS,LABU
 
-웹 검색을 활용하여 최신 데이터를 수집하고, 반드시 아래 JSON 구조로만 응답하세요. JSON 외의 텍스트는 포함하지 마세요.`;
-
-const MACRO_USER_PROMPT = `오늘 날짜 기준으로 최신 경제 데이터를 웹 검색하여 Quad 판정을 수행하세요.
+오늘 날짜 기준으로 Google 검색을 통해 최신 경제 데이터를 수집하고 Quad 판정을 수행하세요.
 
 수집할 데이터:
-1. 성장 지표: GDP 성장률, ISM 제조업/서비스업 PMI, 비농업고용(NFP), 실업수당청구, 소매판매
-2. 인플레 지표: CPI/Core CPI, PCE/Core PCE, PPI, 평균시급, 유가/원자재
-3. 정책: 현재 기준금리, CME FedWatch 금리인하 확률, Fed 발언 톤
-4. 시장 데이터: WTI 유가, 금 가격, DXY(달러인덱스), 미국 10년물 금리, VIX
-5. 이벤트: 지정학 리스크, 관세/무역, 주요 이슈, 향후 1~2주 경제지표 발표 일정
-6. 시장에 영향을 주는 주요 뉴스 3~5개 (각각 심층분석 포함)
+1. 성장 지표: GDP, ISM PMI, NFP, 실업수당, 소매판매
+2. 인플레 지표: CPI/Core CPI, PCE/Core PCE, PPI, 평균시급, 유가
+3. 정책: 기준금리, FedWatch 금리인하 확률, Fed 톤
+4. 시장: WTI, 금, DXY, 10년물 금리, VIX
+5. 이벤트 + 향후 2주 경제지표 일정
+6. 주요 뉴스 3개 (심층분석 포함)
 
-다음 JSON 구조로 정확히 응답하세요:
-{
-  "quad": {
-    "current": <1|2|3|4>,
-    "name": "<골디락스|과열|스태그플레이션|침체>",
-    "growth": "<accelerating|decelerating>",
-    "inflation": "<accelerating|decelerating>",
-    "confidence": <50~100 정수>,
-    "transition_risk": {
-      "to_quad1": <0~100>,
-      "to_quad2": <0~100>,
-      "to_quad3": <0~100>,
-      "to_quad4": <0~100>
-    }
-  },
-  "indicators": {
-    "growth": [
-      {"name": "<지표명>", "value": "<수치>", "direction": "<up|down|flat>", "impact": "<한줄 해석>"}
-    ],
-    "inflation": [
-      {"name": "<지표명>", "value": "<수치>", "direction": "<up|down|flat>", "impact": "<한줄 해석>"}
-    ],
-    "policy": {
-      "current_rate": "<현재 기준금리>",
-      "next_cut_prob": <0~100>,
-      "fed_tone": "<hawkish|dovish_leaning|neutral|dovish|hawkish_leaning>"
-    }
-  },
-  "market_data": {
-    "wti": {"value": <숫자>, "change": <등락%>},
-    "gold": {"value": <숫자>, "change": <등락%>},
-    "dxy": {"value": <숫자>, "change": <등락%>},
-    "us10y": {"value": <숫자>, "change": <등락bp>},
-    "vix": {"value": <숫자>, "change": <등락>}
-  },
-  "events": {
-    "overlay": [
-      {"type": "<geopolitical|tariff|banking|tech|policy>", "severity": "<high|medium|low>", "title": "<제목>", "impact": "<영향>"}
-    ],
-    "upcoming": [
-      {"date": "<M/D>", "name": "<이벤트명>", "importance": "<high|medium|low>"}
-    ]
-  },
-  "news": [
-    {
-      "level": "<red|yellow|green>",
-      "title": "<뉴스 제목>",
-      "summary": "<3줄 요약>",
-      "etf_impact": {
-        "bullish": ["<수혜 ETF 티커>"],
-        "bearish": ["<리스크 ETF 티커>"],
-        "hedge": ["<헤지 ETF 티커>"]
-      },
-      "deep_analysis": {
-        "situation": "<상황 상세 설명>",
-        "historical_cases": [
-          {"event": "<과거 유사 사례>", "market_move": "<시장 반응>", "duration": "<기간>", "market_impact": "<영향>"}
-        ],
-        "scenarios": [
-          {"name": "<시나리오명>", "probability": <0~100>, "action": "<ETF 대응 조치>"}
-        ],
-        "monitor_points": ["<모니터링 포인트>"]
-      }
-    }
-  ],
-  "recommendations": {
-    "buy": [{"ticker": "<ETF>", "mode": "<aggressive|balanced|defensive>", "reason": "<이유>"}],
-    "hold": [{"ticker": "<ETF>", "status": "hold", "reason": "<이유>"}],
-    "exit": [{"ticker": "<ETF>", "status": "exit", "reason": "<이유>"}]
-  },
-  "timestamp": "<ISO 8601>"
-}
+반드시 아래 JSON 구조로만 응답하세요. JSON 외의 텍스트 없이:
+{"quad":{"current":<1-4>,"name":"<골디락스|과열|스태그플레이션|침체>","growth":"<accelerating|decelerating>","inflation":"<accelerating|decelerating>","confidence":<50-100>,"transition_risk":{"to_quad1":<0-100>,"to_quad2":<0-100>,"to_quad3":<0-100>,"to_quad4":<0-100>}},"indicators":{"growth":[{"name":"<지표명>","value":"<수치>","direction":"<up|down|flat>","impact":"<해석>"}],"inflation":[{"name":"<지표명>","value":"<수치>","direction":"<up|down|flat>","impact":"<해석>"}],"policy":{"current_rate":"<금리>","next_cut_prob":<0-100>,"fed_tone":"<hawkish|dovish_leaning|neutral|dovish|hawkish_leaning>"}},"market_data":{"wti":{"value":<n>,"change":<n>},"gold":{"value":<n>,"change":<n>},"dxy":{"value":<n>,"change":<n>},"us10y":{"value":<n>,"change":<n>},"vix":{"value":<n>,"change":<n>}},"events":{"overlay":[{"type":"<geopolitical|tariff|banking|tech|policy>","severity":"<high|medium|low>","title":"<제목>","impact":"<영향>"}],"upcoming":[{"date":"<M/D>","name":"<이벤트>","importance":"<high|medium|low>"}]},"news":[{"level":"<red|yellow|green>","title":"<제목>","summary":"<요약>","etf_impact":{"bullish":["<티커>"],"bearish":["<티커>"],"hedge":["<티커>"]},"deep_analysis":{"situation":"<상세>","historical_cases":[{"event":"<사례>","market_move":"<반응>","duration":"<기간>","market_impact":"<영향>"}],"scenarios":[{"name":"<시나리오>","probability":<0-100>,"action":"<조치>"}],"monitor_points":["<포인트>"]}}],"recommendations":{"buy":[{"ticker":"<ETF>","mode":"<aggressive|balanced|defensive>","reason":"<이유>"}],"hold":[{"ticker":"<ETF>","status":"hold","reason":"<이유>"}],"exit":[]},"timestamp":"<ISO8601>"}
 
-중요:
-- 현재 Quad 번호에 해당하는 transition_risk는 0으로 설정
-- news 배열은 3~5개, 각각 반드시 deep_analysis 포함
-- 모든 ETF 티커는 우리 유니버스(TQQQ,SOXL,TNA,SPXL,NRGU,GUSH,NUGT,DRN,GLD,UGL,GDXU,SQQQ,TMF,CURE,UUP,UVXY,BITX,UDOW,FAS,LABU)에서만 사용
-- 뉴스 level: red=보유종목 직접 영향/긴급, yellow=Quad 전환 가능성, green=참고/배경정보
-- JSON만 출력, 다른 텍스트 없이`;
+규칙: 현재 Quad의 transition_risk=0, news 정확히 3개, ETF는 유니버스에서만, red=긴급/yellow=주의/green=참고`;
 
-async function callClaudeMacroAnalysis(apiKey) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+async function callGeminiMacroAnalysis(apiKey) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2025-01-01",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 16000,
-      system: MACRO_SYSTEM_PROMPT,
-      tools: [
-        {
-          type: "web_search_20250305",
-          name: "web_search",
-          max_uses: 10,
-        }
-      ],
-      messages: [
-        { role: "user", content: MACRO_USER_PROMPT }
-      ],
+      contents: [{ parts: [{ text: MACRO_PROMPT }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 10000,
+      },
     }),
   });
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`Claude API error ${response.status}: ${errorBody}`);
+    throw new Error(`Gemini API error ${response.status}: ${errorBody}`);
   }
 
   const data = await response.json();
 
-  // Claude 응답에서 text 블록 추출
+  // Gemini 응답에서 텍스트 추출
   let textContent = "";
-  if (data.content && Array.isArray(data.content)) {
-    for (const block of data.content) {
-      if (block.type === "text") {
-        textContent += block.text;
-      }
+  if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+    const parts = data.candidates[0].content.parts;
+    for (const part of parts) {
+      if (part.text) textContent += part.text;
     }
   }
 
   if (!textContent) {
-    throw new Error("No text content in Claude response");
+    throw new Error("No text content in Gemini response");
   }
 
   // JSON 파싱 (코드블록 래핑 제거)
@@ -307,7 +214,6 @@ async function callClaudeMacroAnalysis(apiKey) {
 
   const result = JSON.parse(jsonStr);
 
-  // timestamp 보정
   if (!result.timestamp) {
     result.timestamp = new Date().toISOString();
   }
