@@ -400,12 +400,14 @@ function initApp() {
         fetchNews();
         fetchMarketDataInBackground();
 
-        // 5. 매크로 데이터: 캐시 있으면 즉시 표시, 없으면 버튼 대기
+        // 5. 매크로 데이터: 유효한 캐시 있으면 즉시 표시, 없으면 버튼 대기
         var cachedMacro = loadMacroFromCache();
-        if (cachedMacro) {
+        if (cachedMacro && cachedMacro.quad && cachedMacro.news && cachedMacro.market_data) {
             MACRO_DATA = cachedMacro;
+            console.log('[Macro] 캐시 로드 성공 — Quad', cachedMacro.quad.current, '뉴스', cachedMacro.news.length, '개');
             updateMacroDashboard();
         } else {
+            if (cachedMacro) console.log('[Macro] 캐시 데이터 불완전 — 무시', Object.keys(cachedMacro||{}));
             renderMacroStartButton();
         }
 
@@ -1001,12 +1003,12 @@ const QUAD_ICONS  = { 1:'fa-sun', 2:'fa-fire', 3:'fa-cloud-bolt', 4:'fa-snowflak
 
 function updateMacroDashboard() {
     if (!MACRO_DATA) return;
-    renderQuadHeader();
-    renderMarketIndicators();
-    renderUpcomingEvents();
-    renderNewsBriefing();
-    renderHoldingStatus();
-    renderNewsTickerLevel1();
+    try { renderQuadHeader(); } catch(e) { console.error('[Macro] renderQuadHeader:', e); }
+    try { renderMarketIndicators(); } catch(e) { console.error('[Macro] renderMarketIndicators:', e); }
+    try { renderUpcomingEvents(); } catch(e) { console.error('[Macro] renderUpcomingEvents:', e); }
+    try { renderNewsBriefing(); } catch(e) { console.error('[Macro] renderNewsBriefing:', e); }
+    try { renderHoldingStatus(); } catch(e) { console.error('[Macro] renderHoldingStatus:', e); }
+    try { renderNewsTickerLevel1(); } catch(e) { console.error('[Macro] renderNewsTickerLevel1:', e); }
 }
 
 // ── 1. Quad 헤더 ──
