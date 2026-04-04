@@ -151,6 +151,30 @@ async function fetchMacroData(forceRefresh) {
     }
 }
 
+function renderMacroStartButton() {
+    var briefList = document.getElementById('newsBriefingList');
+    if (briefList) {
+        briefList.innerHTML = '<div class="glass-panel p-5 text-center">'
+            + '<div class="text-slate-400 text-xs mb-3">매크로 데이터가 없습니다</div>'
+            + '<button onclick="startMacroAnalysis()" class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-blue-500/30 transition transform active:scale-95">'
+            + '<i class="fa-solid fa-wand-magic-sparkles mr-2"></i>매크로 분석 시작</button>'
+            + '<div class="text-slate-500 text-[10px] mt-2">Gemini AI가 실시간 경제 데이터를 분석합니다 (약 60초)</div>'
+            + '</div>';
+    }
+    // Quad 대시보드에도 안내
+    var lbl = document.getElementById('fgLabel');
+    if (lbl) lbl.innerText = 'Quad 판정 대기';
+    var dEl = document.getElementById('fgDesc');
+    if (dEl) dEl.innerText = '아래 "매크로 분석 시작" 버튼을 눌러주세요';
+}
+
+function startMacroAnalysis() {
+    fetchMacroData(true).then(function(data) {
+        if (data) updateMacroDashboard();
+        else renderMacroStartButton();
+    });
+}
+
 function getCurrentQuad() {
     if (MACRO_DATA && MACRO_DATA.quad) return MACRO_DATA.quad.current;
     return null;
@@ -376,10 +400,14 @@ function initApp() {
         fetchNews();
         fetchMarketDataInBackground();
 
-        // 5. 매크로 데이터 로드 (캐시 우선, 만료 시 API 호출)
-        fetchMacroData(false).then(data => {
-            if (data) updateMacroDashboard();
-        });
+        // 5. 매크로 데이터: 캐시 있으면 즉시 표시, 없으면 버튼 대기
+        var cachedMacro = loadMacroFromCache();
+        if (cachedMacro) {
+            MACRO_DATA = cachedMacro;
+            updateMacroDashboard();
+        } else {
+            renderMacroStartButton();
+        }
 
     } catch(err) {
         console.error("Init Error:", err);
