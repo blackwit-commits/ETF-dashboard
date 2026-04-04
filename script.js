@@ -53,6 +53,46 @@ const QUAD_PULLBACK = {
     LABU: {1:-15, 2:-18, 3:-30, 4:-22},
 };
 
+// ETF 상세 정보 (바텀시트용)
+const ETF_DETAIL = {
+    TQQQ: {summary:'나스닥100 3배 레버리지. 테크 대장, 유동성 최고.', expense:'0.86%', bestQuad:[1], cautionQuad:[3,4], tip:'Quad1에서 RSI 40 이하 눌림목이 최적 진입점. 장기보유 시 변동성 손실(decay) 주의.'},
+    SOXL: {summary:'반도체 지수 3배. AI/반도체 사이클 폭발력 최강.', expense:'0.76%', bestQuad:[1], cautionQuad:[3,4], tip:'반도체 실적 시즌에 강세. TQQQ와 상관관계 높아 동시 보유 주의.'},
+    TNA:  {summary:'러셀2000 소형주 3배. 금리 인하 시 소형주 랠리.', expense:'0.95%', bestQuad:[1], cautionQuad:[3], tip:'금리 인하 기대감이 핵심 촉매. 소형주 특성상 변동성 극심.'},
+    SPXL: {summary:'S&P500 3배. 시장 전체 베팅, 섹터 고민 없이.', expense:'0.90%', bestQuad:[1], cautionQuad:[3], tip:'가장 분산된 레버리지 ETF. 방향 확신은 있지만 섹터 모를 때 적합.'},
+    NRGU: {summary:'대형 에너지 3배. 엑손/셰브론 중심 유가 추종.', expense:'0.95%', bestQuad:[2], cautionQuad:[4], tip:'유가 상승기에 안정적 수익. 지정학 이벤트 시 급등 가능.'},
+    GUSH: {summary:'시추/탐사 2배. 유가 급등 시 폭발력 극대화.', expense:'1.01%', bestQuad:[2], cautionQuad:[4], tip:'중소형 시추업체 중심. 유가 $80+ 구간에서 강세.'},
+    NUGT: {summary:'금광업체 2배. 금 오를 때 금광주는 더 오름.', expense:'1.05%', bestQuad:[2,3], cautionQuad:[1], tip:'금 가격 + 채굴 비용 마진이 핵심. 금 $2000+ 에서 수혜.'},
+    DRN:  {summary:'리츠(부동산) 3배. 성장기 임대수익 강세.', expense:'0.95%', bestQuad:[2], cautionQuad:[4], tip:'금리 하락기에 유리. 상업용 부동산 경기에 민감.'},
+    GLD:  {summary:'금 현물 ETF. 안전자산 1순위, 변동성 낮음.', expense:'0.40%', bestQuad:[3], cautionQuad:[1], tip:'포트폴리오 헤지용. 위기 시 무조건 편입. 장기보유 적합.'},
+    UGL:  {summary:'금 2배 레버리지. 금 확신 시 2배 베팅.', expense:'0.95%', bestQuad:[3], cautionQuad:[1], tip:'GLD 대비 2배 수익/손실. 중기 금 상승 확신 시 사용.'},
+    GDXU: {summary:'금광주 3배. 금 급등 시 최대 수익, 변동성 극심.', expense:'1.05%', bestQuad:[3], cautionQuad:[1], tip:'금 가격 레버리지 + 기업 레버리지 이중 효과. 단기 트레이딩 전용.'},
+    SQQQ: {summary:'나스닥 인버스 3배. 시장 하락에 직접 수익.', expense:'0.95%', bestQuad:[3], cautionQuad:[1,2], tip:'하락장 단기 헤지 전용. 장기보유 금지 (일일 리밸런싱 손실).'},
+    TMF:  {summary:'장기국채 20년+ 3배. 금리 인하 사이클 최대 수혜.', expense:'1.04%', bestQuad:[4], cautionQuad:[2,3], tip:'금리 인하 확정 시 폭발적 수익. 금리 인상기엔 손실 극심.'},
+    CURE: {summary:'헬스케어 3배. 경기방어주, 침체에도 실적 유지.', expense:'0.95%', bestQuad:[4], cautionQuad:[], tip:'경기 둔화기 방어 자산. FDA 승인/규제 이벤트에 영향.'},
+    UUP:  {summary:'달러 인덱스 ETF. 위기 시 달러 강세, 저변동성.', expense:'0.78%', bestQuad:[4], cautionQuad:[1], tip:'현금 대안. 포트폴리오 변동성 낮출 때 편입.'},
+    UVXY: {summary:'VIX 1.5배. 급락 헤지 전용, 장기보유 금지.', expense:'0.74%', bestQuad:[], cautionQuad:[], tip:'시장 급락 시 급등. 보험 성격으로 소량만. 매일 가치 하락(decay).'},
+    BITX: {summary:'비트코인 2배 레버리지. 크립토 사이클 추종.', expense:'1.85%', bestQuad:[], cautionQuad:[], tip:'유동성 장세에서 강세. 규제/해킹 리스크 상존. 높은 운용보수 주의.'},
+    UDOW: {summary:'다우존스 3배. 가치주 중심, 안정적 레버리지.', expense:'0.95%', bestQuad:[1,2,3,4], cautionQuad:[], tip:'섹터 분산 양호. 어떤 Quad에서도 중립적 선택.'},
+    FAS:  {summary:'금융 3배. 은행/보험, 금리 환경에 민감.', expense:'0.95%', bestQuad:[1,2,3,4], cautionQuad:[], tip:'금리 상승기에 은행 마진 개선. 은행 위기 시 급락 주의.'},
+    LABU: {summary:'바이오 3배. FDA 승인 등 이벤트 드리븐.', expense:'1.09%', bestQuad:[1,2,3,4], cautionQuad:[], tip:'개별 종목 이벤트에 좌우됨. Quad보다 FDA 일정이 더 중요.'},
+};
+
+// 상관관계 매트릭스 (높은 상관관계 쌍만 정의, 0.7 이상)
+const CORRELATION_MAP = {
+    TQQQ: {SOXL:0.85, SPXL:0.92, TNA:0.75},
+    SOXL: {TQQQ:0.85, SPXL:0.78},
+    SPXL: {TQQQ:0.92, SOXL:0.78, UDOW:0.88, TNA:0.82},
+    TNA:  {TQQQ:0.75, SPXL:0.82},
+    NRGU: {GUSH:0.90},
+    GUSH: {NRGU:0.90},
+    NUGT: {GLD:0.72, UGL:0.75, GDXU:0.88},
+    GLD:  {UGL:0.98, NUGT:0.72, GDXU:0.70},
+    UGL:  {GLD:0.98, NUGT:0.75, GDXU:0.72},
+    GDXU: {NUGT:0.88, GLD:0.70, UGL:0.72},
+    UDOW: {SPXL:0.88, FAS:0.72},
+    FAS:  {UDOW:0.72},
+};
+
 let NEWS_FEED = [];
 let globalData = null;
 let portfolios = null;
@@ -1234,6 +1274,60 @@ function toggleNewsDeep(idx) {
     if (chev) chev.style.transform = isHidden ? 'rotate(180deg)' : '';
 }
 
+// ── 상관관계 경고 ──
+function renderCorrelationWarnings(sym) {
+    var corrMap = CORRELATION_MAP[sym];
+    if (!corrMap) return '';
+
+    var holdings = Object.keys(portfolios || {}).filter(function(s) {
+        return s !== sym && portfolios[s].qty > 0;
+    });
+    if (holdings.length === 0) return '';
+
+    var warnings = [];
+    holdings.forEach(function(held) {
+        var corr = corrMap[held];
+        if (corr && corr >= 0.7) {
+            var level = corr >= 0.85 ? 'text-red-400' : 'text-yellow-400';
+            var label = corr >= 0.85 ? '매우 높음' : '높음';
+            warnings.push('<div class="flex justify-between items-center">'
+                + '<span class="text-slate-300">' + sym + ' ↔ ' + held + '</span>'
+                + '<span class="font-bold ' + level + '">' + corr.toFixed(2) + ' (' + label + ')</span>'
+                + '</div>');
+        }
+    });
+
+    if (warnings.length === 0) return '';
+    return '<div class="pt-1.5 border-t border-slate-700">'
+        + '<div class="text-red-400 font-bold text-[10px] mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>상관관계 경고 — 분산 효과 낮음</div>'
+        + warnings.join('')
+        + '<div class="text-[10px] text-slate-500 mt-1">상관관계 0.7+ 종목은 비중 15% 이내 권장</div>'
+        + '</div>';
+}
+
+function checkCorrelationOnAdd(sym) {
+    var corrMap = CORRELATION_MAP[sym];
+    if (!corrMap) return true;
+
+    var holdings = Object.keys(portfolios || {}).filter(function(s) {
+        return s !== sym && portfolios[s].qty > 0;
+    });
+
+    var highCorr = [];
+    holdings.forEach(function(held) {
+        var corr = corrMap[held];
+        if (corr && corr >= 0.7) {
+            highCorr.push(held + ' (상관관계 ' + corr.toFixed(2) + ')');
+        }
+    });
+
+    if (highCorr.length > 0) {
+        return confirm('⚠️ 상관관계 경고\n\n' + sym + '은(는) 보유 중인 다음 종목과 상관관계가 높습니다:\n'
+            + highCorr.join('\n') + '\n\n분산 효과가 낮아 비중 15% 이내를 권장합니다.\n그래도 추가하시겠습니까?');
+    }
+    return true;
+}
+
 function toggleGuide(id) {
     var el = document.getElementById(id);
     var chev = document.getElementById(id + 'Chev');
@@ -1764,8 +1858,68 @@ function openAnalysisModal(sym) {
             modalWidget = new TradingView.widget({ "autosize": true, "symbol": sym, "interval": "D", "timezone": "Etc/UTC", "theme": "dark", "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false, "hide_top_toolbar": true, "container_id": "modalChartContainer", "studies": ["MASimple@tv-basicstudies"] }); 
         } catch(e){} 
     }
-    document.getElementById('analysisModal').classList.remove('hidden'); 
-    document.getElementById('analysisModal').classList.add('flex'); 
+    // ETF 상세 정보 렌더링
+    renderEtfDetailSection(sym, meta, md);
+
+    document.getElementById('analysisModal').classList.remove('hidden');
+    document.getElementById('analysisModal').classList.add('flex');
+}
+
+function renderEtfDetailSection(sym, meta, md) {
+    var sec = document.getElementById('etfDetailSection');
+    if (!sec) return;
+
+    var detail = ETF_DETAIL[sym];
+    if (!detail) { sec.classList.add('hidden'); return; }
+    sec.classList.remove('hidden');
+
+    var quadNow = getCurrentQuad();
+    var tierLabels = {1:'Tier 1 (초고변동)', 2:'Tier 2 (고변동)', 3:'Tier 3 (중변동)', 4:'Tier 4 (저변동)'};
+    var quadNames = {1:'Q1 골디락스', 2:'Q2 과열', 3:'Q3 스태그', 4:'Q4 침체'};
+
+    // 최적/주의 Quad
+    var bestQ = (detail.bestQuad||[]).map(function(q){return '<span class="text-green-400">'+quadNames[q]+'</span>';}).join(', ') || '전 Quad';
+    var cautionQ = (detail.cautionQuad||[]).map(function(q){return '<span class="text-red-400">'+quadNames[q]+'</span>';}).join(', ') || '없음';
+
+    // 현재 Quad와의 관계
+    var quadStatus = '';
+    if (quadNow) {
+        if (detail.bestQuad.indexOf(quadNow) !== -1) quadStatus = '<span class="text-green-400 font-bold">현재 Quad '+quadNow+' 순풍</span>';
+        else if (detail.cautionQuad.indexOf(quadNow) !== -1) quadStatus = '<span class="text-red-400 font-bold">현재 Quad '+quadNow+' 역풍 주의</span>';
+        else quadStatus = '<span class="text-slate-400">현재 Quad '+quadNow+' 중립</span>';
+    }
+
+    // Quad별 평균 조정폭
+    var pullback = QUAD_PULLBACK[sym];
+    var pullbackHtml = '';
+    if (pullback) {
+        pullbackHtml = '<div class="grid grid-cols-4 gap-1 mt-1">' + [1,2,3,4].map(function(q) {
+            var pct = pullback[q];
+            var isCurrent = q === quadNow;
+            return '<div class="text-center text-[10px] p-1 rounded ' + (isCurrent?'bg-slate-700 ring-1 ring-blue-500':'bg-slate-800/50') + '">'
+                + '<div class="text-slate-500">' + quadNames[q].split(' ')[0] + '</div>'
+                + '<div class="font-bold ' + (isCurrent?'text-white':'text-slate-400') + '">' + pct + '%</div></div>';
+        }).join('') + '</div>';
+    }
+
+    // 상관관계 경고 (보유 종목과)
+    var corrHtml = renderCorrelationWarnings(sym);
+
+    sec.innerHTML = '<div class="bg-slate-800/60 rounded-xl p-3 border border-slate-700 space-y-2 text-[11px]">'
+        + '<div class="text-slate-300">' + escapeHtml(detail.summary) + '</div>'
+        + '<div class="grid grid-cols-2 gap-2">'
+        + '<div><span class="text-slate-500">레버리지:</span> <span class="text-white font-bold">' + (meta.lev||'') + '</span></div>'
+        + '<div><span class="text-slate-500">변동성:</span> <span class="text-white font-bold">' + (tierLabels[meta.tier]||'') + '</span></div>'
+        + '<div><span class="text-slate-500">운용보수:</span> <span class="text-white">' + (detail.expense||'-') + '</span></div>'
+        + '<div><span class="text-slate-500">보유종목:</span> <span class="text-white">' + escapeHtml(meta.holdings||'') + '</span></div>'
+        + '</div>'
+        + '<div><span class="text-slate-500">최적 Quad:</span> ' + bestQ + '</div>'
+        + '<div><span class="text-slate-500">주의 Quad:</span> ' + cautionQ + '</div>'
+        + (quadStatus ? '<div>' + quadStatus + '</div>' : '')
+        + (pullbackHtml ? '<div><span class="text-slate-500">Quad별 평균 조정폭:</span>' + pullbackHtml + '</div>' : '')
+        + '<div class="pt-1.5 border-t border-slate-700"><span class="text-amber-400 font-bold">TIP:</span> <span class="text-slate-300">' + escapeHtml(detail.tip||'') + '</span></div>'
+        + corrHtml
+        + '</div>';
 }
     
 function closeAnalysisModal() { 
@@ -1869,9 +2023,16 @@ function runAiResultLogic() {
         reasons.push('- 초반 가볍게, 하단에서 무겁게. 깊은 조정에 대비합니다.');
     }
 
-    // MDD 캡핑 (ATR 스케일링)
+    // MDD 캡핑 — Quad별 평균 조정폭 프리셋 우선, 없으면 기본값
     const atrPct = currentPrice > 0 ? (atr / currentPrice) * 100 : 0;
-    let maxMddCap = weightMode === 'aggressive' ? 18 : (weightMode === 'balanced' ? 25 : (vix >= 30 ? 40 : 35));
+    let maxMddCap;
+    var pullbackData = QUAD_PULLBACK[ticker];
+    if (pullbackData && quadNow && pullbackData[quadNow] != null) {
+        maxMddCap = Math.abs(pullbackData[quadNow]);
+        reasons.push('📊 Quad ' + quadNow + ' 평균 조정폭 적용: -' + maxMddCap + '% (' + ticker + ')');
+    } else {
+        maxMddCap = weightMode === 'aggressive' ? 18 : (weightMode === 'balanced' ? 25 : (vix >= 30 ? 40 : 35));
+    }
     const volCapAdj = volTier === 4 ? 0.75 : (volTier === 3 ? 0.9 : 1.0);
     maxMddCap = maxMddCap * volCapAdj;
     if (globalData && globalData.mddLimit != null && !isNaN(globalData.mddLimit)) {
@@ -2232,7 +2393,7 @@ function openAllocationModal(sym) { const total = getTotalEquityUSD(); if(total 
 function calcAllocFromPct() { const pct = parseFloat(document.getElementById('allocPercent').value)||0; const total = getTotalEquityUSD(); const amt = total * (pct/100); document.getElementById('allocAmount').value = amt.toFixed(2); updateKrwHint(amt); }
 function calcAllocFromAmt() { const amt = parseFloat(document.getElementById('allocAmount').value)||0; const total = getTotalEquityUSD(); const pct = (amt / total) * 100; document.getElementById('allocPercent').value = pct.toFixed(1); updateKrwHint(amt); }
 function updateKrwHint(usdAmount) { const krwStr = formatKrw(usdAmount); document.getElementById('allocKRWHint').innerText = '≈ ' + krwStr.replace(/\u20A9/,'') + ' 원'; }
-function confirmAllocation() { const pct = parseFloat(document.getElementById('allocPercent').value)||0; if(pct <= 0) return alert("비중을 입력해주세요."); const sym = tempTickerToAdd || activeTicker; if(sym) { if (!portfolios[sym]) { portfolios[sym] = { qty: 0, avgPrice: 0, history: [], config: { mode: 'GRID', stages: 4, mdd: 20, alloc: pct, drops: [0,-6.67,-13.33,-20], weights: [25,25,25,25], basePrice: 0, boosterOn: false, boosterAllocPct: 0, boosterStages: 2, boosterMdd: 10 } }; } else { portfolios[sym].config.alloc = pct; } saveAll(); if(activeTicker===sym) loadTickerData(sym); } document.getElementById('allocationModal').classList.add('hidden'); document.getElementById('allocationModal').classList.remove('flex'); renderTickerBar(); switchTab('strategy'); selectTicker(sym); }
+function confirmAllocation() { const pct = parseFloat(document.getElementById('allocPercent').value)||0; if(pct <= 0) return alert("비중을 입력해주세요."); const sym = tempTickerToAdd || activeTicker; if(sym) { if (!portfolios[sym] && !checkCorrelationOnAdd(sym)) return; if (!portfolios[sym]) { portfolios[sym] = { qty: 0, avgPrice: 0, history: [], config: { mode: 'GRID', stages: 4, mdd: 20, alloc: pct, drops: [0,-6.67,-13.33,-20], weights: [25,25,25,25], basePrice: 0, boosterOn: false, boosterAllocPct: 0, boosterStages: 2, boosterMdd: 10 } }; } else { portfolios[sym].config.alloc = pct; } saveAll(); if(activeTicker===sym) loadTickerData(sym); } document.getElementById('allocationModal').classList.add('hidden'); document.getElementById('allocationModal').classList.remove('flex'); renderTickerBar(); switchTab('strategy'); selectTicker(sym); }
 function openEtfSearchModal() { document.getElementById('etfSearchModal').classList.remove('hidden'); document.getElementById('etfSearchModal').classList.add('flex'); renderEtfSearchList(ETF_DB); }
 function closeEtfSearchModal() { document.getElementById('etfSearchModal').classList.add('hidden'); document.getElementById('etfSearchModal').classList.remove('flex'); }
 function renderEtfSearchList(l) { const g=document.getElementById('etfSearchGrid'); g.innerHTML=''; l.forEach(e=>{ let b=e.lev==='3x'?'badge-3x':(e.lev==='2x'?'badge-2x':'badge-inv'); g.innerHTML+=`<div class="bg-slate-800 p-3 rounded-xl flex justify-between items-center active:bg-slate-700 transition"><div><span class="font-bold text-white">${e.sym}</span> <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${b}">${e.lev}</span><div class="text-xs text-slate-400">${e.desc}</div></div><button onclick="processAddTicker('${e.sym}')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg text-xs font-bold shadow transition">추가</button></div>`; }); }

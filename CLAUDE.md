@@ -39,10 +39,10 @@ UMT_V2_PRD.md   — V2 기획서
 - [x] 1-5. 비중 모드 자동 추천 (공격/균등/방어) — Quad 순풍/역풍 + TREND + RSI 기반
 
 ### Phase 2 — 고도화
-- [ ] 2-1. Quad별 MDD 간격 차등 (프리셋 테이블 연동)
-- [ ] 2-2. ETF 상세 정보 바텀시트
-- [ ] 2-3. 보유 종목 HOLD/WATCH/EXIT 상태
-- [ ] 2-4. 상관관계 경고
+- [x] 2-1. Quad별 MDD 간격 차등 (QUAD_PULLBACK → runAiResultLogic 연동)
+- [x] 2-2. ETF 상세 정보 바텀시트 (ETF_DETAIL + 분석 모달 확장)
+- [x] 2-3. 보유 종목 HOLD/WATCH/EXIT 상태 (Phase 1-3에서 완료)
+- [x] 2-4. 상관관계 경고 (CORRELATION_MAP + 종목 추가 시 confirm + 모달 표시)
 - [x] 2-5. 용어 사전/가이드 (설정 탭 — Quad/기술적지표/매크로지표/시스템용어 4개 섹션)
 
 ### Phase 3 — 확장
