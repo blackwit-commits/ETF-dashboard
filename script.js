@@ -508,7 +508,7 @@ function saveSyncUrl() {
 
 async function syncToCloud() {
     if(!SYNC_URL) return;
-    
+
     const syncBadge = document.getElementById('syncBadge');
     const syncIcon = document.getElementById('syncIcon');
     if(syncBadge) syncBadge.classList.add('status-sync');
@@ -516,14 +516,16 @@ async function syncToCloud() {
 
     const dataStr = JSON.stringify({ global: globalData, ports: portfolios });
     try {
-        await fetch(SYNC_URL, { 
-            method: 'POST', 
+        var proxyUrl = API_BASE_URL + '/sync?url=' + encodeURIComponent(SYNC_URL);
+        await fetch(proxyUrl, {
+            method: 'POST',
             body: dataStr,
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+            headers: { 'Content-Type': 'application/json' }
         });
         const sText = document.getElementById('syncStatusText');
         if(sText) sText.innerText = "최근 동기화: " + new Date().toLocaleTimeString();
-    } catch(e) { 
+    } catch(e) {
+        console.error('[Sync] 동기화 실패:', e);
         const sText = document.getElementById('syncStatusText');
         if(sText) sText.innerText = "동기화 실패";
     } finally {
@@ -556,34 +558,17 @@ async function saveFullToCloud() {
     var syncIcon = document.getElementById('syncIcon');
     if (syncBadge) syncBadge.classList.add('status-sync');
     if (syncIcon) syncIcon.classList.replace('text-slate-500', 'text-white');
-    var url = SYNC_URL + (SYNC_URL.indexOf('?') >= 0 ? '&' : '?') + 'full=1';
-    
-    // [DEBUG saveFullToCloud] 현재 상태 로그
-    console.log('[DEBUG saveFullToCloud] globalData', globalData);
-    console.log('[DEBUG saveFullToCloud] portfolios keys', Object.keys(portfolios || {}));
-    Object.keys(portfolios || {}).forEach(sym => {
-        const p = portfolios[sym];
-        console.log('[DEBUG saveFullToCloud] portfolio summary', {
-            sym,
-            hasConfig: !!p.config,
-            qty: p.qty,
-            avgPrice: p.avgPrice,
-            historyLength: Array.isArray(p.history) ? p.history.length : 0
-        });
-    });
-    const aggregatedTrades = getAggregatedTrades();
-    console.log('[DEBUG saveFullToCloud] aggregatedTrades length', aggregatedTrades.length);
-    console.log('[DEBUG saveFullToCloud] aggregatedTrades sample(3)', aggregatedTrades.slice(0, 3));
+    var proxyUrl = API_BASE_URL + '/sync?url=' + encodeURIComponent(SYNC_URL);
 
+    const aggregatedTrades = getAggregatedTrades();
     var payload = {
         settings: globalData,
         portfolio: portfolios,
         trades: aggregatedTrades,
         deposits: (globalData && globalData.deposits) ? globalData.deposits : []
     };
-    console.log('[DEBUG saveFullToCloud] payload', payload);
     try {
-        var res = await fetch(url, {
+        var res = await fetch(proxyUrl, {
             method: 'POST',
             body: JSON.stringify(payload),
             headers: { 'Content-Type': 'application/json' }
@@ -617,9 +602,9 @@ async function loadFromCloud(isManual = false) {
         if(sText) sText.innerText = "불러오는 중...";
     }
 
-    var url = SYNC_URL + (SYNC_URL.indexOf('?') >= 0 ? '&' : '?') + 'full=1';
+    var proxyUrl = API_BASE_URL + '/sync?url=' + encodeURIComponent(SYNC_URL);
     try {
-        var res = await fetch(url);
+        var res = await fetch(proxyUrl);
         var raw = await res.json();
         console.log('[DEBUG loadFromCloud] raw response', raw);
 

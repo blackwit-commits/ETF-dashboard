@@ -118,7 +118,37 @@ export default {
         }
     }
 
-    // 3. 매크로 분석 요청 (/macro) - Gemini Flash 2.5 + Google Search Grounding
+    // 3. 구글 시트 프록시 (/sync) - POST 302 리다이렉트 body 유실 문제 해결
+    if (path === "/sync") {
+      const sheetUrl = url.searchParams.get("url");
+      if (!sheetUrl) return new Response(JSON.stringify({error:"url parameter required"}), { status:400, headers:{...corsHeaders,"Content-Type":"application/json"} });
+
+      try {
+        if (request.method === "POST") {
+          // POST: 클라이언트 → Worker → Google Apps Script (Worker는 302를 자동 추적)
+          const body = await request.text();
+          const fullUrl = sheetUrl + (sheetUrl.indexOf('?') >= 0 ? '&' : '?') + 'full=1';
+          const res = await fetch(fullUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: body,
+            redirect: "follow",
+          });
+          const text = await res.text();
+          return new Response(text, { status: res.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } else {
+          // GET: 불러오기
+          const fullUrl = sheetUrl + (sheetUrl.indexOf('?') >= 0 ? '&' : '?') + 'full=1';
+          const res = await fetch(fullUrl, { redirect: "follow" });
+          const text = await res.text();
+          return new Response(text, { status: res.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      } catch(e) {
+        return new Response(JSON.stringify({error: e.message}), { status:500, headers:{...corsHeaders,"Content-Type":"application/json"} });
+      }
+    }
+
+    // 4. 매크로 분석 요청 (/macro) - Gemini Flash 2.5 + Google Search Grounding
     if (path === "/macro") {
       if (!env.GEMINI_API_KEY) {
         return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), {
