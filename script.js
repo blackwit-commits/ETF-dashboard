@@ -1042,7 +1042,7 @@ function updateMacroDashboard() {
     try { renderUpcomingEvents(); } catch(e) { console.error('[Macro] renderUpcomingEvents:', e); }
     try { renderNewsBriefing(); } catch(e) { console.error('[Macro] renderNewsBriefing:', e); }
     try { renderHoldingStatus(); } catch(e) { console.error('[Macro] renderHoldingStatus:', e); }
-    try { renderNewsTickerLevel1(); } catch(e) { console.error('[Macro] renderNewsTickerLevel1:', e); }
+    // 상단 전광판은 Google News RSS를 유지 (renderNewsTickerLevel1 제거)
 }
 
 // ── 1. Quad 헤더 ──
