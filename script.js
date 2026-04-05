@@ -2108,7 +2108,10 @@ function runAiResultLogic() {
     reasons.push('📏 ATR 기반 간격: $' + atr.toFixed(2) + ' (' + levStr + ' · ' + tierLabel + ')');
     reasons.push('💡 비중 모드: ' + modeLabels[weightMode] + ' — 수동 변경 시 경고가 표시됩니다.');
 
-    // 바로 적용 (confirm 없이)
+    const msg = `[🤖 Quad 기반 스마트 최적화]\n\n${reasons.join('\n')}\n\n👉 비중 모드: ${modeLabels[weightMode]}\n👉 추천 목표 MDD: -${mddRecommend.toFixed(0)}%\n👉 분할 단계: ${stages}단계 (비중: ${weights.join('-')})\n👉 매수 간격(참고): 약 -${gapApprox.toFixed(1)}%\n\n이 전략으로 적용하시겠습니까?`;
+
+    if (!confirm(msg)) return;
+
     const d = portfolios[activeTicker];
     d.config.mode = mode; d.config.stages = stages; d.config.mdd = mddRecommend;
     d.config.drops = drops;
