@@ -1827,6 +1827,28 @@ function renderStrategyProgressCard(sym) {
     } else if (pnlWrap) {
         pnlWrap.classList.add('hidden');
     }
+
+    // 부스터 권장 알림: 모든 기본 단계 완료 + 현재가가 마지막 단계 아래
+    var boosterHint = document.getElementById('boosterHintBanner');
+    if (!boosterHint) {
+        boosterHint = document.createElement('div');
+        boosterHint.id = 'boosterHintBanner';
+        boosterHint.className = 'hidden mt-2 p-2.5 rounded-lg bg-amber-900/30 border border-amber-700/50 text-[11px] text-amber-300';
+        card.appendChild(boosterHint);
+    }
+    var baseTotal = stage.baseTotal || 0;
+    var baseCompleted = stage.baseCompleted || 0;
+    var lastDrop = (d.config && d.config.drops && d.config.drops.length > 0) ? d.config.drops[d.config.drops.length - 1] : 0;
+    var lastStagePrice = (d.config && d.config.basePrice > 0) ? d.config.basePrice * (1 + lastDrop / 100) : 0;
+    var allBasesDone = baseTotal > 0 && baseCompleted >= baseTotal && (d.qty || 0) > 0;
+    var priceBelowLast = currentPrice > 0 && lastStagePrice > 0 && currentPrice < lastStagePrice;
+
+    if (allBasesDone && priceBelowLast && !(d.config && d.config.boosterOn)) {
+        boosterHint.classList.remove('hidden');
+        boosterHint.innerHTML = '<i class="fa-solid fa-rocket mr-1"></i><strong>부스터 활성화 권장</strong> — 모든 ' + baseTotal + '단계 매수 완료, 현재가($' + currentPrice.toFixed(2) + ')가 마지막 계획가($' + lastStagePrice.toFixed(2) + ') 아래입니다. 추가 투입이 필요하면 아래 부스터 설정을 활성화하세요.';
+    } else {
+        boosterHint.classList.add('hidden');
+    }
 }
 
 function loadTickerData(sym) { 
@@ -2057,16 +2079,15 @@ function runAiResultLogic() {
             weights = [10, 10, 12, 15, 17, 18, 18];
             atrMultipliers = [0, 1.2, 3.0, 5.5, 8.0, 11.0, 14.0];
         }
-        boosterOn = true;
-        boosterStages = 2;
-        boosterAllocPct = 10;
-        boosterMdd = 10;
+        // 부스터는 자동 활성화하지 않음 (모든 단계 소진 후 수동 판단)
+        boosterOn = false;
         var defReason = [];
         if (!isQuadTailwind && quadNow) defReason.push('Quad '+quadNow+' 역풍');
         if (vix > 28) defReason.push('VIX '+vix.toFixed(1));
         if (!trendUp) defReason.push('MA200 하향');
         reasons.push('🛡️ 방어형 — ' + defReason.join(' + '));
         reasons.push('- 초반 가볍게, 하단에서 무겁게. 깊은 조정에 대비합니다.');
+        reasons.push('💡 부스터는 모든 단계 매수 후 추가 하락 시 수동으로 활성화하세요.');
     }
 
     // MDD 캡핑 — Quad별 평균 조정폭 프리셋 우선, 없으면 기본값
