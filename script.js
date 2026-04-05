@@ -2823,9 +2823,8 @@ function truncateStr(s, len) {
 
 function renderTradeLog() {
     var tickerSelect = document.getElementById('tradelogTicker');
-    var tbody = document.getElementById('tradelogTableBody');
     var countEl = document.getElementById('tradelogCount');
-    if (!tickerSelect || !tbody) return;
+    if (!tickerSelect) return;
 
     var all = getAggregatedTrades();
     all = enrichTradesWithReturn(all);
