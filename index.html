@@ -391,7 +391,17 @@
                     </div>
                 </div>
 
-                <div class="bg-slate-800 p-4 rounded-xl mb-4 flex justify-between items-center border border-slate-700"><div><span class="text-xs text-slate-400 block mb-1">누적 순입금 (원금)</span><span class="text-lg font-bold text-slate-200" id="totalPrincipalDisplay">0 원</span></div><div class="text-right"><span class="text-xs text-slate-400 block mb-1">순수익 (PnL)</span><span class="text-lg font-black text-green-400" id="totalProfitDisplay">+0 원</span></div></div>
+                <div class="bg-slate-800 p-4 rounded-xl mb-4 border border-slate-700">
+                    <div class="flex justify-between items-center mb-3">
+                        <div><span class="text-xs text-slate-400 block mb-1">누적 순입금 (원금)</span><span class="text-lg font-bold text-slate-200" id="totalPrincipalDisplay">0 원</span></div>
+                        <div class="text-right"><span class="text-xs text-slate-400 block mb-1">순수익 (PnL)</span><span class="text-lg font-black text-green-400" id="totalProfitDisplay">+0 원</span></div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 pt-3 border-t border-slate-700">
+                        <div class="text-center"><span class="text-[9px] text-slate-500 block">평균 환율</span><span class="text-sm font-bold text-yellow-400" id="avgExchangeRate">-</span></div>
+                        <div class="text-center"><span class="text-[9px] text-slate-500 block">누적 입금</span><span class="text-sm font-bold text-slate-300" id="totalDepositCount">0회</span></div>
+                        <div class="text-center"><span class="text-[9px] text-slate-500 block">총 달러 환산</span><span class="text-sm font-bold text-emerald-400" id="totalConvertedUsd">$0</span></div>
+                    </div>
+                </div>
                 <div class="grid grid-cols-2 gap-3 mb-4">
                     <div><label class="block text-[10px] text-slate-500 font-bold mb-1 ml-1">기본 환율 (USD/KRW)</label><input type="number" id="globalRate" class="w-full p-3 rounded-lg bg-slate-900 text-right font-bold text-yellow-400 border border-slate-700" placeholder="1300" oninput="updateGlobalCalc()"></div>
                     <div><label class="block text-[10px] text-slate-500 font-bold mb-1 ml-1">초기 시드머니 (원)</label><input type="number" id="globalSeedKRW" class="w-full p-3 rounded-lg bg-slate-900 text-right font-bold text-white border border-slate-700" placeholder="0" oninput="updateGlobalCalc()"></div>

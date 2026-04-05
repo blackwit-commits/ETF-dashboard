@@ -3216,8 +3216,31 @@ function updateGlobalCalc() {
         globalData.seedKRW = parseFloat(document.getElementById('globalSeedKRW').value)||0; globalData.rate = parseFloat(document.getElementById('globalRate').value)||1300; var _sipEl = document.getElementById('globalSipKRW'); if(_sipEl) globalData.sipKRW = parseFloat(_sipEl.value)||0; 
         let netDepositKRW = 0; let totalInjectedUSD = globalData.seedKRW / globalData.rate; 
         globalData.deposits.forEach(d => { netDepositKRW += d.amount; totalInjectedUSD += (d.amount / d.rate); }); 
-        const totalPrincipalKRW = globalData.seedKRW + netDepositKRW; 
-        const tpEl = document.getElementById('totalPrincipalDisplay'); if(tpEl) tpEl.innerText = totalPrincipalKRW.toLocaleString() + ' 원'; 
+        const totalPrincipalKRW = globalData.seedKRW + netDepositKRW;
+        const tpEl = document.getElementById('totalPrincipalDisplay'); if(tpEl) tpEl.innerText = totalPrincipalKRW.toLocaleString() + ' 원';
+        // 누적 평균 환율 계산
+        var totalKrwForAvg = globalData.seedKRW;
+        var totalUsdForAvg = globalData.seedKRW / globalData.rate;
+        var depositCount = 0;
+        (globalData.deposits || []).forEach(function(d) {
+            if (d.type !== 'OUT' && d.amount > 0) {
+                totalKrwForAvg += d.amount;
+                totalUsdForAvg += d.amount / (d.rate || globalData.rate);
+                depositCount++;
+            }
+        });
+        var avgRate = totalUsdForAvg > 0 ? Math.round(totalKrwForAvg / totalUsdForAvg) : globalData.rate;
+        var avgRateEl = document.getElementById('avgExchangeRate');
+        if (avgRateEl) {
+            var currentRate = globalData.rate;
+            var diffPct = currentRate > 0 ? ((currentRate - avgRate) / avgRate * 100) : 0;
+            var diffColor = diffPct > 0 ? 'text-red-400' : (diffPct < 0 ? 'text-blue-400' : 'text-slate-400');
+            avgRateEl.innerHTML = avgRate.toLocaleString() + '원 <span class="text-[9px] ' + diffColor + '">(' + (diffPct >= 0 ? '+' : '') + diffPct.toFixed(1) + '%)</span>';
+        }
+        var dcEl = document.getElementById('totalDepositCount');
+        if (dcEl) dcEl.innerText = (depositCount + 1) + '회'; // +1 for 초기 시드
+        var tcEl = document.getElementById('totalConvertedUsd');
+        if (tcEl) tcEl.innerText = '$' + Math.round(totalUsdForAvg).toLocaleString(); 
         const sum = getPortfolioSummary(); 
         const aEl = document.getElementById('dashTotalAssets'); if(aEl) aEl.innerText = '$' + sum.totalAssets.toLocaleString(undefined,{maximumFractionDigits:0}); 
         const aKrw = document.getElementById('dashTotalAssetsKrw'); if(aKrw) aKrw.innerText = formatKrw(sum.totalAssets); 
