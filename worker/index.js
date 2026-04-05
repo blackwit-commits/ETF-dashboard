@@ -93,28 +93,38 @@ export default {
     // 2. 뉴스 데이터 요청 (/news) - 구글 뉴스 RSS 파싱
     if (path === "/news") {
         try {
-            const rssUrl = "https://news.google.com/rss/search?q=stock+market+finance&hl=en-US&gl=US&ceid=US:en";
-            const resp = await fetch(rssUrl);
+            // Bing News RSS (Google News가 Worker IP를 차단하여 대체)
+            const rssUrl = "https://www.bing.com/news/search?q=stock+market+finance+ETF&format=rss";
+            const resp = await fetch(rssUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+            if (!resp.ok) {
+                return new Response(JSON.stringify({error: "RSS fetch failed: " + resp.status}), { headers: {...corsHeaders, "Content-Type": "application/json"} });
+            }
             const text = await resp.text();
 
-            // 간단한 Regex로 XML -> JSON 변환 (라이브러리 없이)
+            // XML 파싱: <item> 블록을 분리한 뒤 개별 필드 추출
             const items = [];
-            const regex = /<item>[\s\S]*?<title>(.*?)<\/title>[\s\S]*?<link>(.*?)<\/link>[\s\S]*?<pubDate>(.*?)<\/pubDate>[\s\S]*?<\/item>/g;
-            let match;
-            while ((match = regex.exec(text)) !== null) {
-                items.push({
-                    title: match[1].replace("<![CDATA[", "").replace("]]>", ""),
-                    url: match[2],
-                    date: new Date(match[3]).toLocaleDateString()
-                });
-                if(items.length >= 10) break; // 10개만
+            const itemBlocks = text.split('<item>').slice(1);
+            for (let block of itemBlocks) {
+                if (items.length >= 10) break;
+                const endIdx = block.indexOf('</item>');
+                if (endIdx > 0) block = block.substring(0, endIdx);
+                const titleMatch = block.match(/<title>(.*?)<\/title>/);
+                const linkMatch = block.match(/<link>(.*?)<\/link>/);
+                const dateMatch = block.match(/<pubDate>(.*?)<\/pubDate>/);
+                if (titleMatch && linkMatch) {
+                    items.push({
+                        title: titleMatch[1].replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">"),
+                        url: linkMatch[1],
+                        date: dateMatch ? new Date(dateMatch[1]).toLocaleDateString() : ""
+                    });
+                }
             }
 
             return new Response(JSON.stringify(items), {
                  headers: { ...corsHeaders, "Content-Type": "application/json" }
             });
         } catch(e) {
-            return new Response(JSON.stringify([]), { headers: corsHeaders });
+            return new Response(JSON.stringify({error: e.message, items: []}), { headers: {...corsHeaders, "Content-Type": "application/json"} });
         }
     }
 
