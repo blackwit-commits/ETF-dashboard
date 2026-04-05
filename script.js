@@ -788,9 +788,13 @@ function renderInitialMarketList() {
     });
     const order = ['Quad 1 — 성장주','Quad 2 — 인플레 수혜','Quad 3 — 방어/인버스','Quad 4 — 채권/방어주','특수 목적','전 Quad 공용','기타'];
 
-    list.innerHTML = order.filter(k => groups[k] && groups[k].length).map(sector => {
+    var quadNow = getCurrentQuad();
+    var quadSectorMap = {1:'Quad 1 — 성장주', 2:'Quad 2 — 인플레 수혜', 3:'Quad 3 — 방어/인버스', 4:'Quad 4 — 채권/방어주'};
+    var currentQuadSector = quadSectorMap[quadNow] || '';
+
+    list.innerHTML = order.filter(k => groups[k] && groups[k].length).map((sector, idx) => {
         const cards = groups[sector].map(e => {
-            let badge = e.lev==='3x'?'badge-3x':(e.lev==='2x'?'badge-2x':'badge-inv'); 
+            let badge = e.lev==='3x'?'badge-3x':(e.lev==='2x'?'badge-2x':'badge-inv');
             return `
             <div id="card-${e.sym}" class="glass-panel p-3 rounded-xl flex justify-between items-center cursor-pointer hover:bg-slate-800 transition" onclick="openAnalysisModal('${e.sym}')">
                 <div class="flex items-center gap-3">
@@ -804,14 +808,22 @@ function renderInitialMarketList() {
                     <div id="price-${e.sym}" class="text-sm font-bold text-slate-500">로딩중</div>
                     <div class="text-[10px] text-slate-400 font-medium tracking-tight mt-1">${e.holdings}</div>
                 </div>
-            </div>`; 
+            </div>`;
         }).join('');
-        return `<div class="mt-3 first:mt-0">
-            <div class="flex items-center justify-between px-1 mb-2">
-                <h4 class="text-xs font-black text-slate-200 tracking-tight">${sector}</h4>
-                <span class="text-[10px] text-slate-500">${groups[sector].length}종목</span>
-            </div>
-            <div class="grid gap-2">${cards}</div>
+        // 현재 Quad 수혜 섹터 + 전Quad공용은 펼침, 나머지 접기
+        var isOpen = (sector === currentQuadSector) || (sector === '전 Quad 공용') || !currentQuadSector;
+        var sectorId = 'etfSector' + idx;
+        var highlight = (sector === currentQuadSector) ? ' border-l-2 border-blue-500 pl-2' : '';
+        var quadBadge = (sector === currentQuadSector) ? '<span class="text-[9px] bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded font-bold ml-2">현재 Quad</span>' : '';
+        return `<div class="mt-3 first:mt-0${highlight}">
+            <button type="button" onclick="toggleEtfSector('${sectorId}')" class="w-full flex items-center justify-between px-1 mb-2 py-1 hover:bg-slate-800/30 rounded transition">
+                <h4 class="text-xs font-black text-slate-200 tracking-tight">${sector}${quadBadge}</h4>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-slate-500">${groups[sector].length}종목</span>
+                    <i class="fa-solid fa-chevron-down text-[10px] text-slate-600 transition-transform" id="${sectorId}Chev" style="${isOpen?'':'transform:rotate(-90deg)'}"></i>
+                </div>
+            </button>
+            <div class="grid gap-2 ${isOpen?'':'hidden'}" id="${sectorId}">${cards}</div>
         </div>`;
     }).join('');
 }
@@ -1335,6 +1347,15 @@ function checkCorrelationOnAdd(sym) {
             + highCorr.join('\n') + '\n\n분산 효과가 낮아 비중 15% 이내를 권장합니다.\n그래도 추가하시겠습니까?');
     }
     return true;
+}
+
+function toggleEtfSector(id) {
+    var el = document.getElementById(id);
+    var chev = document.getElementById(id + 'Chev');
+    if (!el) return;
+    var isHidden = el.classList.contains('hidden');
+    el.classList.toggle('hidden');
+    if (chev) chev.style.transform = isHidden ? '' : 'rotate(-90deg)';
 }
 
 function toggleGuide(id) {
