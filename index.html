@@ -75,10 +75,13 @@
                 <div class="glass-panel rounded-xl p-2 text-center"><div class="text-[8px] text-slate-500 font-bold">VIX</div><div class="text-xs font-black text-white" id="mkVix">--</div><div class="text-[9px] font-bold" id="mkVixChg">--</div></div>
             </div>
 
-            <!-- ■ 3. 다음 주요 이벤트 캘린더 -->
+            <!-- ■ 3. 이벤트 캘린더 (타임라인) -->
             <div id="upcomingEventsCard" class="glass-panel rounded-2xl p-3 hidden">
-                <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2"><i class="fa-regular fa-calendar mr-1"></i>주요 일정</h3>
-                <div class="flex gap-2 overflow-x-auto no-scrollbar" id="upcomingEventsList"></div>
+                <button type="button" onclick="toggleGuide('eventCalendarBody')" class="w-full flex justify-between items-center mb-2">
+                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider"><i class="fa-regular fa-calendar mr-1"></i>경제 이벤트 캘린더</h3>
+                    <i class="fa-solid fa-chevron-down text-[10px] text-slate-600 transition-transform" id="eventCalendarBodyChev"></i>
+                </button>
+                <div id="eventCalendarBody"><div id="upcomingEventsList" class="space-y-1"></div></div>
             </div>
 
             <!-- ■ 4. 보유 종목 상태 카드 (HOLD/WATCH/EXIT) -->
@@ -98,6 +101,15 @@
                 <div class="space-y-2" id="newsBriefingList">
                     <div class="glass-panel p-4 text-center text-slate-500 text-xs">매크로 분석 대기 중</div>
                 </div>
+            </div>
+
+            <!-- ■ 5.5 주간 리포트 -->
+            <div id="weeklyReportSection" class="hidden">
+                <div class="flex justify-between items-center px-1 mb-2">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-calendar-week text-indigo-400"></i> 주간 리포트</h3>
+                    <button onclick="startWeeklyReport()" class="text-[10px] bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded-lg font-bold transition"><i class="fa-solid fa-arrows-rotate mr-1"></i>새로고침</button>
+                </div>
+                <div id="weeklyReportContent" class="space-y-2"></div>
             </div>
 
             <!-- ■ 6. 전체 포트폴리오 요약 (기존 유지) -->

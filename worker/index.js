@@ -178,6 +178,25 @@ export default {
       }
     }
 
+    // 5. 주간 리포트 (/weekly) - Gemini Flash 2.5
+    if (path === "/weekly") {
+      if (!env.GEMINI_API_KEY) {
+        return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+      try {
+        const weeklyResult = await callGeminiWeeklyReport(env.GEMINI_API_KEY);
+        return new Response(JSON.stringify(weeklyResult), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+    }
+
     return new Response("UMT API Worker is Running", { headers: corsHeaders });
   },
 };
@@ -258,6 +277,47 @@ async function callGeminiMacroAnalysis(apiKey) {
     result.timestamp = new Date().toISOString();
   }
 
+  return result;
+}
+
+// --- 주간 리포트 ---
+
+const WEEKLY_PROMPT = `당신은 Hedgeye 스타일 매크로 분석 전문가입니다. 이번 한 주간의 경제 상황을 종합 분석하세요.
+
+Google 검색으로 이번 주 발표된 경제 데이터, 시장 이벤트, 주요 뉴스를 수집하세요.
+
+반드시 아래 JSON으로만 응답. 다른 텍스트 없이:
+{"week_summary":"<이번주 한줄 요약>","quad_status":{"current":<1-4>,"name":"<이름>","maintained":<true|false>,"change_from":"<이전 상태 또는 null>","confidence":<50-100>},"transition_checklist":[{"item":"<체크 항목>","checked":<true|false>,"detail":"<설명>"}],"transition_probability":{"to_quad1":<0-100>,"to_quad2":<0-100>,"to_quad3":<0-100>,"to_quad4":<0-100>},"week_highlights":[{"date":"<M/D>","event":"<이벤트>","impact":"<시장 영향>","quad_effect":"<Quad에 미치는 영향>"}],"next_week":{"key_events":[{"date":"<M/D>","name":"<이벤트>","importance":"<high|medium|low>","expected_impact":"<예상 영향>"}],"scenarios":[{"name":"<시나리오>","probability":<0-100>,"strategy":"<대응 전략>","etf_action":[{"ticker":"<ETF>","action":"<buy|hold|sell|watch>","reason":"<이유>"}]}],"risk_factors":["<리스크>"]},"market_week_review":{"sp500":{"close":<n>,"weekly_change":"<+/-n%>"},"nasdaq":{"close":<n>,"weekly_change":"<+/-n%>"},"vix":{"close":<n>,"weekly_change":"<+/-n%>"},"us10y":{"close":<n>,"weekly_change":"<변동>"},"wti":{"close":<n>,"weekly_change":"<+/-n%>"},"gold":{"close":<n>,"weekly_change":"<+/-n%>"},"dxy":{"close":<n>,"weekly_change":"<+/-n%>"}},"timestamp":"<ISO8601>"}
+
+ETF 유니버스: TQQQ,SOXL,TNA,SPXL,NRGU,GUSH,NUGT,DRN,GLD,UGL,GDXU,SQQQ,TMF,CURE,UUP,UVXY,BITX,UDOW,FAS,LABU`;
+
+async function callGeminiWeeklyReport(apiKey) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: WEEKLY_PROMPT }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 8000 },
+    }),
+  });
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error("Gemini API error " + response.status + ": " + errorBody);
+  }
+  const data = await response.json();
+  let textContent = "";
+  if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+    for (const part of data.candidates[0].content.parts) {
+      if (part.text) textContent += part.text;
+    }
+  }
+  if (!textContent) throw new Error("No text content in Gemini response");
+  let jsonStr = textContent.trim();
+  if (jsonStr.startsWith("```")) jsonStr = jsonStr.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+  const result = JSON.parse(jsonStr);
+  if (!result.timestamp) result.timestamp = new Date().toISOString();
   return result;
 }
 

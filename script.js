@@ -196,8 +196,12 @@ function renderMacroStartButton() {
     if (briefList) {
         briefList.innerHTML = '<div class="glass-panel p-5 text-center">'
             + '<div class="text-slate-400 text-xs mb-3">매크로 데이터가 없습니다</div>'
-            + '<button onclick="startMacroAnalysis()" class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-blue-500/30 transition transform active:scale-95">'
-            + '<i class="fa-solid fa-wand-magic-sparkles mr-2"></i>매크로 분석 시작</button>'
+            + '<div class="flex gap-2 justify-center">'
+            + '<button onclick="startMacroAnalysis()" class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-blue-500/30 transition transform active:scale-95">'
+            + '<i class="fa-solid fa-wand-magic-sparkles mr-2"></i>매크로 분석</button>'
+            + '<button onclick="startWeeklyReport()" class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg hover:shadow-purple-500/30 transition transform active:scale-95">'
+            + '<i class="fa-solid fa-calendar-week mr-2"></i>주간 리포트</button>'
+            + '</div>'
             + '<div class="text-slate-500 text-[10px] mt-2">Gemini AI가 실시간 경제 데이터를 분석합니다 (약 60초)</div>'
             + '</div>';
     }
@@ -213,6 +217,143 @@ function startMacroAnalysis() {
         if (data) updateMacroDashboard();
         else renderMacroStartButton();
     });
+}
+
+// ==========================================
+// 주간 리포트
+// ==========================================
+var WEEKLY_CACHE_KEY = 'umt_weekly_cache';
+var WEEKLY_CACHE_TTL = 24 * 60 * 60 * 1000; // 24시간
+
+function loadWeeklyFromCache() {
+    var raw = localStorage.getItem(WEEKLY_CACHE_KEY);
+    if (!raw) return null;
+    try {
+        var cached = JSON.parse(raw);
+        if (!cached || !cached._cachedAt) return null;
+        if (Date.now() - cached._cachedAt > WEEKLY_CACHE_TTL) return null;
+        return cached;
+    } catch(e) { return null; }
+}
+
+function startWeeklyReport() {
+    var content = document.getElementById('weeklyReportContent');
+    var section = document.getElementById('weeklyReportSection');
+    if (section) section.classList.remove('hidden');
+    if (content) content.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>주간 리포트 생성 중... (약 60초)</div>';
+
+    fetch(API_BASE_URL + '/weekly', { signal: AbortSignal.timeout ? AbortSignal.timeout(120000) : undefined })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+        if (data.error) throw new Error(data.error);
+        data._cachedAt = Date.now();
+        localStorage.setItem(WEEKLY_CACHE_KEY, JSON.stringify(data));
+        renderWeeklyReport(data);
+    })
+    .catch(function(e) {
+        if (content) content.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i>주간 리포트 생성 실패: ' + escapeHtml(e.message).substring(0, 80) + '<br><button onclick="startWeeklyReport()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
+    });
+}
+
+function renderWeeklyReport(data) {
+    var section = document.getElementById('weeklyReportSection');
+    var content = document.getElementById('weeklyReportContent');
+    if (!section || !content) return;
+    section.classList.remove('hidden');
+
+    var html = '';
+
+    // 주간 요약 + Quad 상태
+    var qs = data.quad_status || {};
+    var quadColors = {1:'text-green-400',2:'text-yellow-400',3:'text-red-400',4:'text-blue-400'};
+    html += '<div class="glass-panel rounded-xl p-3 border-l-4 ' + (quadColors[qs.current]?'border-l-green-500':'border-l-slate-500') + '">'
+        + '<div class="text-xs font-bold ' + (quadColors[qs.current]||'text-white') + ' mb-1">Quad ' + (qs.current||'?') + ' — ' + (qs.name||'') + (qs.maintained ? ' (유지)' : ' (전환!)') + '</div>'
+        + '<div class="text-[11px] text-slate-300">' + escapeHtml(data.week_summary || '') + '</div>'
+        + '</div>';
+
+    // 시장 주간 성과
+    var mr = data.market_week_review;
+    if (mr) {
+        html += '<div class="glass-panel rounded-xl p-3"><div class="text-[10px] font-bold text-slate-400 mb-2">주간 시장 성과</div>'
+            + '<div class="grid grid-cols-4 gap-1.5 text-center text-[10px]">';
+        var mkItems = [
+            {label:'S&P500', d:mr.sp500}, {label:'NASDAQ', d:mr.nasdaq},
+            {label:'VIX', d:mr.vix}, {label:'US10Y', d:mr.us10y},
+            {label:'WTI', d:mr.wti}, {label:'GOLD', d:mr.gold}, {label:'DXY', d:mr.dxy}
+        ];
+        mkItems.forEach(function(m) {
+            if (!m.d) return;
+            var chg = m.d.weekly_change || '';
+            var isUp = chg.indexOf('+') === 0;
+            var isDown = chg.indexOf('-') === 0;
+            html += '<div class="bg-slate-800/50 rounded p-1.5"><div class="text-slate-500">' + m.label + '</div><div class="font-bold text-white">' + (m.d.close||'') + '</div><div class="font-bold ' + (isUp?'text-green-400':(isDown?'text-red-400':'text-slate-400')) + '">' + chg + '</div></div>';
+        });
+        html += '</div></div>';
+    }
+
+    // Quad 전환 체크리스트
+    if (data.transition_checklist && data.transition_checklist.length > 0) {
+        html += '<div class="glass-panel rounded-xl p-3"><div class="text-[10px] font-bold text-slate-400 mb-2">Quad 전환 체크리스트</div><div class="space-y-1">';
+        data.transition_checklist.forEach(function(item) {
+            html += '<div class="flex items-start gap-2 text-[11px]">'
+                + '<span class="shrink-0 mt-0.5">' + (item.checked ? '☑' : '☐') + '</span>'
+                + '<div><span class="' + (item.checked?'text-white':'text-slate-400') + ' font-bold">' + escapeHtml(item.item) + '</span>'
+                + '<div class="text-slate-500">' + escapeHtml(item.detail || '') + '</div></div></div>';
+        });
+        html += '</div></div>';
+    }
+
+    // 전환 확률
+    var tp = data.transition_probability;
+    if (tp) {
+        var quadNames = {1:'Q1',2:'Q2',3:'Q3',4:'Q4'};
+        var barColors = {1:'bg-green-500',2:'bg-yellow-500',3:'bg-red-500',4:'bg-blue-500'};
+        html += '<div class="glass-panel rounded-xl p-3"><div class="text-[10px] font-bold text-slate-400 mb-2">Quad 전환 확률</div><div class="grid grid-cols-4 gap-2">';
+        [1,2,3,4].forEach(function(n) {
+            var pct = tp['to_quad'+n] || 0;
+            var isCurrent = n === qs.current;
+            html += '<div class="text-center' + (isCurrent?' opacity-40':'') + '"><div class="text-[9px] text-slate-500">' + quadNames[n] + '</div><div class="h-1.5 rounded-full bg-slate-800 overflow-hidden mt-1"><div class="h-full ' + barColors[n] + '" style="width:'+pct+'%"></div></div><div class="text-[10px] font-bold mt-0.5 ' + (pct>25?quadColors[n]:'text-slate-600') + '">' + (isCurrent?'현재':pct+'%') + '</div></div>';
+        });
+        html += '</div></div>';
+    }
+
+    // 다음 주 시나리오
+    if (data.next_week && data.next_week.scenarios) {
+        html += '<div class="glass-panel rounded-xl p-3"><div class="text-[10px] font-bold text-slate-400 mb-2">다음 주 시나리오</div><div class="space-y-2">';
+        data.next_week.scenarios.forEach(function(sc) {
+            html += '<div class="bg-slate-800/50 rounded-lg p-2.5"><div class="flex justify-between text-[11px] mb-1"><span class="text-white font-bold">' + escapeHtml(sc.name) + '</span><span class="text-slate-400 font-bold">' + sc.probability + '%</span></div>'
+                + '<div class="text-[10px] text-slate-400">' + escapeHtml(sc.strategy) + '</div>';
+            if (sc.etf_action && sc.etf_action.length > 0) {
+                html += '<div class="flex flex-wrap gap-1 mt-1">';
+                sc.etf_action.forEach(function(ea) {
+                    var ac = {buy:'text-red-400',sell:'text-blue-400',hold:'text-slate-300',watch:'text-yellow-400'};
+                    html += '<span class="text-[9px] ' + (ac[ea.action]||'text-slate-400') + ' font-bold">' + ea.action.toUpperCase() + ' ' + ea.ticker + '</span>';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+        });
+        html += '</div></div>';
+    }
+
+    // 다음 주 주요 이벤트
+    if (data.next_week && data.next_week.key_events) {
+        html += '<div class="glass-panel rounded-xl p-3"><div class="text-[10px] font-bold text-slate-400 mb-2">다음 주 주요 일정</div><div class="space-y-1">';
+        data.next_week.key_events.forEach(function(ev) {
+            var impColor = {high:'text-red-400',medium:'text-yellow-400',low:'text-slate-400'};
+            html += '<div class="flex items-center justify-between text-[11px]"><div class="flex items-center gap-2"><span class="text-slate-500 w-8">' + escapeHtml(ev.date) + '</span><span class="text-white">' + escapeHtml(ev.name) + '</span></div><span class="' + (impColor[ev.importance]||'text-slate-400') + ' text-[9px] font-bold">' + (ev.importance||'').toUpperCase() + '</span></div>';
+        });
+        html += '</div></div>';
+    }
+
+    // 캐시 시간
+    if (data._cachedAt) {
+        var mins = Math.round((Date.now() - data._cachedAt) / 60000);
+        var timeStr = mins < 60 ? (mins + '분 전') : (Math.round(mins / 60) + '시간 전');
+        html += '<div class="text-[9px] text-slate-600 text-right">' + timeStr + ' 생성</div>';
+    }
+
+    content.innerHTML = html;
 }
 
 function getCurrentQuad() {
@@ -450,6 +591,10 @@ function initApp() {
             if (cachedMacro) console.log('[Macro] 캐시 데이터 불완전 — 무시', Object.keys(cachedMacro||{}));
             renderMacroStartButton();
         }
+
+        // 6. 주간 리포트 캐시 로드
+        var cachedWeekly = loadWeeklyFromCache();
+        if (cachedWeekly) renderWeeklyReport(cachedWeekly);
 
     } catch(err) {
         console.error("Init Error:", err);
@@ -940,6 +1085,10 @@ function updateRecommendationsUI() {
         if (md.rsi < 50) score += (50 - md.rsi);
         // Quad 정확 매칭 보너스 (전Quad 공용보다 전용 우선)
         if (e.quad && e.quad.length > 0 && e.quad.length < 4 && quadNow && e.quad.indexOf(quadNow) !== -1) score += 10;
+        // 이벤트 오버레이 보정
+        var overlayAdj = getEventOverlayAdjustments();
+        if (overlayAdj.boost[e.sym]) score += overlayAdj.boost[e.sym] * 10;
+        if (overlayAdj.dampen[e.sym]) score -= overlayAdj.dampen[e.sym] * 15;
         // 이미 보유 중이면 제외
         if (portfolios && portfolios[e.sym] && portfolios[e.sym].qty > 0) score -= 100;
 
@@ -1183,10 +1332,31 @@ function renderUpcomingEvents() {
     if (!card || !list) return;
     card.classList.remove('hidden');
 
-    var impColors = {high:'bg-red-900/50 border-red-800 text-red-200', medium:'bg-yellow-900/40 border-yellow-800 text-yellow-200', low:'bg-slate-800 border-slate-700 text-slate-300'};
-    list.innerHTML = ev.upcoming.map(function(e) {
-        var c = impColors[e.importance] || impColors.low;
-        return '<div class="shrink-0 px-3 py-2 rounded-lg border text-[10px] font-bold ' + c + '"><div class="text-[8px] opacity-60 mb-0.5">' + escapeHtml(e.date) + '</div>' + escapeHtml(e.name) + '</div>';
+    var impDot = {high:'bg-red-500', medium:'bg-yellow-500', low:'bg-slate-500'};
+    var impLabel = {high:'중요', medium:'보통', low:'참고'};
+
+    // 날짜별 그룹핑
+    var dateGroups = {};
+    var dateOrder = [];
+    ev.upcoming.forEach(function(e) {
+        var d = e.date || '?';
+        if (!dateGroups[d]) { dateGroups[d] = []; dateOrder.push(d); }
+        dateGroups[d].push(e);
+    });
+
+    list.innerHTML = dateOrder.map(function(date) {
+        var items = dateGroups[date];
+        return '<div class="flex gap-3 py-1.5">'
+            + '<div class="w-10 shrink-0 text-right"><span class="text-xs font-black text-white">' + escapeHtml(date) + '</span></div>'
+            + '<div class="w-px bg-slate-700 shrink-0 relative"><div class="absolute top-1 -left-[3px] w-[7px] h-[7px] rounded-full bg-slate-600 border border-slate-500"></div></div>'
+            + '<div class="flex-1 space-y-1">' + items.map(function(e) {
+                var dot = impDot[e.importance] || impDot.low;
+                return '<div class="flex items-center gap-2 text-[11px]">'
+                    + '<span class="w-1.5 h-1.5 rounded-full shrink-0 ' + dot + '"></span>'
+                    + '<span class="text-white">' + escapeHtml(e.name) + '</span>'
+                    + '<span class="text-[9px] text-slate-500 ml-auto shrink-0">' + (impLabel[e.importance]||'') + '</span>'
+                    + '</div>';
+            }).join('') + '</div></div>';
     }).join('');
 }
 
@@ -1384,6 +1554,28 @@ function toggleGuide(id) {
 }
 
 // ── 6. 보유 종목 상태 카드 ──
+// ── 이벤트 오버레이 보정 ──
+const EVENT_OVERLAY_BOOST = {
+    geopolitical: { boost: ['NRGU','GUSH','GLD','UGL','GDXU','UVXY'], dampen: ['TQQQ','SOXL','SPXL'] },
+    tariff:       { boost: ['SQQQ','GLD','UUP','UVXY'],              dampen: ['TQQQ','SOXL','TNA','SPXL'] },
+    banking:      { boost: ['GLD','UGL','TMF','SQQQ'],               dampen: ['FAS','SPXL'] },
+    tech:         { boost: ['TQQQ','SOXL','SPXL'],                    dampen: [] },
+    policy:       { boost: ['TMF','UUP'],                              dampen: [] },
+};
+
+function getEventOverlayAdjustments() {
+    if (!MACRO_DATA || !MACRO_DATA.events || !MACRO_DATA.events.overlay) return { boost: {}, dampen: {} };
+    var boost = {}, dampen = {};
+    MACRO_DATA.events.overlay.forEach(function(ev) {
+        var map = EVENT_OVERLAY_BOOST[ev.type];
+        if (!map) return;
+        var weight = ev.severity === 'high' ? 2 : (ev.severity === 'medium' ? 1 : 0.5);
+        (map.boost || []).forEach(function(t) { boost[t] = (boost[t] || 0) + weight; });
+        (map.dampen || []).forEach(function(t) { dampen[t] = (dampen[t] || 0) + weight; });
+    });
+    return { boost: boost, dampen: dampen };
+}
+
 function renderHoldingStatus() {
     var section = document.getElementById('holdingStatusSection');
     var list = document.getElementById('holdingStatusList');
