@@ -813,17 +813,33 @@ function renderInitialMarketList() {
         // 현재 Quad 수혜 섹터 + 전Quad공용은 펼침, 나머지 접기
         var isOpen = (sector === currentQuadSector) || (sector === '전 Quad 공용');
         var sectorId = 'etfSector' + idx;
-        var highlight = (sector === currentQuadSector) ? ' border-l-2 border-blue-500 pl-2' : '';
-        var quadBadge = (sector === currentQuadSector) ? '<span class="text-[9px] bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded font-bold ml-2">현재 Quad</span>' : '';
-        return `<div class="mt-3 first:mt-0${highlight}">
-            <button type="button" onclick="toggleEtfSector('${sectorId}')" class="w-full flex items-center justify-between px-1 mb-2 py-1 hover:bg-slate-800/30 rounded transition">
-                <h4 class="text-xs font-black text-slate-200 tracking-tight">${sector}${quadBadge}</h4>
+        var sectorStyles = {
+            'Quad 1 — 성장주':     {icon:'fa-sun',        color:'text-green-400', bg:'bg-green-900/15 border-green-800/40'},
+            'Quad 2 — 인플레 수혜': {icon:'fa-fire',       color:'text-yellow-400',bg:'bg-yellow-900/15 border-yellow-800/40'},
+            'Quad 3 — 방어/인버스': {icon:'fa-cloud-bolt', color:'text-red-400',   bg:'bg-red-900/15 border-red-800/40'},
+            'Quad 4 — 채권/방어주': {icon:'fa-snowflake',  color:'text-blue-400',  bg:'bg-blue-900/15 border-blue-800/40'},
+            '특수 목적':           {icon:'fa-shield-halved',color:'text-purple-400',bg:'bg-purple-900/15 border-purple-800/40'},
+            '전 Quad 공용':        {icon:'fa-arrows-rotate',color:'text-slate-300', bg:'bg-slate-800/40 border-slate-700'},
+        };
+        var st = sectorStyles[sector] || {icon:'fa-circle', color:'text-slate-400', bg:'bg-slate-800/40 border-slate-700'};
+        var isCurrent = (sector === currentQuadSector);
+        var quadBadge = isCurrent ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-bold ml-2 animate-pulse">현재 Quad</span>' : '';
+        var tickerPreview = groups[sector].map(function(e){return e.sym;}).join(' · ');
+        return `<div class="mt-2 first:mt-0">
+            <button type="button" onclick="toggleEtfSector('${sectorId}')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border ${st.bg} hover:brightness-110 transition ${isCurrent?'ring-1 ring-blue-500/50':''}">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid ${st.icon} ${st.color} text-sm w-5 text-center"></i>
+                    <div class="text-left">
+                        <div class="text-xs font-black text-white">${sector}${quadBadge}</div>
+                        <div class="text-[9px] text-slate-500 mt-0.5">${tickerPreview}</div>
+                    </div>
+                </div>
                 <div class="flex items-center gap-2">
-                    <span class="text-[10px] text-slate-500">${groups[sector].length}종목</span>
-                    <i class="fa-solid fa-chevron-down text-[10px] text-slate-600 transition-transform" id="${sectorId}Chev" style="${isOpen?'':'transform:rotate(-90deg)'}"></i>
+                    <span class="text-[10px] ${st.color} font-bold">${groups[sector].length}</span>
+                    <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 transition-transform" id="${sectorId}Chev" style="${isOpen?'':'transform:rotate(-90deg)'}"></i>
                 </div>
             </button>
-            <div class="grid gap-2 ${isOpen?'':'hidden'}" id="${sectorId}">${cards}</div>
+            <div class="grid gap-2 mt-2 ${isOpen?'':'hidden'}" id="${sectorId}">${cards}</div>
         </div>`;
     }).join('');
 }
