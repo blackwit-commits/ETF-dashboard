@@ -811,7 +811,7 @@ function renderInitialMarketList() {
             </div>`;
         }).join('');
         // 현재 Quad 수혜 섹터 + 전Quad공용은 펼침, 나머지 접기
-        var isOpen = (sector === currentQuadSector) || (sector === '전 Quad 공용') || !currentQuadSector;
+        var isOpen = (sector === currentQuadSector) || (sector === '전 Quad 공용');
         var sectorId = 'etfSector' + idx;
         var highlight = (sector === currentQuadSector) ? ' border-l-2 border-blue-500 pl-2' : '';
         var quadBadge = (sector === currentQuadSector) ? '<span class="text-[9px] bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded font-bold ml-2">현재 Quad</span>' : '';
