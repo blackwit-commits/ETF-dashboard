@@ -2865,81 +2865,79 @@ function renderTradeLog() {
         return Object.assign({}, h, { tagLabel: getTagLabel(h.tag), memoText: h.memo || '', planVsResult: planVs });
     });
 
-    tbody.innerHTML = '';
+    var cardList = document.getElementById('tradelogCardList');
+    if (!cardList) return;
+    cardList.innerHTML = '';
+
     var lastGroupKey = null;
     _tradeLogRows.forEach(function(row, idx) {
-        // 그룹 헤더(종목 + cycleId) 추가
         var cidKey = (row.cycleId != null && row.cycleId !== '') ? String(row.cycleId) : '';
         var groupKey = row.sym + '|' + cidKey;
+
+        // 그룹 헤더
         if (groupKey !== lastGroupKey) {
             lastGroupKey = groupKey;
             var meta = groupMeta[groupKey] || { sym: row.sym, cycleId: cidKey, minDate: row.date, maxDate: row.date, count: 0 };
-            var cycleLabel = meta.cycleId ? ('사이클 #' + meta.cycleId) : '사이클 —';
+            var cycleLabel = meta.cycleId ? ('사이클 #' + meta.cycleId) : '';
             var rangeLabel = (meta.minDate === meta.maxDate) ? meta.maxDate : (meta.minDate + ' ~ ' + meta.maxDate);
-            var headerTr = document.createElement('tr');
-            headerTr.className = 'bg-slate-800/60';
-            headerTr.innerHTML =
-                '<td class="p-2 text-left text-slate-300 font-bold" colspan="14">' +
-                '<span class="text-white">' + meta.sym + '</span>' +
-                '<span class="text-slate-500 mx-2">|</span>' +
-                '<span class="text-emerald-400 font-bold">' + cycleLabel + '</span>' +
-                '<span class="text-slate-500 mx-2">|</span>' +
-                '<span class="text-slate-400">' + rangeLabel + '</span>' +
-                (meta.count ? ('<span class="text-slate-500 ml-2">(' + meta.count + '건)</span>') : '') +
-                '</td>';
-            tbody.appendChild(headerTr);
+            cardList.innerHTML += '<div class="flex items-center gap-2 px-2 pt-3 pb-1">'
+                + '<span class="font-black text-white text-sm">' + meta.sym + '</span>'
+                + (cycleLabel ? '<span class="text-[9px] bg-emerald-900/40 text-emerald-400 px-1.5 py-0.5 rounded font-bold">' + cycleLabel + '</span>' : '')
+                + '<span class="text-[10px] text-slate-500 ml-auto">' + rangeLabel + '</span>'
+                + '<span class="text-[10px] text-slate-600">' + meta.count + '건</span></div>';
         }
 
+        // 카드 렌더링
         var isSell = row.type === 'SELL';
+        var isDIV = row.type === 'DIV';
         var returnPct = row.returnPct != null ? row.returnPct : row.profitPct;
-        var profitPctStr = (returnPct != null && !isNaN(returnPct)) ? (returnPct.toFixed(2) + '%') : '—';
-        var plannedPriceStr = (row.plannedPrice != null && row.plannedPrice !== '') ? ('$' + Number(row.plannedPrice).toFixed(2)) : '—';
-        var priceStr = (row.price != null) ? ('$' + row.price.toFixed(2)) : '—';
-        var diffStr = '—';
-        var diffClass = 'text-slate-500';
-        if (row.planVsResult && row.planVsResult.priceDiffPercent != null) {
-            diffStr = (row.planVsResult.priceDiffPercent >= 0 ? '+' : '') + row.planVsResult.priceDiffPercent.toFixed(2) + '%';
-            diffClass = row.planVsResult.priceDiffPercent >= 0 ? 'text-red-400' : 'text-blue-400';
-        }
-        var plannedQtyStr = (row.plannedQty != null && row.plannedQty !== '') ? String(Math.round(row.plannedQty)) : '—';
-        var qtyStr = (row.qty != null) ? String(row.qty) : '—';
-        var plannedStageStr = (row.plannedStage != null && row.plannedStage !== '') ? (row.plannedStage + '차') : '—';
-        var cycleStr = (row.cycleId != null && row.cycleId !== '') ? ('#' + row.cycleId) : '—';
-        var reasonShort = truncateStr(row.tagLabel, 8);
-        var memoShort = truncateStr(row.memoText, 10);
-        var reasonClass = reasonShort.length > 7 ? 'cursor-pointer text-blue-300 hover:underline' : '';
-        var memoClass = memoShort.length > 9 ? 'cursor-pointer text-blue-300 hover:underline' : '';
-        var tr = document.createElement('tr');
-        tr.className = 'hover:bg-slate-800/50';
-        tr.id = 'tradeLogRow_' + idx;
-        tr.innerHTML =
-            '<td class="p-2 text-center text-slate-300">' + row.date + '</td>' +
-            '<td class="p-2 text-center font-bold text-white">' + row.sym + '</td>' +
-            '<td class="p-2 text-center"><span class="' + (row.type === 'BUY' ? 'text-red-400' : (row.type === 'DIV' ? 'text-yellow-400' : 'text-blue-400')) + ' font-bold">' + row.type + '</span></td>' +
-            '<td class="p-2 text-right text-slate-400">' + plannedPriceStr + '</td>' +
-            '<td class="p-2 text-right text-white">' + priceStr + '</td>' +
-            '<td class="p-2 text-right ' + diffClass + '">' + diffStr + '</td>' +
-            '<td class="p-2 text-right text-slate-400">' + plannedQtyStr + '</td>' +
-            '<td class="p-2 text-right text-slate-300">' + qtyStr + '</td>' +
-            '<td class="p-2 text-center text-slate-400">' + plannedStageStr + '</td>' +
-            '<td class="p-2 text-center text-slate-400">' + cycleStr + '</td>' +
-            '<td class="p-2 text-right text-slate-300">$' + (row.total != null ? row.total.toFixed(2) : '—') + '</td>' +
-            '<td class="p-2 text-right ' + (isSell && returnPct != null && !isNaN(returnPct) ? (returnPct >= 0 ? 'text-red-400' : 'text-blue-400') : 'text-slate-500') + '">' + profitPctStr + '</td>' +
-            '<td class="p-2 text-left max-w-[80px] truncate ' + reasonClass + '" data-detail-type="reason" data-row-idx="' + idx + '" title="' + (row.tagLabel || '').replace(/"/g, '&quot;') + '">' + reasonShort + '</td>' +
-            '<td class="p-2 text-left max-w-[100px] truncate ' + memoClass + '" data-detail-type="memo" data-row-idx="' + idx + '" title="' + (row.memoText || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;') + '">' + memoShort + '</td>';
-        tbody.appendChild(tr);
-    });
+        var typeColor = isSell ? 'bg-blue-900/40 text-blue-300 border-blue-800' : (isDIV ? 'bg-yellow-900/40 text-yellow-300 border-yellow-800' : 'bg-red-900/40 text-red-300 border-red-800');
+        var borderColor = isSell ? 'border-l-blue-500' : (isDIV ? 'border-l-yellow-500' : 'border-l-red-500');
+        var priceStr = row.price != null ? '$' + row.price.toFixed(2) : '—';
+        var totalStr = row.total != null ? '$' + row.total.toFixed(2) : '—';
+        var qtyStr = row.qty != null ? row.qty + '주' : '—';
+        var stageStr = (row.plannedStage != null && row.plannedStage !== '') ? row.plannedStage + '차' : '';
 
-    tbody.querySelectorAll('[data-detail-type]').forEach(function(cell) {
-        cell.addEventListener('click', function() {
-            var idx = parseInt(this.getAttribute('data-row-idx'), 10);
-            var type = this.getAttribute('data-detail-type');
-            if (isNaN(idx) || !_tradeLogRows[idx]) return;
-            var row = _tradeLogRows[idx];
-            var title = type === 'reason' ? '매매 이유' : '심리 메모';
-            var content = type === 'reason' ? row.tagLabel : row.memoText;
-            openTradeLogDetailModal(title, content || '—');
-        });
+        // 계획 vs 실제 비교
+        var diffHtml = '';
+        if (row.planVsResult && row.planVsResult.priceDiffPercent != null) {
+            var dp = row.planVsResult.priceDiffPercent;
+            var dColor = dp >= 0 ? 'text-red-400' : 'text-blue-400';
+            diffHtml = '<span class="' + dColor + ' text-[10px]">(' + (dp >= 0 ? '+' : '') + dp.toFixed(1) + '%)</span>';
+        }
+
+        // 수익률 (SELL만)
+        var pnlHtml = '';
+        if (isSell && returnPct != null && !isNaN(returnPct)) {
+            var pColor = returnPct >= 0 ? 'text-red-400' : 'text-blue-400';
+            pnlHtml = '<span class="font-bold ' + pColor + '">' + (returnPct >= 0 ? '+' : '') + returnPct.toFixed(2) + '%</span>';
+        }
+
+        // 메모
+        var memoHtml = row.memoText ? '<div class="text-[10px] text-slate-500 mt-1 truncate"><i class="fa-solid fa-pen-nib mr-1 text-slate-600"></i>' + escapeHtml(row.memoText) + '</div>' : '';
+
+        cardList.innerHTML += '<div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50 border-l-4 ' + borderColor + ' cursor-pointer hover:bg-slate-800/60 transition" onclick="openTradeLogDetailModal(\'상세\', JSON.stringify(_tradeLogRows[' + idx + '], null, 2))">'
+            + '<div class="flex items-center justify-between mb-1">'
+            + '<div class="flex items-center gap-2">'
+            + '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded border ' + typeColor + '">' + row.type + '</span>'
+            + (stageStr ? '<span class="text-[10px] text-slate-400 font-bold">' + stageStr + '</span>' : '')
+            + '<span class="text-[10px] text-slate-500">' + row.date + '</span>'
+            + '</div>'
+            + pnlHtml
+            + '</div>'
+            + '<div class="flex items-baseline justify-between">'
+            + '<div class="flex items-baseline gap-1.5">'
+            + '<span class="font-bold text-white text-sm">' + priceStr + '</span>'
+            + diffHtml
+            + '<span class="text-slate-400 text-xs">× ' + qtyStr + '</span>'
+            + '</div>'
+            + '<span class="text-slate-300 text-xs font-bold">' + totalStr + '</span>'
+            + '</div>'
+            + '<div class="flex items-center gap-2 mt-1">'
+            + '<span class="text-[9px] text-slate-500">' + escapeHtml(row.tagLabel || '') + '</span>'
+            + '</div>'
+            + memoHtml
+            + '</div>';
     });
 
     if (countEl) countEl.textContent = filtered.length + '건';

@@ -358,29 +358,7 @@
                     <input type="date" id="tradelogDateTo" class="bg-slate-900 border border-slate-600 rounded-lg text-white text-xs px-2 py-1.5">
                     <button type="button" onclick="renderTradeLog()" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg">적용</button>
                 </div>
-                <div class="overflow-x-auto rounded-xl border border-slate-700 max-h-[60vh] overflow-y-auto">
-                    <table class="w-full text-xs whitespace-nowrap">
-                        <thead class="bg-slate-900 text-slate-400 font-bold sticky top-0 z-10">
-                            <tr>
-                                <th class="p-2 text-center">날짜</th>
-                                <th class="p-2 text-center">종목</th>
-                                <th class="p-2 text-center">구분</th>
-                                <th class="p-2 text-right">계획가</th>
-                                <th class="p-2 text-right">체결가</th>
-                                <th class="p-2 text-right">차이(%)</th>
-                                <th class="p-2 text-right">계획수량</th>
-                                <th class="p-2 text-right">실제수량</th>
-                                <th class="p-2 text-center">계획차수</th>
-                                <th class="p-2 text-center">사이클</th>
-                                <th class="p-2 text-right">총금액</th>
-                                <th class="p-2 text-right">수익률</th>
-                                <th class="p-2 text-left max-w-[80px]">매매 이유</th>
-                                <th class="p-2 text-left max-w-[100px]">심리 메모</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tradelogTableBody" class="divide-y divide-slate-800 bg-slate-900/50"></tbody>
-                    </table>
-                </div>
+                <div class="max-h-[65vh] overflow-y-auto space-y-2 rounded-xl" id="tradelogCardList"></div>
                 <div class="text-[10px] text-slate-500 mt-2 text-right" id="tradelogCount">0건</div>
             </div>
         </div>
