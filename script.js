@@ -146,12 +146,10 @@ async function fetchMacroData(forceRefresh) {
         const cached = loadMacroFromCache();
         if (cached) {
             MACRO_DATA = cached;
-            console.log('[Macro] 캐시 사용 (나이: ' + Math.round(getMacroCacheAge() / 60000) + '분)');
             return cached;
         }
     }
 
-    console.log('[Macro] API 호출 시작...');
     // 로딩 상태 표시
     var briefList = document.getElementById('newsBriefingList');
     if (briefList) briefList.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Gemini AI가 매크로 데이터를 분석 중입니다... (최대 60초)</div>';
@@ -169,7 +167,6 @@ async function fetchMacroData(forceRefresh) {
 
         MACRO_DATA = data;
         saveMacroToCache(data);
-        console.log('[Macro] 데이터 수신 완료 — Quad ' + (data.quad && data.quad.current));
         return data;
     } catch (e) {
         console.error('[Macro] API 호출 실패:', e.message);
@@ -182,7 +179,6 @@ async function fetchMacroData(forceRefresh) {
                 const stale = JSON.parse(raw);
                 if (stale && stale.quad) {
                     MACRO_DATA = stale;
-                    console.log('[Macro] 만료 캐시 폴백 사용');
                     return stale;
                 }
             } catch {}
@@ -541,11 +537,8 @@ function initApp() {
         
         // 2. 과거 데이터 꼬임 방지 (백신 가동)
         sanitizeData();
-        console.log('[DEBUG loadFromCloud] restored globalData', globalData);
-        console.log('[DEBUG loadFromCloud] restored portfolios keys', Object.keys(portfolios || {}));
         Object.keys(portfolios || {}).forEach(sym => {
             const p = portfolios[sym];
-            console.log('[DEBUG loadFromCloud] portfolio after restore', {
                 sym,
                 qty: p.qty,
                 avgPrice: p.avgPrice,
@@ -585,10 +578,8 @@ function initApp() {
         var cachedMacro = loadMacroFromCache();
         if (cachedMacro && cachedMacro.quad && cachedMacro.news && cachedMacro.market_data) {
             MACRO_DATA = cachedMacro;
-            console.log('[Macro] 캐시 로드 성공 — Quad', cachedMacro.quad.current, '뉴스', cachedMacro.news.length, '개');
             updateMacroDashboard();
         } else {
-            if (cachedMacro) console.log('[Macro] 캐시 데이터 불완전 — 무시', Object.keys(cachedMacro||{}));
             renderMacroStartButton();
         }
 
@@ -793,21 +784,16 @@ async function loadFromCloud(isManual = false) {
     try {
         var res = await fetch(proxyUrl);
         var raw = await res.json();
-        console.log('[DEBUG loadFromCloud] raw response', raw);
 
         // { ok: true, data: { ... } } 형태 대응
         var data = raw;
         if (data && data.data && !data.settings && !data.portfolio && !data.global && !data.ports) {
             data = data.data;
-            console.log('[DEBUG loadFromCloud] normalized from data.data', data);
         } else if (data && (data.settings || data.portfolio || data.global || data.ports)) {
-            console.log('[DEBUG loadFromCloud] normalized as direct payload', data);
         } else {
-            console.log('[DEBUG loadFromCloud] unknown payload shape', data);
         }
         
         if (data && data.settings != null && data.portfolio != null) {
-            console.log('[DEBUG loadFromCloud] using settings/portfolio shape', {
                 hasSettings: !!data.settings,
                 portfolioKeys: Object.keys(data.portfolio || {})
             });
@@ -815,7 +801,6 @@ async function loadFromCloud(isManual = false) {
             if (Array.isArray(data.deposits)) globalData.deposits = data.deposits;
             portfolios = data.portfolio;
             if (Array.isArray(data.trades) && data.trades.length > 0) {
-                console.log('[DEBUG loadFromCloud] trades length', data.trades.length);
                 Object.keys(portfolios).forEach(function(sym) { portfolios[sym].history = []; });
                 data.trades.forEach(function(t) {
                     var sym = t.sym;
@@ -842,7 +827,6 @@ async function loadFromCloud(isManual = false) {
                 Object.keys(portfolios).forEach(function(sym) { recalcPortfolio(portfolios[sym]); });
             }
         } else if (data && data.global && data.ports) {
-            console.log('[DEBUG loadFromCloud] using global/ports shape', {
                 hasGlobal: !!data.global,
                 portKeys: Object.keys(data.ports || {})
             });
@@ -1221,7 +1205,7 @@ function updateMacroDashboard() {
     try { renderUpcomingEvents(); } catch(e) { console.error('[Macro] renderUpcomingEvents:', e); }
     try { renderNewsBriefing(); } catch(e) { console.error('[Macro] renderNewsBriefing:', e); }
     try { renderHoldingStatus(); } catch(e) { console.error('[Macro] renderHoldingStatus:', e); }
-    // 상단 전광판은 Google News RSS를 유지 (renderNewsTickerLevel1 제거)
+    // 상단 전광판은 Google News RSS (startNewsTicker)가 담당
 }
 
 // ── 1. Quad 헤더 ──
@@ -1363,33 +1347,6 @@ function renderUpcomingEvents() {
 }
 
 // ── 4. 뉴스 Level 1 (상단 티커) ──
-function renderNewsTickerLevel1() {
-    var news = MACRO_DATA.news;
-    if (!news || news.length === 0) return;
-
-    var display = document.getElementById('newsDisplay');
-    if (!display) return;
-
-    var levelIcons = {red:'🔴', yellow:'🟡', green:'🟢'};
-    var tickerItems = news.map(function(n) {
-        var txt = (levelIcons[n.level]||'●') + ' ' + n.title;
-        if (n.etf_impact && n.etf_impact.bullish && n.etf_impact.bullish.length > 0) {
-            txt += ' → ' + n.etf_impact.bullish.join(',') + ' 수혜';
-        }
-        return txt;
-    });
-
-    var idx = 0;
-    display.innerHTML = tickerItems[0];
-    display.onclick = function() { openNewsModal(); };
-
-    if (window._macroTickerTimer) clearInterval(window._macroTickerTimer);
-    window._macroTickerTimer = setInterval(function() {
-        idx = (idx + 1) % tickerItems.length;
-        display.innerHTML = tickerItems[idx];
-    }, 5000);
-}
-
 // ── 5. 뉴스 Level 2 카드 + Level 3 심층분석 ──
 function renderNewsBriefing() {
     var news = MACRO_DATA.news;
@@ -2877,11 +2834,6 @@ function submitTrade() {
     };
     d.history.push(saved);
 
-    // [DEBUG submitTrade] 저장 결과 로그
-    console.log('[DEBUG submitTrade] saved trade', saved);
-    console.log('[DEBUG submitTrade] history length', activeTicker, d.history.length);
-    console.log('[DEBUG submitTrade] last history item', activeTicker, d.history[d.history.length - 1]);
-    console.log('[DEBUG submitTrade] portfolio after save', activeTicker, d);
     recalcPortfolio(d);
     // 전량 매도 등으로 보유수량 0이 되면 사이클 종료 처리
     if ((d.qty || 0) <= 0) {
@@ -2985,13 +2937,11 @@ function calculateTradeStats(trades) {
 function getAggregatedTrades() {
     const list = [];
     if (!portfolios) {
-        console.log('[DEBUG getAggregatedTrades] portfolios is null/undefined');
         return list;
     }
     Object.keys(portfolios).forEach(sym => {
         const p = portfolios[sym];
         if (!Array.isArray(p.history)) {
-            console.log('[DEBUG getAggregatedTrades] no history array for', sym, p);
             return;
         }
         p.history.forEach(h => {
@@ -2999,13 +2949,10 @@ function getAggregatedTrades() {
         });
     });
     list.sort((a, b) => new Date(b.date) - new Date(a.date));
-    console.log('[DEBUG getAggregatedTrades] total', list.length);
     const byTicker = {};
     list.forEach(t => {
         byTicker[t.sym] = (byTicker[t.sym] || 0) + 1;
     });
-    console.log('[DEBUG getAggregatedTrades] by ticker', byTicker);
-    console.log('[DEBUG getAggregatedTrades] sample(3)', list.slice(0, 3));
     return list;
 }
 
@@ -3262,7 +3209,6 @@ function updateGlobalCalc() {
         const totalEquity = totalInjectedUSD + totalPnL; const cashProxy = totalEquity - invested;
         if(cashProxy > 0) { labels.push('현금(Est)'); data.push(cashProxy); colors.push('#1e293b'); }
         if (portfolioChart && typeof portfolioChart.destroy === "function") {
-            console.log("chart destroy safe", portfolioChart);
             portfolioChart.destroy();
         }
         const cCanvas = document.getElementById('portfolioChart');
