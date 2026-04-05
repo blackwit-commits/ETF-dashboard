@@ -282,14 +282,16 @@ async function callGeminiMacroAnalysis(apiKey) {
 
 // --- 주간 리포트 ---
 
-const WEEKLY_PROMPT = `당신은 Hedgeye 스타일 매크로 분석 전문가입니다. 이번 한 주간의 경제 상황을 종합 분석하세요.
+const WEEKLY_PROMPT = `You are a Hedgeye-style macro analyst. Use Google Search to collect this week's economic data, market events, and key news. Respond in Korean for text values.
 
-Google 검색으로 이번 주 발표된 경제 데이터, 시장 이벤트, 주요 뉴스를 수집하세요.
+CRITICAL: Output ONLY valid JSON. No markdown, no explanation, no apology. Start with { and end with }.
 
-반드시 아래 JSON으로만 응답. 다른 텍스트 없이:
-{"week_summary":"<이번주 한줄 요약>","quad_status":{"current":<1-4>,"name":"<이름>","maintained":<true|false>,"change_from":"<이전 상태 또는 null>","confidence":<50-100>},"transition_checklist":[{"item":"<체크 항목>","checked":<true|false>,"detail":"<설명>"}],"transition_probability":{"to_quad1":<0-100>,"to_quad2":<0-100>,"to_quad3":<0-100>,"to_quad4":<0-100>},"week_highlights":[{"date":"<M/D>","event":"<이벤트>","impact":"<시장 영향>","quad_effect":"<Quad에 미치는 영향>"}],"next_week":{"key_events":[{"date":"<M/D>","name":"<이벤트>","importance":"<high|medium|low>","expected_impact":"<예상 영향>"}],"scenarios":[{"name":"<시나리오>","probability":<0-100>,"strategy":"<대응 전략>","etf_action":[{"ticker":"<ETF>","action":"<buy|hold|sell|watch>","reason":"<이유>"}]}],"risk_factors":["<리스크>"]},"market_week_review":{"sp500":{"close":<n>,"weekly_change":"<+/-n%>"},"nasdaq":{"close":<n>,"weekly_change":"<+/-n%>"},"vix":{"close":<n>,"weekly_change":"<+/-n%>"},"us10y":{"close":<n>,"weekly_change":"<변동>"},"wti":{"close":<n>,"weekly_change":"<+/-n%>"},"gold":{"close":<n>,"weekly_change":"<+/-n%>"},"dxy":{"close":<n>,"weekly_change":"<+/-n%>"}},"timestamp":"<ISO8601>"}
+ETF universe: TQQQ,SOXL,TNA,SPXL,NRGU,GUSH,NUGT,DRN,GLD,UGL,GDXU,SQQQ,TMF,CURE,UUP,UVXY,BITX,UDOW,FAS,LABU
 
-ETF 유니버스: TQQQ,SOXL,TNA,SPXL,NRGU,GUSH,NUGT,DRN,GLD,UGL,GDXU,SQQQ,TMF,CURE,UUP,UVXY,BITX,UDOW,FAS,LABU`;
+Quad: 1=골디락스(Growth↑Inflation↓), 2=과열(Growth↑Inflation↑), 3=스태그플레이션(Growth↓Inflation↑), 4=침체(Growth↓Inflation↓)
+
+JSON schema:
+{"week_summary":"<한줄 요약>","quad_status":{"current":1,"name":"골디락스","maintained":true,"change_from":null,"confidence":75},"transition_checklist":[{"item":"<항목>","checked":true,"detail":"<설명>"}],"transition_probability":{"to_quad1":0,"to_quad2":20,"to_quad3":10,"to_quad4":5},"week_highlights":[{"date":"4/1","event":"<이벤트>","impact":"<영향>","quad_effect":"<Quad 영향>"}],"next_week":{"key_events":[{"date":"4/7","name":"<이벤트>","importance":"high","expected_impact":"<예상>"}],"scenarios":[{"name":"<시나리오>","probability":50,"strategy":"<전략>","etf_action":[{"ticker":"TQQQ","action":"buy","reason":"<이유>"}]}],"risk_factors":["<리스크>"]},"market_week_review":{"sp500":{"close":5200,"weekly_change":"+1.2%"},"nasdaq":{"close":16300,"weekly_change":"+1.5%"},"vix":{"close":18,"weekly_change":"-5%"},"us10y":{"close":4.2,"weekly_change":"+3bp"},"wti":{"close":78,"weekly_change":"+2%"},"gold":{"close":3300,"weekly_change":"+0.5%"},"dxy":{"close":103,"weekly_change":"-0.3%"}},"timestamp":"2026-04-05T00:00:00Z"}`;
 
 async function callGeminiWeeklyReport(apiKey) {
   const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
@@ -297,9 +299,10 @@ async function callGeminiWeeklyReport(apiKey) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never output text, markdown, or explanations." }] },
       contents: [{ parts: [{ text: WEEKLY_PROMPT }] }],
       tools: [{ google_search: {} }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 8000 },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 8000 },
     }),
   });
   if (!response.ok) {
