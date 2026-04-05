@@ -2513,6 +2513,11 @@ function openTradeModal(type) {
     if (plannedQtyEl) plannedQtyEl.value = '';
     document.getElementById('tradeFeeDisplay').innerText = '$0.00';
     document.getElementById('tradeTotal').innerText = '$0.00';
+    // 메모, 태그 초기화
+    var memoEl = document.getElementById('tradeMemo');
+    if (memoEl) memoEl.value = '';
+    var tagEl = document.getElementById('tradeTag');
+    if (tagEl) tagEl.value = 'QUANT';
     calcTradeTotal();
 }
 function closeTradeModal() { document.getElementById('tradeModal').classList.add('hidden'); document.getElementById('tradeModal').classList.remove('flex'); }
