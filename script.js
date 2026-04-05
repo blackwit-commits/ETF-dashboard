@@ -3365,13 +3365,62 @@ function renderSellPlan() {
             const el = document.getElementById('sellTargetPrice' + i);
             if (el) el.innerText = '$' + targetPrice.toFixed(2);
         }
-        const md = MARKET_SNAPSHOT[activeTicker] || { ema8: 0 };
-        const trailEl = document.getElementById('sellTrailPrice');
-        if (trailEl) trailEl.innerText = '$' + (md.ema8 || 0).toFixed(2);
-        const advice = document.getElementById('sellAdviceText');
-        if (advice) {
-            if (md.rsi > 70) { advice.innerText = "단기 과열 (분할 매도 고려)"; advice.className = "text-red-400 font-bold"; }
-            else { advice.innerText = "RSI 70 도달 시 부분 익절 권장"; advice.className = "text-slate-300"; }
+
+        // MA200 TREND 이탈가
+        const md = MARKET_SNAPSHOT[activeTicker] || {};
+        const trendEl = document.getElementById('sellTrendExitPrice');
+        if (trendEl) trendEl.innerText = md.ma200 > 0 ? ('$' + md.ma200.toFixed(2)) : '데이터 없음';
+
+        // 3가지 매도 시그널 알림
+        const alertsEl = document.getElementById('sellSignalAlerts');
+        if (alertsEl) {
+            var alerts = [];
+            var meta = ETF_DB.find(function(e){return e.sym===activeTicker;}) || {};
+            var quadNow = getCurrentQuad();
+            var isQuadFavorable = meta.quad && meta.quad.length > 0 && (meta.quad.indexOf(quadNow) !== -1 || meta.quad.length === 4);
+
+            // 1. Quad 전환 시그널
+            if (quadNow && !isQuadFavorable) {
+                alerts.push({level:'red', icon:'fa-arrows-rotate', text:'Quad ' + quadNow + ' 역풍 — 전량 매도 검토', desc:'수혜 Quad: ' + (meta.quad||[]).join(',')});
+            } else if (MACRO_DATA && MACRO_DATA.quad && MACRO_DATA.quad.transition_risk) {
+                var maxRisk = 0; var maxQ = 0;
+                [1,2,3,4].forEach(function(n) { var r = MACRO_DATA.quad.transition_risk['to_quad'+n]||0; if(n!==quadNow && r>maxRisk){maxRisk=r;maxQ=n;} });
+                if (maxRisk >= 30) alerts.push({level:'yellow', icon:'fa-triangle-exclamation', text:'Quad 전환 리스크 ' + maxRisk + '% (→Q'+maxQ+')', desc:'다음 지표 발표 후 재평가'});
+            }
+
+            // 2. TREND 이탈 시그널
+            if (md.price > 0 && md.ma200 > 0) {
+                if (md.price < md.ma200) {
+                    alerts.push({level:'red', icon:'fa-arrow-trend-down', text:'MA200 하향 돌파 — 부분 매도 (50%) 검토', desc:'현재 $' + md.price.toFixed(2) + ' < MA200 $' + md.ma200.toFixed(2)});
+                } else {
+                    var distPct = ((md.price - md.ma200) / md.ma200 * 100);
+                    if (distPct < 3) alerts.push({level:'yellow', icon:'fa-arrow-trend-down', text:'MA200 근접 (' + distPct.toFixed(1) + '%) — 이탈 주의', desc:'MA200: $' + md.ma200.toFixed(2)});
+                }
+            }
+
+            // 3. 목표 수익률 도달
+            if (d.avgPrice > 0 && md.price > 0) {
+                var currentPnl = (md.price - d.avgPrice) / d.avgPrice * 100;
+                (plans || []).forEach(function(p, i) {
+                    var tgt = parseFloat(p.targetPct) || 0;
+                    if (tgt > 0 && currentPnl >= tgt) {
+                        alerts.push({level:'green', icon:'fa-bullseye', text:(i+1) + '차 익절 목표 +' + tgt + '% 도달!', desc:'현재 수익률: +' + currentPnl.toFixed(1) + '% / 매도 비중: ' + (p.sellRatio||50) + '%'});
+                    }
+                });
+                if (md.rsi > 70) alerts.push({level:'yellow', icon:'fa-chart-line', text:'RSI ' + md.rsi.toFixed(0) + ' 과매수 — 부분 익절 고려', desc:''});
+            }
+
+            if (alerts.length === 0) {
+                alertsEl.innerHTML = '<div class="flex items-center gap-2 bg-slate-800/50 p-2 rounded-lg text-[11px] text-slate-500"><i class="fa-solid fa-check-circle text-green-500"></i>활성 매도 시그널 없음 — 홀딩 유지</div>';
+            } else {
+                var levelStyles = {red:'bg-red-900/30 border-red-700 text-red-300', yellow:'bg-yellow-900/20 border-yellow-700 text-yellow-300', green:'bg-green-900/20 border-green-700 text-green-300'};
+                alertsEl.innerHTML = alerts.map(function(a) {
+                    var s = levelStyles[a.level] || levelStyles.yellow;
+                    return '<div class="p-2 rounded-lg border text-[11px] ' + s + '"><div class="flex items-center gap-2 font-bold"><i class="fa-solid ' + a.icon + ' text-[10px]"></i>' + escapeHtml(a.text) + '</div>'
+                        + (a.desc ? '<div class="text-[10px] opacity-70 mt-0.5 ml-5">' + escapeHtml(a.desc) + '</div>' : '')
+                        + '</div>';
+                }).join('');
+            }
         }
     } else {
         panel.classList.add('hidden');
