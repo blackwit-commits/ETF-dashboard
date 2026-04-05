@@ -673,6 +673,8 @@ function fetchMarketDataInBackground() {
             
             if (activeTicker === e.sym) {
                 updateStrategyDataUI(e.sym);
+                renderSellPlan();
+                if (typeof renderStrategyProgressCard === 'function') renderStrategyProgressCard(e.sym);
             }
         });
     });
@@ -3366,8 +3368,9 @@ function renderSellPlan() {
             if (el) el.innerText = '$' + targetPrice.toFixed(2);
         }
 
-        // MA200 TREND 이탈가
-        const md = MARKET_SNAPSHOT[activeTicker] || {};
+        // MA200 TREND 이탈가 (MARKET_SNAPSHOT 우선, portfolios.marketData 폴백)
+        var md = MARKET_SNAPSHOT[activeTicker] || {};
+        if ((!md.ma200 || md.ma200 <= 0) && d.marketData) md = Object.assign({}, d.marketData, md);
         const trendEl = document.getElementById('sellTrendExitPrice');
         if (trendEl) trendEl.innerText = md.ma200 > 0 ? ('$' + md.ma200.toFixed(2)) : '수신 대기';
 
