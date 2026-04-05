@@ -93,8 +93,8 @@ export default {
     // 2. 뉴스 데이터 요청 (/news) - 구글 뉴스 RSS 파싱
     if (path === "/news") {
         try {
-            // Bing News RSS (Google News가 Worker IP를 차단하여 대체)
-            const rssUrl = "https://www.bing.com/news/search?q=stock+market+finance+ETF&format=rss";
+            // Bing News RSS — 글로벌 주요 뉴스 (경제, 정치, 세계)
+            const rssUrl = "https://www.bing.com/news/search?q=world+economy+geopolitics+trade+war+oil+inflation&format=rss";
             const resp = await fetch(rssUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
             if (!resp.ok) {
                 return new Response(JSON.stringify({error: "RSS fetch failed: " + resp.status}), { headers: {...corsHeaders, "Content-Type": "application/json"} });
