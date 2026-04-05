@@ -2897,75 +2897,109 @@ function renderTradeLog() {
     if (!cardList) return;
     cardList.innerHTML = '';
 
-    var lastGroupKey = null;
+    // 월별 그룹핑
+    var monthGroups = {};
+    var monthOrder = [];
     _tradeLogRows.forEach(function(row, idx) {
-        var cidKey = (row.cycleId != null && row.cycleId !== '') ? String(row.cycleId) : '';
-        var groupKey = row.sym + '|' + cidKey;
-
-        // 그룹 헤더
-        if (groupKey !== lastGroupKey) {
-            lastGroupKey = groupKey;
-            var meta = groupMeta[groupKey] || { sym: row.sym, cycleId: cidKey, minDate: row.date, maxDate: row.date, count: 0 };
-            var cycleLabel = meta.cycleId ? ('사이클 #' + meta.cycleId) : '';
-            var rangeLabel = (meta.minDate === meta.maxDate) ? meta.maxDate : (meta.minDate + ' ~ ' + meta.maxDate);
-            cardList.innerHTML += '<div class="flex items-center gap-2 px-2 pt-3 pb-1">'
-                + '<span class="font-black text-white text-sm">' + meta.sym + '</span>'
-                + (cycleLabel ? '<span class="text-[9px] bg-emerald-900/40 text-emerald-400 px-1.5 py-0.5 rounded font-bold">' + cycleLabel + '</span>' : '')
-                + '<span class="text-[10px] text-slate-500 ml-auto">' + rangeLabel + '</span>'
-                + '<span class="text-[10px] text-slate-600">' + meta.count + '건</span></div>';
+        var monthKey = row.date ? row.date.substring(0, 7) : 'unknown'; // YYYY-MM
+        if (!monthGroups[monthKey]) {
+            monthGroups[monthKey] = [];
+            monthOrder.push(monthKey);
         }
+        monthGroups[monthKey].push({ row: row, idx: idx });
+    });
 
-        // 카드 렌더링
-        var isSell = row.type === 'SELL';
-        var isDIV = row.type === 'DIV';
-        var returnPct = row.returnPct != null ? row.returnPct : row.profitPct;
-        var typeColor = isSell ? 'bg-blue-900/40 text-blue-300 border-blue-800' : (isDIV ? 'bg-yellow-900/40 text-yellow-300 border-yellow-800' : 'bg-red-900/40 text-red-300 border-red-800');
-        var borderColor = isSell ? 'border-l-blue-500' : (isDIV ? 'border-l-yellow-500' : 'border-l-red-500');
-        var priceStr = row.price != null ? '$' + row.price.toFixed(2) : '—';
-        var totalStr = row.total != null ? '$' + row.total.toFixed(2) : '—';
-        var qtyStr = row.qty != null ? row.qty + '주' : '—';
-        var stageStr = (row.plannedStage != null && row.plannedStage !== '') ? row.plannedStage + '차' : '';
+    // 현재 월 판별
+    var now = new Date();
+    var currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
 
-        // 계획 vs 실제 비교
-        var diffHtml = '';
-        if (row.planVsResult && row.planVsResult.priceDiffPercent != null) {
-            var dp = row.planVsResult.priceDiffPercent;
-            var dColor = dp >= 0 ? 'text-red-400' : 'text-blue-400';
-            diffHtml = '<span class="' + dColor + ' text-[10px]">(' + (dp >= 0 ? '+' : '') + dp.toFixed(1) + '%)</span>';
-        }
+    monthOrder.forEach(function(monthKey, mi) {
+        var items = monthGroups[monthKey];
+        var isCurrentMonth = (monthKey === currentMonth);
+        var isOpen = (mi === 0); // 가장 최근 월만 펼침
+        var parts = monthKey.split('-');
+        var monthLabel = parts[0] + '년 ' + parseInt(parts[1]) + '월';
 
-        // 수익률 (SELL만)
-        var pnlHtml = '';
-        if (isSell && returnPct != null && !isNaN(returnPct)) {
-            var pColor = returnPct >= 0 ? 'text-red-400' : 'text-blue-400';
-            pnlHtml = '<span class="font-bold ' + pColor + '">' + (returnPct >= 0 ? '+' : '') + returnPct.toFixed(2) + '%</span>';
-        }
+        // 월별 매수/매도 요약
+        var buyCount = 0, sellCount = 0, totalAmount = 0;
+        items.forEach(function(item) {
+            if (item.row.type === 'BUY') buyCount++;
+            else if (item.row.type === 'SELL') sellCount++;
+            if (item.row.total) totalAmount += Math.abs(item.row.total);
+        });
+        var summary = [];
+        if (buyCount) summary.push('매수 ' + buyCount);
+        if (sellCount) summary.push('매도 ' + sellCount);
+        summary.push('$' + Math.round(totalAmount).toLocaleString());
 
-        // 메모
-        var memoHtml = row.memoText ? '<div class="text-[10px] text-slate-500 mt-1 truncate"><i class="fa-solid fa-pen-nib mr-1 text-slate-600"></i>' + escapeHtml(row.memoText) + '</div>' : '';
+        var monthId = 'tradeMonth' + mi;
 
-        cardList.innerHTML += '<div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50 border-l-4 ' + borderColor + ' cursor-pointer hover:bg-slate-800/60 transition" onclick="openTradeLogDetailModal(\'상세\', JSON.stringify(_tradeLogRows[' + idx + '], null, 2))">'
-            + '<div class="flex items-center justify-between mb-1">'
+        cardList.innerHTML += '<div class="mt-2 first:mt-0">'
+            + '<button type="button" onclick="toggleEtfSector(\'' + monthId + '\')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border ' + (isCurrentMonth ? 'bg-blue-900/20 border-blue-800/40' : 'bg-slate-800/40 border-slate-700') + ' hover:brightness-110 transition">'
             + '<div class="flex items-center gap-2">'
-            + '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded border ' + typeColor + '">' + row.type + '</span>'
-            + (stageStr ? '<span class="text-[10px] text-slate-400 font-bold">' + stageStr + '</span>' : '')
-            + '<span class="text-[10px] text-slate-500">' + row.date + '</span>'
+            + '<i class="fa-regular fa-calendar text-sm ' + (isCurrentMonth ? 'text-blue-400' : 'text-slate-500') + '"></i>'
+            + '<span class="text-xs font-bold text-white">' + monthLabel + '</span>'
+            + (isCurrentMonth ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-bold">이번 달</span>' : '')
             + '</div>'
-            + pnlHtml
-            + '</div>'
-            + '<div class="flex items-baseline justify-between">'
-            + '<div class="flex items-baseline gap-1.5">'
-            + '<span class="font-bold text-white text-sm">' + priceStr + '</span>'
-            + diffHtml
-            + '<span class="text-slate-400 text-xs">× ' + qtyStr + '</span>'
-            + '</div>'
-            + '<span class="text-slate-300 text-xs font-bold">' + totalStr + '</span>'
-            + '</div>'
-            + '<div class="flex items-center gap-2 mt-1">'
-            + '<span class="text-[9px] text-slate-500">' + escapeHtml(row.tagLabel || '') + '</span>'
-            + '</div>'
-            + memoHtml
-            + '</div>';
+            + '<div class="flex items-center gap-2">'
+            + '<span class="text-[10px] text-slate-400">' + summary.join(' · ') + '</span>'
+            + '<span class="text-[10px] text-slate-500 font-bold">' + items.length + '건</span>'
+            + '<i class="fa-solid fa-chevron-down text-[10px] text-slate-500 transition-transform" id="' + monthId + 'Chev" style="' + (isOpen ? '' : 'transform:rotate(-90deg)') + '"></i>'
+            + '</div></button>'
+            + '<div class="space-y-2 mt-2 ' + (isOpen ? '' : 'hidden') + '" id="' + monthId + '">';
+
+        items.forEach(function(item) {
+            var row = item.row;
+            var idx = item.idx;
+            var isSell = row.type === 'SELL';
+            var isDIV = row.type === 'DIV';
+            var returnPct = row.returnPct != null ? row.returnPct : row.profitPct;
+            var typeColor = isSell ? 'bg-blue-900/40 text-blue-300 border-blue-800' : (isDIV ? 'bg-yellow-900/40 text-yellow-300 border-yellow-800' : 'bg-red-900/40 text-red-300 border-red-800');
+            var borderColor = isSell ? 'border-l-blue-500' : (isDIV ? 'border-l-yellow-500' : 'border-l-red-500');
+            var priceStr = row.price != null ? '$' + row.price.toFixed(2) : '—';
+            var totalStr = row.total != null ? '$' + row.total.toFixed(2) : '—';
+            var qtyStr = row.qty != null ? row.qty + '주' : '—';
+            var stageStr = (row.plannedStage != null && row.plannedStage !== '') ? row.plannedStage + '차' : '';
+
+            var diffHtml = '';
+            if (row.planVsResult && row.planVsResult.priceDiffPercent != null) {
+                var dp = row.planVsResult.priceDiffPercent;
+                diffHtml = '<span class="' + (dp >= 0 ? 'text-red-400' : 'text-blue-400') + ' text-[10px]">(' + (dp >= 0 ? '+' : '') + dp.toFixed(1) + '%)</span>';
+            }
+
+            var pnlHtml = '';
+            if (isSell && returnPct != null && !isNaN(returnPct)) {
+                pnlHtml = '<span class="font-bold ' + (returnPct >= 0 ? 'text-red-400' : 'text-blue-400') + '">' + (returnPct >= 0 ? '+' : '') + returnPct.toFixed(2) + '%</span>';
+            }
+
+            var memoHtml = row.memoText ? '<div class="text-[10px] text-slate-500 mt-1 truncate"><i class="fa-solid fa-pen-nib mr-1 text-slate-600"></i>' + escapeHtml(row.memoText) + '</div>' : '';
+
+            cardList.innerHTML += '<div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50 border-l-4 ' + borderColor + ' cursor-pointer hover:bg-slate-800/60 transition" onclick="openTradeLogDetailModal(\'상세\', JSON.stringify(_tradeLogRows[' + idx + '], null, 2))">'
+                + '<div class="flex items-center justify-between mb-1">'
+                + '<div class="flex items-center gap-2">'
+                + '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded border ' + typeColor + '">' + row.type + '</span>'
+                + '<span class="font-bold text-white text-xs">' + row.sym + '</span>'
+                + (stageStr ? '<span class="text-[10px] text-slate-400 font-bold">' + stageStr + '</span>' : '')
+                + '<span class="text-[10px] text-slate-500">' + row.date + '</span>'
+                + '</div>'
+                + pnlHtml
+                + '</div>'
+                + '<div class="flex items-baseline justify-between">'
+                + '<div class="flex items-baseline gap-1.5">'
+                + '<span class="font-bold text-white text-sm">' + priceStr + '</span>'
+                + diffHtml
+                + '<span class="text-slate-400 text-xs">' + qtyStr + '</span>'
+                + '</div>'
+                + '<span class="text-slate-300 text-xs font-bold">' + totalStr + '</span>'
+                + '</div>'
+                + '<div class="flex items-center gap-2 mt-1">'
+                + '<span class="text-[9px] text-slate-500">' + escapeHtml(row.tagLabel || '') + '</span>'
+                + '</div>'
+                + memoHtml
+                + '</div>';
+        });
+
+        cardList.innerHTML += '</div></div>';
     });
 
     if (countEl) countEl.textContent = filtered.length + '건';
