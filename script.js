@@ -3369,7 +3369,7 @@ function renderSellPlan() {
         // MA200 TREND 이탈가
         const md = MARKET_SNAPSHOT[activeTicker] || {};
         const trendEl = document.getElementById('sellTrendExitPrice');
-        if (trendEl) trendEl.innerText = md.ma200 > 0 ? ('$' + md.ma200.toFixed(2)) : '데이터 없음';
+        if (trendEl) trendEl.innerText = md.ma200 > 0 ? ('$' + md.ma200.toFixed(2)) : '수신 대기';
 
         // 3가지 매도 시그널 알림
         const alertsEl = document.getElementById('sellSignalAlerts');
