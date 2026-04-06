@@ -537,14 +537,6 @@ function initApp() {
         
         // 2. 과거 데이터 꼬임 방지 (백신 가동)
         sanitizeData();
-        Object.keys(portfolios || {}).forEach(sym => {
-            const p = portfolios[sym];
-                sym,
-                qty: p.qty,
-                avgPrice: p.avgPrice,
-                historyLength: Array.isArray(p.history) ? p.history.length : 0
-            });
-        });
         
         initInputs(); 
         updateGlobalCalc();
@@ -794,9 +786,6 @@ async function loadFromCloud(isManual = false) {
         }
         
         if (data && data.settings != null && data.portfolio != null) {
-                hasSettings: !!data.settings,
-                portfolioKeys: Object.keys(data.portfolio || {})
-            });
             globalData = data.settings;
             if (Array.isArray(data.deposits)) globalData.deposits = data.deposits;
             portfolios = data.portfolio;
@@ -827,9 +816,6 @@ async function loadFromCloud(isManual = false) {
                 Object.keys(portfolios).forEach(function(sym) { recalcPortfolio(portfolios[sym]); });
             }
         } else if (data && data.global && data.ports) {
-                hasGlobal: !!data.global,
-                portKeys: Object.keys(data.ports || {})
-            });
             globalData = data.global;
             portfolios = data.ports;
         } else {
