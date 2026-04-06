@@ -70,6 +70,7 @@ UMT_V2_PRD.md     — V2 기획서
 - [x] 실시간 VIX 표시
 - [x] 매수/매도 모달 메모/태그 초기화
 - [x] 코드 정리 (미사용 함수 + DEBUG 로그 제거)
+- [x] JS 구문 오류 수정 (DEBUG 로그 제거 시 잔여 객체 리터럴 3곳 삭제)
 
 ## 변경 시 주의사항
 - ETF_DB 필드: sym, lev, tier(1~4), quad(배열), name, desc, holdings
