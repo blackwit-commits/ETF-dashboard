@@ -230,32 +230,22 @@ ETF 유니버스: TQQQ,SOXL,TNA,SPXL,NRGU,GUSH,NUGT,DRN,GLD,UGL,GDXU,SQQQ,TMF,CU
 규칙: 현재 Quad의 transition_risk=0, news 정확히 3개, ETF는 유니버스에서만, red=긴급/yellow=주의/green=참고`;
 
 async function callGeminiWithFallback(apiKey, body) {
-  const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const models = ["gemini-2.5-flash", "gemini-2.0-flash"];
   let lastError;
   for (const model of models) {
-    // google_search를 지원하지 않는 모델도 있으므로, tools 포함/미포함 두 번 시도
-    const bodyVariants = [body];
-    if (body.tools) {
-      const noTools = { ...body };
-      delete noTools.tools;
-      bodyVariants.push(noTools);
-    }
-    for (const variant of bodyVariants) {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const response = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(variant),
-        });
-        if (response.ok) return await response.json();
-        const errorBody = await response.text();
-        lastError = `Gemini API error ${response.status} (${model}): ${errorBody}`;
-        // 400 with tools → try without tools (break inner retry, continue to next variant)
-        if (response.status === 400 && variant.tools) break;
-        if (response.status !== 503 && response.status !== 429) throw new Error(lastError);
-        if (attempt === 0) await new Promise(r => setTimeout(r, 2000));
-      }
+    const delays = [2000, 4000, 8000];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (response.ok) return await response.json();
+      const errorBody = await response.text();
+      lastError = `Gemini API error ${response.status} (${model}): ${errorBody}`;
+      if (response.status !== 503 && response.status !== 429) throw new Error(lastError);
+      if (attempt < 2) await new Promise(r => setTimeout(r, delays[attempt]));
     }
   }
   throw new Error(lastError);
