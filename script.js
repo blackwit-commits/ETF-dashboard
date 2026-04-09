@@ -927,8 +927,8 @@ function renderInitialMarketList() {
                 </div>
             </div>`;
         }).join('');
-        // 현재 Quad 수혜 섹터 + 전Quad공용은 펼침, 나머지 접기
-        var isOpen = (sector === currentQuadSector) || (sector === '전 Quad 공용');
+        // 현재 Quad 수혜 섹터만 펼침, 나머지 접기
+        var isOpen = (sector === currentQuadSector);
         var sectorId = 'etfSector' + idx;
         var sectorStyles = {
             'Quad 1 — 성장주':     {icon:'fa-sun',        color:'text-green-400', bg:'bg-green-900/15 border-green-800/40'},
