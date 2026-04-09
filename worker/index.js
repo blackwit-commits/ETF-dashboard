@@ -229,40 +229,59 @@ ETF 유니버스: TQQQ,SOXL,TNA,SPXL,NRGU,GUSH,NUGT,DRN,GLD,UGL,GDXU,SQQQ,TMF,CU
 
 규칙: 현재 Quad의 transition_risk=0, news 정확히 3개, ETF는 유니버스에서만, red=긴급/yellow=주의/green=참고`;
 
-async function callGeminiMacroAnalysis(apiKey) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: MACRO_PROMPT }] }],
-      tools: [{ google_search: {} }],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 10000,
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Gemini API error ${response.status}: ${errorBody}`);
+async function callGeminiWithFallback(apiKey, body) {
+  const models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
+  let lastError;
+  for (const model of models) {
+    // google_search를 지원하지 않는 모델도 있으므로, tools 포함/미포함 두 번 시도
+    const bodyVariants = [body];
+    if (body.tools) {
+      const noTools = { ...body };
+      delete noTools.tools;
+      bodyVariants.push(noTools);
+    }
+    for (const variant of bodyVariants) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(variant),
+        });
+        if (response.ok) return await response.json();
+        const errorBody = await response.text();
+        lastError = `Gemini API error ${response.status} (${model}): ${errorBody}`;
+        // 400 with tools → try without tools (break inner retry, continue to next variant)
+        if (response.status === 400 && variant.tools) break;
+        if (response.status !== 503 && response.status !== 429) throw new Error(lastError);
+        if (attempt === 0) await new Promise(r => setTimeout(r, 2000));
+      }
+    }
   }
+  throw new Error(lastError);
+}
 
-  const data = await response.json();
+async function callGeminiMacroAnalysis(apiKey) {
+  const data = await callGeminiWithFallback(apiKey, {
+    contents: [{ parts: [{ text: MACRO_PROMPT }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 10000,
+    },
+  });
 
   // Gemini 응답에서 텍스트 추출
   let textContent = "";
-  if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-    const parts = data.candidates[0].content.parts;
+  const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+  if (parts) {
     for (const part of parts) {
       if (part.text) textContent += part.text;
     }
   }
 
   if (!textContent) {
-    throw new Error("No text content in Gemini response");
+    throw new Error("No text content in Gemini macro response: " + JSON.stringify(data).substring(0, 300));
   }
 
   // JSON 파싱 (코드블록 래핑 제거)
@@ -294,29 +313,20 @@ JSON schema:
 {"week_summary":"<한줄 요약>","quad_status":{"current":1,"name":"골디락스","maintained":true,"change_from":null,"confidence":75},"transition_checklist":[{"item":"<항목>","checked":true,"detail":"<설명>"}],"transition_probability":{"to_quad1":0,"to_quad2":20,"to_quad3":10,"to_quad4":5},"week_highlights":[{"date":"4/1","event":"<이벤트>","impact":"<영향>","quad_effect":"<Quad 영향>"}],"next_week":{"key_events":[{"date":"4/7","name":"<이벤트>","importance":"high","expected_impact":"<예상>"}],"scenarios":[{"name":"<시나리오>","probability":50,"strategy":"<전략>","etf_action":[{"ticker":"TQQQ","action":"buy","reason":"<이유>"}]}],"risk_factors":["<리스크>"]},"market_week_review":{"sp500":{"close":5200,"weekly_change":"+1.2%"},"nasdaq":{"close":16300,"weekly_change":"+1.5%"},"vix":{"close":18,"weekly_change":"-5%"},"us10y":{"close":4.2,"weekly_change":"+3bp"},"wti":{"close":78,"weekly_change":"+2%"},"gold":{"close":3300,"weekly_change":"+0.5%"},"dxy":{"close":103,"weekly_change":"-0.3%"}},"timestamp":"2026-04-05T00:00:00Z"}`;
 
 async function callGeminiWeeklyReport(apiKey) {
-  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + apiKey;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never output text, markdown, or explanations." }] },
-      contents: [{ parts: [{ text: WEEKLY_PROMPT }] }],
-      tools: [{ google_search: {} }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 8000 },
-    }),
+  const data = await callGeminiWithFallback(apiKey, {
+    system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never output text, markdown, or explanations." }] },
+    contents: [{ parts: [{ text: WEEKLY_PROMPT }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.2, maxOutputTokens: 8000 },
   });
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error("Gemini API error " + response.status + ": " + errorBody);
-  }
-  const data = await response.json();
   let textContent = "";
-  if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-    for (const part of data.candidates[0].content.parts) {
+  const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+  if (parts) {
+    for (const part of parts) {
       if (part.text) textContent += part.text;
     }
   }
-  if (!textContent) throw new Error("No text content in Gemini response");
+  if (!textContent) throw new Error("No text content in Gemini weekly response: " + JSON.stringify(data).substring(0, 300));
   let jsonStr = textContent.trim();
   if (jsonStr.startsWith("```")) jsonStr = jsonStr.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
   const result = JSON.parse(jsonStr);

@@ -938,13 +938,21 @@ function renderInitialMarketList() {
             '특수 목적':           {icon:'fa-shield-halved',color:'text-purple-400',bg:'bg-purple-900/15 border-purple-800/40'},
             '전 Quad 공용':        {icon:'fa-arrows-rotate',color:'text-slate-300', bg:'bg-slate-800/40 border-slate-700'},
         };
-        var st = sectorStyles[sector] || {icon:'fa-circle', color:'text-slate-400', bg:'bg-slate-800/40 border-slate-700'};
+        var st = sectorStyles[sector] || {icon:'fa-circle', color:'text-slate-400', bg:'bg-slate-800/40 border-slate-700', bar:'bg-slate-500'};
+        // 좌측 컬러 바용 색상
+        var barColors = {
+            'Quad 1 — 성장주':'bg-green-400','Quad 2 — 인플레 수혜':'bg-yellow-400',
+            'Quad 3 — 방어/인버스':'bg-red-400','Quad 4 — 채권/방어주':'bg-blue-400',
+            '특수 목적':'bg-purple-400','전 Quad 공용':'bg-slate-400'
+        };
+        var barColor = barColors[sector] || 'bg-slate-500';
         var isCurrent = (sector === currentQuadSector);
         var quadBadge = isCurrent ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-bold ml-2 animate-pulse">현재 Quad</span>' : '';
         var tickerPreview = groups[sector].map(function(e){return e.sym;}).join(' · ');
-        return `<div class="mt-2 first:mt-0">
-            <button type="button" onclick="toggleEtfSector('${sectorId}')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border ${st.bg} hover:brightness-110 transition ${isCurrent?'ring-1 ring-blue-500/50':''}">
-                <div class="flex items-center gap-2.5">
+        return `<div class="mt-3 first:mt-0">
+            <button type="button" onclick="toggleEtfSector('${sectorId}')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border ${st.bg} hover:brightness-110 transition ${isCurrent?'ring-1 ring-blue-500/50':''} relative overflow-hidden">
+                <div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${barColor}"></div>
+                <div class="flex items-center gap-2.5 pl-1.5">
                     <i class="fa-solid ${st.icon} ${st.color} text-sm w-5 text-center"></i>
                     <div class="text-left">
                         <div class="text-xs font-black text-white">${sector}${quadBadge}</div>
@@ -956,7 +964,7 @@ function renderInitialMarketList() {
                     <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 transition-transform" id="${sectorId}Chev" style="${isOpen?'':'transform:rotate(-90deg)'}"></i>
                 </div>
             </button>
-            <div class="grid gap-2 mt-2 ${isOpen?'':'hidden'}" id="${sectorId}">${cards}</div>
+            <div class="grid gap-2 mt-2 ml-3 ${isOpen?'':'hidden'}" id="${sectorId}">${cards}</div>
         </div>`;
     }).join('');
 }
