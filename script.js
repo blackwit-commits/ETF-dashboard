@@ -1655,7 +1655,10 @@ function selectTicker(sym) {
     localStorage.setItem('umt_last_ticker', sym); 
     
     if(!portfolios[sym]) {
-        portfolios[sym] = { qty: 0, avgPrice: 0, history: [], config: { mode: 'GRID', stages: 4, mdd: 20, alloc: 30, drops: [0,-6.67,-13.33,-20], weights: [25,25,25,25], basePrice: 0, boosterOn: false, boosterAllocPct: 0, boosterStages: 2, boosterMdd: 10 } }; 
+        let restoredHistory = [];
+        try { const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); if (Array.isArray(archived[sym])) { restoredHistory = archived[sym]; delete archived[sym]; localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } } catch(e) {}
+        portfolios[sym] = { qty: 0, avgPrice: 0, history: restoredHistory, config: { mode: 'GRID', stages: 4, mdd: 20, alloc: 30, drops: [0,-6.67,-13.33,-20], weights: [25,25,25,25], basePrice: 0, boosterOn: false, boosterAllocPct: 0, boosterStages: 2, boosterMdd: 10 } };
+        if (restoredHistory.length > 0) recalcPortfolio(portfolios[sym]);
         sanitizeData(); // 새로 생성된 객체도 소독
     }
 
@@ -1678,7 +1681,14 @@ function switchTab(id) {
     if(aBtn) aBtn.classList.add('active');
 
     localStorage.setItem('umt_last_tab', id);
-    if(id==='strategy' && activeTicker) setTimeout(() => loadTickerData(activeTicker), 10);
+    if(id==='strategy') {
+        if (!activeTicker) {
+            const lastTicker = localStorage.getItem('umt_last_ticker');
+            if (lastTicker && portfolios[lastTicker]) activeTicker = lastTicker;
+            else { const keys = Object.keys(portfolios); if (keys.length > 0) activeTicker = keys[0]; }
+        }
+        if (activeTicker) setTimeout(() => loadTickerData(activeTicker), 10);
+    }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') initInputs();
     if(id==='home') { updateGlobalCalc(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
@@ -2489,6 +2499,7 @@ function calculatePlan() {
             if (!h || h.type !== 'BUY') return false;
             if (parseInt(h.stage) !== (i + 1)) return false;
             if (activeCycleId != null) return h.cycleId === activeCycleId;
+            if ((d.qty || 0) <= 0) return false; // 전량매도 완료 시 이전 사이클 표시 안 함
             return true; // 과거 데이터 호환(사이클 없음)
         });
         const boughtQty = buys.reduce((sum, h) => sum + (h.qty || 0), 0);
@@ -2537,6 +2548,7 @@ function calculatePlan() {
                 if (!h || h.type !== 'BUY') return false;
                 if (parseInt(h.stage) !== stageNum) return false;
                 if (activeCycleId != null) return h.cycleId === activeCycleId;
+                if ((d.qty || 0) <= 0) return false; // 전량매도 완료 시 이전 사이클 표시 안 함
                 return true; // 과거 데이터 호환(사이클 없음)
             });
             const boughtQty = buys.reduce((sum, h) => sum + (h.qty || 0), 0);
@@ -2606,14 +2618,14 @@ function openAllocationModal(sym) { const total = getTotalEquityUSD(); if(total 
 function calcAllocFromPct() { const pct = parseFloat(document.getElementById('allocPercent').value)||0; const total = getTotalEquityUSD(); const amt = total * (pct/100); document.getElementById('allocAmount').value = amt.toFixed(2); updateKrwHint(amt); }
 function calcAllocFromAmt() { const amt = parseFloat(document.getElementById('allocAmount').value)||0; const total = getTotalEquityUSD(); const pct = (amt / total) * 100; document.getElementById('allocPercent').value = pct.toFixed(1); updateKrwHint(amt); }
 function updateKrwHint(usdAmount) { const krwStr = formatKrw(usdAmount); document.getElementById('allocKRWHint').innerText = '≈ ' + krwStr.replace(/\u20A9/,'') + ' 원'; }
-function confirmAllocation() { const pct = parseFloat(document.getElementById('allocPercent').value)||0; if(pct <= 0) return alert("비중을 입력해주세요."); const sym = tempTickerToAdd || activeTicker; if(sym) { if (!portfolios[sym] && !checkCorrelationOnAdd(sym)) return; if (!portfolios[sym]) { portfolios[sym] = { qty: 0, avgPrice: 0, history: [], config: { mode: 'GRID', stages: 4, mdd: 20, alloc: pct, drops: [0,-6.67,-13.33,-20], weights: [25,25,25,25], basePrice: 0, boosterOn: false, boosterAllocPct: 0, boosterStages: 2, boosterMdd: 10 } }; } else { portfolios[sym].config.alloc = pct; } saveAll(); if(activeTicker===sym) loadTickerData(sym); } document.getElementById('allocationModal').classList.add('hidden'); document.getElementById('allocationModal').classList.remove('flex'); renderTickerBar(); switchTab('strategy'); selectTicker(sym); }
+function confirmAllocation() { const pct = parseFloat(document.getElementById('allocPercent').value)||0; if(pct <= 0) return alert("비중을 입력해주세요."); const sym = tempTickerToAdd || activeTicker; if(sym) { if (!portfolios[sym] && !checkCorrelationOnAdd(sym)) return; if (!portfolios[sym]) { let restoredHistory = []; try { const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); if (Array.isArray(archived[sym])) { restoredHistory = archived[sym]; delete archived[sym]; localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } } catch(e) {} portfolios[sym] = { qty: 0, avgPrice: 0, history: restoredHistory, config: { mode: 'GRID', stages: 4, mdd: 20, alloc: pct, drops: [0,-6.67,-13.33,-20], weights: [25,25,25,25], basePrice: 0, boosterOn: false, boosterAllocPct: 0, boosterStages: 2, boosterMdd: 10 } }; if (restoredHistory.length > 0) recalcPortfolio(portfolios[sym]); } else { portfolios[sym].config.alloc = pct; } saveAll(); if(activeTicker===sym) loadTickerData(sym); } document.getElementById('allocationModal').classList.add('hidden'); document.getElementById('allocationModal').classList.remove('flex'); renderTickerBar(); switchTab('strategy'); selectTicker(sym); }
 function openEtfSearchModal() { document.getElementById('etfSearchModal').classList.remove('hidden'); document.getElementById('etfSearchModal').classList.add('flex'); renderEtfSearchList(ETF_DB); }
 function closeEtfSearchModal() { document.getElementById('etfSearchModal').classList.add('hidden'); document.getElementById('etfSearchModal').classList.remove('flex'); }
 function renderEtfSearchList(l) { const g=document.getElementById('etfSearchGrid'); g.innerHTML=''; l.forEach(e=>{ let b=e.lev==='3x'?'badge-3x':(e.lev==='2x'?'badge-2x':'badge-inv'); g.innerHTML+=`<div class="bg-slate-800 p-3 rounded-xl flex justify-between items-center active:bg-slate-700 transition"><div><span class="font-bold text-white">${e.sym}</span> <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${b}">${e.lev}</span><div class="text-xs text-slate-400">${e.desc}</div></div><button onclick="processAddTicker('${e.sym}')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg text-xs font-bold shadow transition">추가</button></div>`; }); }
 function processAddTicker(sym) { tempTickerToAdd = sym; closeEtfSearchModal(); openAllocationModal(sym); }
 function filterEtfSearch() { const q=document.getElementById('etfSearchInput').value.toUpperCase(); renderEtfSearchList(ETF_DB.filter(e=>e.sym.includes(q)||e.desc.includes(q))); }
 function renderTickerBar() { const bar = document.getElementById('tickerBar'); bar.innerHTML = ''; Object.keys(portfolios).forEach(t => { const btn = document.createElement('button'); const active = t === activeTicker; btn.className = `ticker-tab px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition ${active?'active':''}`; btn.innerText = t; btn.onclick = () => selectTicker(t); bar.appendChild(btn); }); const addBtn = document.createElement('button'); addBtn.className = "px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 whitespace-nowrap"; addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>'; addBtn.onclick = openEtfSearchModal; bar.appendChild(addBtn); }
-function deleteActiveTicker() { if(!activeTicker) return; if(confirm(`'${activeTicker}' 종목을 삭제하시겠습니까?\n모든 매매 기록이 삭제됩니다.`)) { delete portfolios[activeTicker]; saveAll(); activeTicker = null; localStorage.removeItem('umt_last_ticker'); const keys = Object.keys(portfolios); if (keys.length > 0) { selectTicker(keys[0]); } else { switchTab('home'); renderTickerBar(); } } }
+function deleteActiveTicker() { if(!activeTicker) return; if(confirm(`'${activeTicker}' 종목을 삭제하시겠습니까?\n전략 설정은 삭제되지만 매매 기록은 보존됩니다.`)) { const d = portfolios[activeTicker]; if (d && Array.isArray(d.history) && d.history.length > 0) { try { const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); archived[activeTicker] = (archived[activeTicker] || []).concat(d.history); localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } catch(e) { console.error('History archive failed:', e); } } delete portfolios[activeTicker]; saveAll(); activeTicker = null; localStorage.removeItem('umt_last_ticker'); const keys = Object.keys(portfolios); if (keys.length > 0) { selectTicker(keys[0]); } else { switchTab('home'); renderTickerBar(); } } }
 function exportData(){ const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({global:globalData, ports:portfolios})); const node = document.createElement('a'); node.setAttribute("href", dataStr); node.setAttribute("download", "UMT_Backup.json"); document.body.appendChild(node); node.click(); node.remove(); }
 function importData(input){ const file = input.files[0]; if(!file)return; const reader = new FileReader(); reader.onload = function(e){ try { const json = JSON.parse(e.target.result); if(json.global && json.ports) { localStorage.setItem('umt_v172_global', JSON.stringify(json.global)); localStorage.setItem('umt_v172_ports', JSON.stringify(json.ports)); alert("복구 완료!"); location.reload(); } } catch(err) { alert("파일 오류"); } }; reader.readAsText(file); }
 function applyFeePreset(){ const v=document.getElementById('feePreset').value; if(v!=='custom') document.getElementById('globalFeeRate').value=v; }
@@ -2942,6 +2954,15 @@ function getAggregatedTrades() {
             list.push({ ...h, sym });
         });
     });
+    // 삭제된 종목의 보관된 매매 기록도 포함
+    try {
+        const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}');
+        Object.keys(archived).forEach(sym => {
+            if (!portfolios[sym] && Array.isArray(archived[sym])) {
+                archived[sym].forEach(h => { list.push({ ...h, sym }); });
+            }
+        });
+    } catch(e) {}
     list.sort((a, b) => new Date(b.date) - new Date(a.date));
     const byTicker = {};
     list.forEach(t => {
