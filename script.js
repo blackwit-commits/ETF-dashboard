@@ -209,10 +209,33 @@ function renderMacroStartButton() {
 }
 
 function startMacroAnalysis() {
+    // 접혀있으면 펼치기
+    var list = document.getElementById('newsBriefingList');
+    if (list && list.classList.contains('hidden')) toggleMacroBriefing();
     fetchMacroData(true).then(function(data) {
         if (data) updateMacroDashboard();
         else renderMacroStartButton();
     });
+}
+
+function toggleMacroBriefing() {
+    var list = document.getElementById('newsBriefingList');
+    var chev = document.getElementById('macroBriefingChev');
+    var btn = document.getElementById('macroBriefingToggleBtn');
+    if (!list) return;
+    var isHidden = list.classList.toggle('hidden');
+    if (chev) { chev.className = isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1'; }
+    if (btn) { btn.innerHTML = '<i class="' + (isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1') + '"></i>' + (isHidden ? '펼치기' : '접기'); }
+}
+
+function toggleWeeklyReport() {
+    var content = document.getElementById('weeklyReportContent');
+    var chev = document.getElementById('weeklyChev');
+    var btn = document.getElementById('weeklyToggleBtn');
+    if (!content) return;
+    var isHidden = content.classList.toggle('hidden');
+    if (chev) { chev.className = isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1'; }
+    if (btn) { btn.innerHTML = '<i class="' + (isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1') + '"></i>' + (isHidden ? '펼치기' : '접기'); }
 }
 
 // ==========================================
