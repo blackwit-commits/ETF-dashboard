@@ -274,13 +274,37 @@ async function callGeminiMacroAnalysis(apiKey) {
     throw new Error("No text content in Gemini macro response: " + JSON.stringify(data).substring(0, 300));
   }
 
-  // JSON 파싱 (코드블록 래핑 제거)
+  // JSON 파싱 (코드블록 래핑 제거 + 불완전 JSON 복구)
   let jsonStr = textContent.trim();
   if (jsonStr.startsWith("```")) {
     jsonStr = jsonStr.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
   }
 
-  const result = JSON.parse(jsonStr);
+  let result;
+  try {
+    result = JSON.parse(jsonStr);
+  } catch (parseErr) {
+    // 불완전 JSON 복구: 잘린 끝부분에 괄호 닫기 시도
+    let fixed = jsonStr;
+    // 끝에 잘린 문자열 값 닫기
+    const lastQuote = fixed.lastIndexOf('"');
+    const afterLast = fixed.substring(lastQuote + 1).trim();
+    if (afterLast === '' || afterLast.match(/^[^"\]}]*$/)) {
+      fixed = fixed.substring(0, lastQuote + 1);
+    }
+    // 열린 괄호 수만큼 닫기
+    const opens = (fixed.match(/[\[{]/g) || []).length;
+    const closes = (fixed.match(/[\]}]/g) || []).length;
+    for (let i = 0; i < opens - closes; i++) {
+      const lastOpen = Math.max(fixed.lastIndexOf('['), fixed.lastIndexOf('{'));
+      fixed += fixed[lastOpen] === '[' ? ']' : '}';
+    }
+    try {
+      result = JSON.parse(fixed);
+    } catch {
+      throw new Error(parseErr.message + " | Raw (first 500): " + jsonStr.substring(0, 500));
+    }
+  }
 
   if (!result.timestamp) {
     result.timestamp = new Date().toISOString();
@@ -319,7 +343,24 @@ async function callGeminiWeeklyReport(apiKey) {
   if (!textContent) throw new Error("No text content in Gemini weekly response: " + JSON.stringify(data).substring(0, 300));
   let jsonStr = textContent.trim();
   if (jsonStr.startsWith("```")) jsonStr = jsonStr.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
-  const result = JSON.parse(jsonStr);
+  let result;
+  try {
+    result = JSON.parse(jsonStr);
+  } catch (parseErr) {
+    let fixed = jsonStr;
+    const lastQuote = fixed.lastIndexOf('"');
+    const afterLast = fixed.substring(lastQuote + 1).trim();
+    if (afterLast === '' || afterLast.match(/^[^"\]}]*$/)) {
+      fixed = fixed.substring(0, lastQuote + 1);
+    }
+    const opens = (fixed.match(/[\[{]/g) || []).length;
+    const closes = (fixed.match(/[\]}]/g) || []).length;
+    for (let i = 0; i < opens - closes; i++) {
+      const lastOpen = Math.max(fixed.lastIndexOf('['), fixed.lastIndexOf('{'));
+      fixed += fixed[lastOpen] === '[' ? ']' : '}';
+    }
+    try { result = JSON.parse(fixed); } catch { throw new Error(parseErr.message); }
+  }
   if (!result.timestamp) result.timestamp = new Date().toISOString();
   return result;
 }
