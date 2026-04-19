@@ -502,6 +502,12 @@ function sanitizeData() {
         p.config.mdd = parseFloat(p.config.mdd) || 20;
         p.config.alloc = parseFloat(p.config.alloc) || 30;
         p.config.basePrice = parseFloat(p.config.basePrice) || 0;
+        // 사이클별 가용자금(USD 절대값) — 사이클 리셋 시 설정됨. null이면 기존 allocPct 비례 로직 사용
+        if (p.config.cycleAvailableUSD !== null && p.config.cycleAvailableUSD !== undefined) {
+            p.config.cycleAvailableUSD = parseFloat(p.config.cycleAvailableUSD) || null;
+        } else {
+            p.config.cycleAvailableUSD = null;
+        }
 
         // 배열 구조가 깨졌거나, 단계 수와 배열 길이가 다르면 강제 초기화
         if (!Array.isArray(p.config.drops) || p.config.drops.length !== p.config.stages) {
@@ -515,14 +521,14 @@ function sanitizeData() {
             for (let i = 0; i < (100 % p.config.stages); i++) p.config.weights[i]++;
         }
 
-        // 3단계 매도 전략: sellPlans [ { targetPct, sellRatio }, ... ]
+        // 3단계 매도 전략: sellPlans [ { targetPct, sellRatio }, ... ] — targetPct는 수수료 차감 후 순수익률
         const defaultSellPlans = [
+            { targetPct: 5, sellRatio: 50 },
             { targetPct: 10, sellRatio: 50 },
-            { targetPct: 15, sellRatio: 50 },
-            { targetPct: 20, sellRatio: 100 }
+            { targetPct: 15, sellRatio: 100 }
         ];
         if (!Array.isArray(p.config.sellPlans) || p.config.sellPlans.length !== 3) {
-            const legacyPct = parseFloat(p.config.targetPct) || 10;
+            const legacyPct = parseFloat(p.config.targetPct) || 5;
             const legacyRatio = parseFloat(p.config.targetSellRatio) || 50;
             p.config.sellPlans = [
                 { targetPct: legacyPct, sellRatio: legacyRatio },
@@ -2059,7 +2065,7 @@ function loadTickerData(sym) {
         const p = plans[i - 1] || {};
         const pe = document.getElementById('sellTargetPct' + i);
         const re = document.getElementById('sellTargetRatio' + i);
-        if (pe) pe.value = p.targetPct != null ? p.targetPct : (i === 1 ? 10 : (i === 2 ? 15 : 20));
+        if (pe) pe.value = p.targetPct != null ? p.targetPct : (i === 1 ? 5 : (i === 2 ? 10 : 15));
         if (re) re.value = p.sellRatio != null ? p.sellRatio : (i === 3 ? 100 : 50);
     }
     
@@ -2381,6 +2387,117 @@ function applyManualConfig() {
     showStrategyMessage('manualConfigSaveMessage', '저장 완료');
 }
 
+// ===== 사이클 리셋 (추가매수): 보유분 유지 + 새 basePrice로 단계 재배치 =====
+function openCycleResetModal() {
+    if (!activeTicker || !portfolios[activeTicker]) return;
+    const d = portfolios[activeTicker];
+    if ((d.qty || 0) <= 0) {
+        showToast('보유 수량이 없습니다 — 일반 매수로 시작하세요');
+        return;
+    }
+    document.getElementById('crmTicker').innerText = activeTicker;
+    document.getElementById('crmHoldQty').innerText = d.qty + '주';
+    document.getElementById('crmHoldAvg').innerText = '$' + (d.avgPrice || 0).toFixed(2);
+
+    const md = MARKET_SNAPSHOT[activeTicker] || {};
+    const defaultBase = md.price > 0 ? md.price : (d.avgPrice || 0);
+    document.getElementById('crmBasePrice').value = defaultBase.toFixed(2);
+    document.getElementById('crmStages').value = String(d.config.stages || 4);
+    document.getElementById('crmMdd').value = String(d.config.mdd || 20);
+
+    updateCycleResetPreview();
+
+    const modal = document.getElementById('cycleResetModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeCycleResetModal() {
+    const modal = document.getElementById('cycleResetModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+function updateCycleResetPreview() {
+    if (!activeTicker || !portfolios[activeTicker]) return;
+    const d = portfolios[activeTicker];
+    const totalUSD = getTotalEquityUSD();
+    const allocPct = d.config.alloc || 30;
+    const allocTotal = totalUSD * (allocPct / 100);
+    const holdValue = (d.qty || 0) * (d.avgPrice || 0);
+    const available = Math.max(0, allocTotal - holdValue);
+
+    document.getElementById('crmHoldValue').innerText = '$' + holdValue.toFixed(2);
+    document.getElementById('crmAllocTotal').innerText = '$' + allocTotal.toFixed(2);
+    document.getElementById('crmAvailable').innerText = '$' + available.toFixed(2);
+
+    const basePrice = parseFloat(document.getElementById('crmBasePrice').value) || 0;
+    const stages = parseInt(document.getElementById('crmStages').value) || 4;
+    const mdd = parseFloat(document.getElementById('crmMdd').value) || 20;
+    const gap = stages > 1 ? mdd / (stages - 1) : 0;
+    const drops = [];
+    for (let i = 0; i < stages; i++) drops.push(parseFloat(-(gap * i).toFixed(2)));
+    const perStage = available / stages; // 균등 가중
+
+    const preview = document.getElementById('crmPreview');
+    if (basePrice <= 0 || available <= 0) {
+        preview.innerHTML = '<div class="p-3 text-center text-slate-500">' + (basePrice <= 0 ? '새 basePrice를 입력하세요' : '가용자금이 0입니다 (보유분이 할당금 이상)') + '</div>';
+        return;
+    }
+    let html = '';
+    for (let i = 0; i < stages; i++) {
+        const drop = drops[i];
+        const price = basePrice * (1 + drop / 100);
+        const qty = price > 0 ? Math.floor(perStage / price) : 0;
+        const amt = price * qty;
+        const tag = i === 0 ? ' <span class="text-purple-400 text-[9px]">← 매수 시 보유분과 평단 합산</span>' : '';
+        html += '<div class="flex justify-between items-center px-3 py-1.5">'
+            + '<span class="text-slate-400 font-bold">' + (i+1) + '차 <span class="text-slate-600">(' + drop.toFixed(2) + '%)</span></span>'
+            + '<span class="text-white">$' + price.toFixed(2) + ' × ' + qty + '주 <span class="text-slate-500">= $' + amt.toFixed(0) + '</span>' + tag + '</span>'
+            + '</div>';
+    }
+    preview.innerHTML = html;
+}
+
+function applyCycleReset() {
+    if (!activeTicker || !portfolios[activeTicker]) return;
+    const d = portfolios[activeTicker];
+    if ((d.qty || 0) <= 0) { showToast('보유 수량이 없습니다'); return; }
+
+    const basePrice = parseFloat(document.getElementById('crmBasePrice').value) || 0;
+    const stages = parseInt(document.getElementById('crmStages').value) || 4;
+    const mdd = parseFloat(document.getElementById('crmMdd').value) || 20;
+    if (basePrice <= 0) { showToast('새 basePrice를 입력하세요'); return; }
+
+    const totalUSD = getTotalEquityUSD();
+    const allocPct = d.config.alloc || 30;
+    const allocTotal = totalUSD * (allocPct / 100);
+    const holdValue = (d.qty || 0) * (d.avgPrice || 0);
+    const available = Math.max(0, allocTotal - holdValue);
+
+    const gap = stages > 1 ? mdd / (stages - 1) : 0;
+    const drops = [];
+    for (let i = 0; i < stages; i++) drops.push(parseFloat(-(gap * i).toFixed(2)));
+    const weights = Array(stages).fill(Math.floor(100 / stages));
+    for (let i = 0; i < (100 % stages); i++) weights[i]++;
+
+    d.config.basePrice = basePrice;
+    d.config.stages = stages;
+    d.config.mdd = mdd;
+    d.config.drops = drops;
+    d.config.weights = weights;
+    d.config.cycleAvailableUSD = available;
+
+    if (typeof d.cycleSeq !== 'number') d.cycleSeq = 0;
+    d.cycleSeq = (d.cycleSeq || 0) + 1;
+    d.currentCycleId = d.cycleSeq;
+
+    saveAll();
+    closeCycleResetModal();
+    loadTickerData(activeTicker);
+    showToast('사이클 리셋 완료 — 가용자금 $' + available.toFixed(2));
+}
+
 function renderStageInputs() {
     const stages = parseInt(document.getElementById('configStages').value) || 4;
     const c = document.getElementById('stageConfigContainer');
@@ -2491,10 +2608,13 @@ function calculatePlan() {
     const stages = parseInt(document.getElementById('configStages').value) || 4;
     const drops = d.config.drops || [];
     const weights = d.config.weights || [];
-    const allocPct = d.config.alloc || 30; 
+    const allocPct = d.config.alloc || 30;
     const basePrice = parseFloat(document.getElementById('planBasePrice').value) || 0;
     const totalEquityUSD = getTotalEquityUSD();
-    const investMoney = totalEquityUSD * (allocPct/100);
+    // 사이클 리셋 후에는 cycleAvailableUSD 사용 (보유분 제외한 가용자금)
+    const investMoney = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD > 0)
+        ? d.config.cycleAvailableUSD
+        : totalEquityUSD * (allocPct/100);
     const boosterOn = d.config.boosterOn === true;
     const boosterStages = Math.max(0, parseInt(d.config.boosterStages) || 0);
     const boosterAllocPct = parseFloat(d.config.boosterAllocPct) || 0;
@@ -2727,12 +2847,12 @@ function autoFillTrade() {
         const idx = parseInt(stageStr, 10) - 1;
         if (idx < 0 || idx > 2) return;
         const plans = d.config.sellPlans || [];
-        const p = plans[idx] || { targetPct: 10, sellRatio: 50 };
-        const targetPct = parseFloat(p.targetPct) || 10;
+        const p = plans[idx] || { targetPct: 5, sellRatio: 50 };
+        const targetPct = parseFloat(p.targetPct) || 5;
         const sellRatio = parseFloat(p.sellRatio) || 50;
         const avg = d.avgPrice || 0;
         const holding = d.qty || 0;
-        const price = avg * (1 + targetPct / 100);
+        const price = calcSellTargetPrice(avg, targetPct);
         const qty = Math.floor(holding * sellRatio / 100);
         document.getElementById('tradePrice').value = price.toFixed(2);
         document.getElementById('tradeQty').value = qty;
@@ -2751,7 +2871,9 @@ function autoFillTrade() {
             const idx = stageNum - 1;
             if (idx >= d.config.drops.length || !d.config.weights) return;
             const totalUSD = getTotalEquityUSD();
-            const investable = totalUSD * ((d.config.alloc || 30) / 100);
+            const investable = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD > 0)
+                ? d.config.cycleAvailableUSD
+                : totalUSD * ((d.config.alloc || 30) / 100);
             const drop = d.config.drops[idx];
             const weight = (d.config.weights[idx] != null) ? d.config.weights[idx] : (100 / stages);
             price = base * (1 + drop / 100);
@@ -2867,6 +2989,7 @@ function submitTrade() {
     // 전량 매도 등으로 보유수량 0이 되면 사이클 종료 처리
     if ((d.qty || 0) <= 0) {
         d.currentCycleId = null;
+        d.config.cycleAvailableUSD = null;
     }
     saveAll();
     loadTickerData(activeTicker);
@@ -3337,6 +3460,17 @@ function openNewsModal() {
     }
 }
 function closeNewsModal() { document.getElementById('newsModal').classList.add('hidden'); document.getElementById('newsModal').classList.remove('flex'); }
+// 매도 목표가: 순수익률 기준 → 수수료(매수+매도, useSec 옵션 시 SEC 수수료 추가) 보정한 실제 매도 호가
+function calcSellTargetPrice(avgPrice, targetNetPct) {
+    const baseRate = (globalData && globalData.feeRate ? globalData.feeRate : 0) / 100;
+    const useSec = !!(globalData && globalData.useSec);
+    const buyFee = baseRate;
+    const sellFee = baseRate + (useSec ? 0.0000229 : 0);
+    const denom = 1 - sellFee;
+    if (denom <= 0) return avgPrice * (1 + (targetNetPct || 0) / 100);
+    return avgPrice * (1 + (targetNetPct || 0) / 100) * (1 + buyFee) / denom;
+}
+
 function renderSellPlan() {
     const d = portfolios[activeTicker];
     const panel = document.getElementById('sellPlanPanel');
@@ -3346,10 +3480,12 @@ function renderSellPlan() {
         const plans = d.config.sellPlans || [];
         for (let i = 1; i <= 3; i++) {
             const p = plans[i - 1] || {};
-            const targetPct = parseFloat(p.targetPct) || (i === 1 ? 10 : (i === 2 ? 15 : 20));
-            const targetPrice = d.avgPrice * (1 + targetPct / 100);
+            const targetPct = parseFloat(p.targetPct) || (i === 1 ? 5 : (i === 2 ? 10 : 15));
+            const targetPrice = calcSellTargetPrice(d.avgPrice, targetPct);
             const el = document.getElementById('sellTargetPrice' + i);
             if (el) el.innerText = '$' + targetPrice.toFixed(2);
+            const lbl = document.getElementById('sellTargetLabel' + i);
+            if (lbl) lbl.innerText = i + '차 목표가 (순익 +' + targetPct + '%)';
         }
 
         // MA200 TREND 이탈가 (MARKET_SNAPSHOT 우선, portfolios.marketData 폴백)
@@ -3385,13 +3521,16 @@ function renderSellPlan() {
                 }
             }
 
-            // 3. 목표 수익률 도달
+            // 3. 목표 수익률 도달 (순익 기준 — 수수료 보정된 실제 매도가와 현재가 비교)
             if (d.avgPrice > 0 && md.price > 0) {
                 var currentPnl = (md.price - d.avgPrice) / d.avgPrice * 100;
                 (plans || []).forEach(function(p, i) {
                     var tgt = parseFloat(p.targetPct) || 0;
-                    if (tgt > 0 && currentPnl >= tgt) {
-                        alerts.push({level:'green', icon:'fa-bullseye', text:(i+1) + '차 익절 목표 +' + tgt + '% 도달!', desc:'현재 수익률: +' + currentPnl.toFixed(1) + '% / 매도 비중: ' + (p.sellRatio||50) + '%'});
+                    if (tgt > 0) {
+                        var tgtPrice = calcSellTargetPrice(d.avgPrice, tgt);
+                        if (md.price >= tgtPrice) {
+                            alerts.push({level:'green', icon:'fa-bullseye', text:(i+1) + '차 익절 목표 도달! (순익 +' + tgt + '%)', desc:'현재가 $' + md.price.toFixed(2) + ' ≥ 목표가 $' + tgtPrice.toFixed(2) + ' / 매도 비중: ' + (p.sellRatio||50) + '%'});
+                        }
                     }
                 });
                 if (md.rsi > 70) alerts.push({level:'yellow', icon:'fa-chart-line', text:'RSI ' + md.rsi.toFixed(0) + ' 과매수 — 부분 익절 고려', desc:''});
@@ -3420,7 +3559,7 @@ function updateSellPlan() {
     for (let i = 1; i <= 3; i++) {
         const pe = document.getElementById('sellTargetPct' + i);
         const re = document.getElementById('sellTargetRatio' + i);
-        const targetPct = pe ? parseFloat(pe.value) : (i === 1 ? 10 : (i === 2 ? 15 : 20));
+        const targetPct = pe ? parseFloat(pe.value) : (i === 1 ? 5 : (i === 2 ? 10 : 15));
         const sellRatio = re ? parseFloat(re.value) : (i === 3 ? 100 : 50);
         d.config.sellPlans[i - 1] = { targetPct, sellRatio };
     }
