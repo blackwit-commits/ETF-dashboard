@@ -338,9 +338,8 @@ export default {
       }
       try {
         const symbols = parseBriefSymbols(url.searchParams.get("symbols") || env.WATCH_TICKERS);
-        const text = await buildMarketBriefing(env, symbols);
-        const tg = await sendTelegram(env, text);
-        return new Response(JSON.stringify({ ok: tg.ok, desc: tg.description || "", sent: text.substring(0, 300) }), { headers: jsonHeaders });
+        const tg = await pushBriefing(env, symbols);
+        return new Response(JSON.stringify({ ok: tg.ok, desc: tg.description || "" }), { headers: jsonHeaders });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
       }
@@ -355,8 +354,7 @@ export default {
     ctx.waitUntil((async () => {
       try {
         const symbols = parseBriefSymbols(env.WATCH_TICKERS);
-        const text = await buildMarketBriefing(env, symbols);
-        await sendTelegram(env, text);
+        await pushBriefing(env, symbols);
       } catch (e) { /* 실패는 조용히 무시 — 다음 트리거에 재시도 */ }
     })());
   },
@@ -457,13 +455,14 @@ async function getHoldingsBrief(env, symbols) {
   return out;
 }
 
-// 텔레그램 마켓 브리핑 본문 생성
+// 텔레그램 마켓 브리핑 본문 생성 → { text, chartUrl }
 async function buildMarketBriefing(env, symbols) {
   const [snap, hot] = await Promise.all([
     fetchMarketSnapshot(),
-    env.GEMINI_API_KEY ? callGeminiHotIssues(env.GEMINI_API_KEY).catch(() => ({ items: [] })) : Promise.resolve({ items: [] })
+    env.GEMINI_API_KEY ? callGeminiHotIssues(env.GEMINI_API_KEY, symbols).catch(() => ({ items: [] })) : Promise.resolve({ items: [] })
   ]);
   const holdings = await getHoldingsBrief(env, symbols).catch(() => []);
+  const analysis = (hot && hot.holdings_analysis && typeof hot.holdings_analysis === "object") ? hot.holdings_analysis : {};
 
   let t = `🔥 <b>UMT 마켓 브리핑</b>\n📅 ${tgEscape(kstStamp())}\n\n`;
 
@@ -512,14 +511,17 @@ async function buildMarketBriefing(env, symbols) {
     t += "\n";
   }
 
-  // 보유 종목 (가격·등락률 + 감성 + 최신 뉴스 + 날짜)
+  // 보유 종목 (가격·등락률 + 감성 + 한국어 등락 이유)
   if (holdings.length) {
     t += "📌 <b>보유 종목</b>\n";
     holdings.forEach(h => {
       const lab = sentLabel(h.score);
       const px = h.quote ? ` $${h.quote.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} (${fmtChg(h.quote.chg)})` : "";
       t += `<b>${tgEscape(h.ticker)}</b>${tgEscape(px)}${lab ? " " + lab : ""}\n`;
-      if (h.news && h.news.headline) {
+      const reason = analysis[h.ticker];
+      if (reason) {
+        t += `  ↳ ${tgEscape(String(reason))}\n`;
+      } else if (h.news && h.news.headline) {
         const dt = unixToKstDate(h.news.datetime);
         t += `  ↳ ${tgEscape(h.news.headline.substring(0, 90))} <i>(${tgEscape(h.news.source)}${dt ? ", " + dt : ""})</i>\n`;
       }
@@ -542,7 +544,40 @@ async function buildMarketBriefing(env, symbols) {
       t += "\n";
     });
   }
-  return t.trim();
+
+  const chartUrl = buildSnapshotChartUrl(snap, holdings);
+  return { text: t.trim(), chartUrl };
+}
+
+// 시장 스냅샷 + 보유종목 당일 등락률 막대 차트 (QuickChart, 무료). 한국식: 상승=빨강, 하락=파랑
+function buildSnapshotChartUrl(snap, holdings) {
+  const rows = [];
+  if (snap.sp) rows.push(["S&P500", snap.sp.chg]);
+  if (snap.ndx) rows.push(["NASDAQ", snap.ndx.chg]);
+  if (snap.vix) rows.push(["VIX", snap.vix.chg]);
+  (holdings || []).forEach(h => { if (h.quote) rows.push([h.ticker, h.quote.chg]); });
+  if (!rows.length) return null;
+  const labels = rows.map(r => r[0]);
+  const data = rows.map(r => Math.round(r[1] * 100) / 100);
+  const colors = data.map(v => v >= 0 ? "#ef4444" : "#3b82f6");
+  const config = {
+    type: "bar",
+    data: { labels, datasets: [{ data, backgroundColor: colors }] },
+    options: {
+      indexAxis: "y",
+      plugins: {
+        legend: { display: false },
+        title: { display: true, text: "당일 등락률 (%)", color: "#e2e8f0", font: { size: 16 } },
+        datalabels: { anchor: "end", align: "end", color: "#e2e8f0", formatter: (v) => (v >= 0 ? "+" : "") + v + "%" }
+      },
+      scales: {
+        x: { grid: { color: "#334155" }, ticks: { color: "#94a3b8" } },
+        y: { grid: { display: false }, ticks: { color: "#e2e8f0", font: { size: 13 } } }
+      }
+    }
+  };
+  const c = encodeURIComponent(JSON.stringify(config));
+  return `https://quickchart.io/chart?bkg=%230f172a&w=520&h=${120 + rows.length * 42}&v=4&c=${c}`;
 }
 
 // 텔레그램 HTML 모드 이스케이프 (& < > 만)
@@ -569,6 +604,42 @@ async function sendTelegram(env, text) {
     })
   });
   return await resp.json();
+}
+
+// 긴 본문을 4096자 한도에 맞춰 여러 메시지로 분할 전송 (문단 경계 기준)
+async function sendTelegramChunks(env, text) {
+  const LIMIT = 3800;
+  const paras = text.split("\n\n");
+  const chunks = [];
+  let buf = "";
+  for (const p of paras) {
+    if ((buf + "\n\n" + p).length > LIMIT && buf) { chunks.push(buf); buf = p; }
+    else { buf = buf ? buf + "\n\n" + p : p; }
+  }
+  if (buf) chunks.push(buf);
+  let last = { ok: true };
+  for (const c of chunks) { last = await sendTelegram(env, c); }
+  return last;
+}
+
+// 차트 이미지 전송 (QuickChart URL). 실패해도 흐름 유지
+async function sendTelegramPhoto(env, photoUrl, caption) {
+  try {
+    const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN.trim()}/sendPhoto`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID.trim(), photo: photoUrl, caption: caption || "", parse_mode: "HTML" })
+    });
+    return await resp.json();
+  } catch (e) { return { ok: false }; }
+}
+
+// 브리핑 빌드 + 전송 (차트 이미지 먼저, 본문은 분할 전송)
+async function pushBriefing(env, symbols) {
+  const { text, chartUrl } = await buildMarketBriefing(env, symbols);
+  if (chartUrl) await sendTelegramPhoto(env, chartUrl, "📊 <b>시장 스냅샷</b> · 당일 등락률");
+  return await sendTelegramChunks(env, text);
 }
 
 // --- Gemini Flash 2.5 매크로 분석 ---
@@ -810,12 +881,16 @@ function salvageItems(text) {
   return out;
 }
 
-async function callGeminiHotIssues(apiKey) {
+async function callGeminiHotIssues(apiKey, symbols = []) {
+  // 보유 종목이 주어지면 종목별 '오늘 등락 이유'를 한국어로 분석하도록 프롬프트에 주입
+  const prompt = HOT_PROMPT + (symbols && symbols.length
+    ? `\n\n추가 작업: 다음 보유 종목 각각에 대해 '오늘(또는 최근 거래일) 주가가 오른/내린 이유'를 한국어 1~2문장으로 명확히 분석해, 최상위 "holdings_analysis" 객체에 {"<티커>":"<상승 또는 하락 + 핵심 원인>"} 형태로 포함하세요. 방향(상승/하락)을 반드시 밝히고 구체적 원인을 쓰세요. 대상 종목: ${symbols.join(", ")}`
+    : "");
   let lastErr = "unknown";
   for (let attempt = 0; attempt < 2; attempt++) {
     const data = await callGeminiWithFallback(apiKey, {
       system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never output text, markdown, or explanations. Inside string values, never use double quotes." }] },
-      contents: [{ parts: [{ text: HOT_PROMPT }] }],
+      contents: [{ parts: [{ text: prompt }] }],
       tools: [{ google_search: {} }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 10000 },
     });
