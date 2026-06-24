@@ -3541,6 +3541,9 @@ function renderTradeLog() {
         return Object.assign({}, h, { tagLabel: getTagLabel(h.tag), memoText: h.memo || '', planVsResult: planVs });
     });
 
+    // 사이클(매수→매도) 요약 렌더
+    renderCycleSummary(filtered);
+
     var cardList = document.getElementById('tradelogCardList');
     if (!cardList) return;
     cardList.innerHTML = '';
@@ -3568,17 +3571,29 @@ function renderTradeLog() {
         var parts = monthKey.split('-');
         var monthLabel = parts[0] + '년 ' + parseInt(parts[1]) + '월';
 
-        // 월별 매수/매도 요약
+        // 월별 매수/매도 요약 + 그 달 승률·평균수익률
         var buyCount = 0, sellCount = 0, totalAmount = 0;
+        var mWins = 0, mSells = 0, mSum = 0;
         items.forEach(function(item) {
-            if (item.row.type === 'BUY') buyCount++;
-            else if (item.row.type === 'SELL') sellCount++;
-            if (item.row.total) totalAmount += Math.abs(item.row.total);
+            var r = item.row;
+            if (r.type === 'BUY') buyCount++;
+            else if (r.type === 'SELL') {
+                sellCount++;
+                if (r.returnPct != null && !isNaN(r.returnPct)) { mSells++; mSum += r.returnPct; if (r.returnPct > 0) mWins++; }
+            }
+            if (r.total) totalAmount += Math.abs(r.total);
         });
         var summary = [];
         if (buyCount) summary.push('매수 ' + buyCount);
         if (sellCount) summary.push('매도 ' + sellCount);
         summary.push('$' + Math.round(totalAmount).toLocaleString());
+        var monthReviewHtml = '';
+        if (mSells > 0) {
+            var mWinRate = (mWins / mSells) * 100;
+            var mAvg = mSum / mSells;
+            var avgCol = mAvg >= 0 ? 'text-red-400' : 'text-blue-400';
+            monthReviewHtml = '<div class="text-[10px] text-slate-500 px-1 mt-1">📊 이 달 승률 <span class="text-slate-300 font-bold">' + mWinRate.toFixed(0) + '%</span> · 평균 <span class="' + avgCol + ' font-bold">' + (mAvg >= 0 ? '+' : '') + mAvg.toFixed(2) + '%</span> (매도 ' + mSells + '건)</div>';
+        }
 
         var monthId = 'tradeMonth' + mi;
 
@@ -3594,6 +3609,7 @@ function renderTradeLog() {
             + '<span class="text-[10px] text-slate-500 font-bold">' + items.length + '건</span>'
             + '<i class="fa-solid fa-chevron-down text-[10px] text-slate-500 transition-transform" id="' + monthId + 'Chev" style="' + (isOpen ? '' : 'transform:rotate(-90deg)') + '"></i>'
             + '</div></button>'
+            + monthReviewHtml
             + '<div class="space-y-2 mt-2 ' + (isOpen ? '' : 'hidden') + '" id="' + monthId + '">';
 
         items.forEach(function(item) {
@@ -3660,6 +3676,81 @@ function openTradeLogDetailModal(title, content) {
     if (titleEl) titleEl.textContent = title;
     if (contentEl) contentEl.textContent = content || '—';
     if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+}
+
+// 사이클(매수→매도) 요약 — 종목+사이클별 평균 진입/청산·보유기간·실현손익
+function renderCycleSummary(trades) {
+    var panel = document.getElementById('tradelogCycleSummary');
+    var body = document.getElementById('cycleSummaryBody');
+    if (!panel || !body) return;
+
+    var groups = {};
+    (trades || []).forEach(function(t) {
+        if (t.type !== 'BUY' && t.type !== 'SELL') return; // 배당 제외
+        var cid = (t.cycleId != null && t.cycleId !== '') ? String(t.cycleId) : '0';
+        var key = t.sym + '|' + cid;
+        if (!groups[key]) groups[key] = { sym: t.sym, cycleId: cid, buys: [], sells: [], dates: [] };
+        if (t.type === 'BUY') groups[key].buys.push(t); else groups[key].sells.push(t);
+        if (t.date) groups[key].dates.push(t.date);
+    });
+    var keys = Object.keys(groups);
+    if (!keys.length) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+
+    var sumQC = function(arr) {
+        var q = 0, c = 0;
+        arr.forEach(function(t) { var qty = Number(t.qty) || 0; var tot = (t.total != null && !isNaN(t.total)) ? Math.abs(Number(t.total)) : (Number(t.price) || 0) * qty; q += qty; c += tot; });
+        return { qty: q, cost: c };
+    };
+    var todayStr = new Date().toISOString().slice(0, 10);
+
+    var cards = keys.map(function(key) {
+        var g = groups[key];
+        var b = sumQC(g.buys), s = sumQC(g.sells);
+        var avgBuy = b.qty ? b.cost / b.qty : 0;
+        var avgSell = s.qty ? s.cost / s.qty : 0;
+        var openQty = b.qty - s.qty;
+        var closed = openQty <= 0.0001 && s.qty > 0;
+        var dates = g.dates.slice().sort();
+        var firstDate = dates[0] || '';
+        var lastDate = dates[dates.length - 1] || '';
+        var realized = (s.qty && avgBuy) ? (s.cost - avgBuy * s.qty) : null;
+        var realizedPct = (avgBuy && s.qty) ? ((avgSell - avgBuy) / avgBuy) * 100 : null;
+        var endDate = closed ? lastDate : todayStr;
+        var days = '';
+        if (firstDate) { var dd = Math.round((new Date(endDate) - new Date(firstDate)) / 86400000); if (!isNaN(dd) && dd >= 0) days = dd + '일'; }
+        return { g: g, b: b, s: s, avgBuy: avgBuy, avgSell: avgSell, openQty: openQty, closed: closed, firstDate: firstDate, lastDate: lastDate, realized: realized, realizedPct: realizedPct, days: days };
+    });
+    cards.sort(function(a, b) {
+        if (a.closed !== b.closed) return a.closed ? 1 : -1; // 보유중 먼저
+        return (b.lastDate || '').localeCompare(a.lastDate || '');
+    });
+
+    body.innerHTML = cards.map(function(c) {
+        var statusBadge = c.closed
+            ? '<span class="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-bold">종료</span>'
+            : '<span class="text-[9px] bg-emerald-900/50 text-emerald-300 px-1.5 py-0.5 rounded font-bold">보유중</span>';
+        var cidLabel = c.g.cycleId === '0' ? '' : '<span class="text-[10px] text-purple-300 font-bold">#' + escapeHtml(c.g.cycleId) + '</span>';
+        var pnlHtml;
+        if (c.realizedPct != null && c.s.qty) {
+            var col = c.realizedPct >= 0 ? 'text-red-400' : 'text-blue-400';
+            var amt = c.realized != null ? ((c.realized >= 0 ? '+$' : '-$') + Math.abs(Math.round(c.realized)).toLocaleString()) : '';
+            pnlHtml = '<div class="text-right"><div class="font-black ' + col + '">' + (c.realizedPct >= 0 ? '+' : '') + c.realizedPct.toFixed(2) + '%</div><div class="text-[10px] ' + col + '">' + amt + (c.openQty > 0.0001 ? ' (일부)' : '') + '</div></div>';
+        } else {
+            pnlHtml = '<div class="text-right text-[10px] text-slate-500">미실현</div>';
+        }
+        var line2 = '매수 ' + Math.round(c.b.qty) + '주 @ $' + c.avgBuy.toFixed(2)
+            + (c.s.qty ? '  →  매도 ' + Math.round(c.s.qty) + '주 @ $' + c.avgSell.toFixed(2) : '')
+            + (c.openQty > 0.0001 ? '  · 잔여 ' + Math.round(c.openQty) + '주' : '');
+        var period = c.firstDate + (c.lastDate && c.lastDate !== c.firstDate ? ' ~ ' + c.lastDate : '');
+        return '<div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50">'
+            + '<div class="flex items-center justify-between mb-1">'
+            + '<div class="flex items-center gap-2"><span class="font-black text-white">' + escapeHtml(c.g.sym) + '</span>' + cidLabel + statusBadge + '</div>'
+            + pnlHtml + '</div>'
+            + '<div class="text-[11px] text-slate-300">' + line2 + '</div>'
+            + '<div class="text-[10px] text-slate-500 mt-0.5"><i class="fa-regular fa-clock mr-1"></i>' + period + (c.days ? ' (' + c.days + ')' : '') + '</div>'
+            + '</div>';
+    }).join('');
 }
 
 // 매매일지 상세 — 포맷팅된 거래 카드 (체결/계획대비/분류/메모)
