@@ -375,6 +375,113 @@ function renderWeeklyReport(data) {
     content.innerHTML = html;
 }
 
+// ==========================================
+// 🔥 실시간 핫이슈 (Gemini 그라운딩)
+// ==========================================
+var HOT_CACHE_KEY = 'umt_hot_cache';
+var HOT_CACHE_TTL = 30 * 60 * 1000; // 30분
+
+function loadHotFromCache() {
+    var raw = localStorage.getItem(HOT_CACHE_KEY);
+    if (!raw) return null;
+    try {
+        var cached = JSON.parse(raw);
+        if (!cached || !cached._cachedAt) return null;
+        if (Date.now() - cached._cachedAt > HOT_CACHE_TTL) return null;
+        return cached;
+    } catch(e) { return null; }
+}
+
+function startHotIssues() {
+    var list = document.getElementById('hotIssuesList');
+    if (list) list.classList.remove('hidden');
+    if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>최신 핫이슈 수집 중... (약 30초)</div>';
+    var chev = document.getElementById('hotChev'); if (chev) chev.className = 'fa-solid fa-chevron-up mr-1';
+    var btn = document.getElementById('hotToggleBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-chevron-up mr-1" id="hotChev"></i>접기';
+
+    fetch(API_BASE_URL + '/hot', { signal: AbortSignal.timeout ? AbortSignal.timeout(90000) : undefined })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+        if (data.error) throw new Error(data.error);
+        data._cachedAt = Date.now();
+        localStorage.setItem(HOT_CACHE_KEY, JSON.stringify(data));
+        renderHotIssues(data);
+    })
+    .catch(function(e) {
+        if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i>핫이슈 수집 실패: ' + escapeHtml(e.message).substring(0, 80) + '<br><button onclick="startHotIssues()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
+    });
+}
+
+function renderHotIssues(data) {
+    var list = document.getElementById('hotIssuesList');
+    if (!list) return;
+    var items = (data && Array.isArray(data.items)) ? data.items : [];
+    if (!items.length) {
+        list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">표시할 핫이슈가 없습니다</div>';
+        return;
+    }
+
+    var catMeta = {
+        trump:      {label:'트럼프',   icon:'fa-comment-dots', color:'text-orange-400'},
+        fed:        {label:'연준',     icon:'fa-building-columns', color:'text-emerald-400'},
+        geopolitics:{label:'지정학',   icon:'fa-earth-americas', color:'text-rose-400'},
+        market:     {label:'시장',     icon:'fa-chart-line', color:'text-blue-400'},
+        earnings:   {label:'실적',     icon:'fa-sack-dollar', color:'text-yellow-400'},
+        policy:     {label:'정책',     icon:'fa-landmark', color:'text-purple-400'}
+    };
+    var sevBorder = {high:'border-l-red-500', medium:'border-l-yellow-500', low:'border-l-slate-600'};
+    var dirMeta = {bullish:{t:'▲ 호재',c:'text-red-400'}, bearish:{t:'▼ 악재',c:'text-blue-400'}, neutral:{t:'중립',c:'text-slate-400'}};
+
+    var html = '';
+    items.forEach(function(it) {
+        var cm = catMeta[it.category] || {label:'뉴스', icon:'fa-newspaper', color:'text-slate-400'};
+        var dm = dirMeta[it.direction] || dirMeta.neutral;
+        var tickers = Array.isArray(it.tickers) ? it.tickers.filter(Boolean) : [];
+        html += '<div class="glass-panel rounded-xl p-3 border-l-4 ' + (sevBorder[it.severity] || 'border-l-slate-600') + '">'
+            + '<div class="flex items-center justify-between mb-1">'
+            +   '<div class="flex items-center gap-1.5 text-[10px] font-bold ' + cm.color + '"><i class="fa-solid ' + cm.icon + '"></i>' + cm.label
+            +     '<span class="text-slate-600 font-normal">· ' + escapeHtml(it.source || '') + '</span></div>'
+            +   '<span class="text-[9px] text-slate-500">' + escapeHtml(it.time || '') + '</span>'
+            + '</div>'
+            + '<div class="text-[12px] font-bold text-white leading-snug mb-1">' + escapeHtml(it.title || '') + '</div>';
+        if (it.quote) {
+            html += '<div class="text-[11px] text-slate-300 italic border-l-2 border-slate-600 pl-2 my-1.5">“' + escapeHtml(it.quote) + '”</div>';
+        }
+        html += '<div class="text-[11px] text-slate-400 leading-relaxed">' + escapeHtml(it.summary || '') + '</div>'
+            + '<div class="flex items-center justify-between mt-2 flex-wrap gap-1">'
+            +   '<div class="flex items-center gap-1.5 flex-wrap">'
+            +     '<span class="text-[9px] font-bold ' + dm.c + '">' + dm.t + '</span>';
+        tickers.forEach(function(t) {
+            html += '<span class="text-[9px] font-bold text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded">' + escapeHtml(t) + '</span>';
+        });
+        html += '</div>';
+        if (it.url) {
+            html += '<a href="' + encodeURI(it.url) + '" target="_blank" rel="noopener" class="text-[9px] text-blue-400 hover:text-blue-300 font-bold"><i class="fa-solid fa-arrow-up-right-from-square mr-0.5"></i>출처</a>';
+        }
+        html += '</div></div>';
+    });
+
+    // 생성 시간
+    if (data._cachedAt) {
+        var mins = Math.round((Date.now() - data._cachedAt) / 60000);
+        var timeStr = mins < 1 ? '방금' : (mins < 60 ? (mins + '분 전') : (Math.round(mins / 60) + '시간 전'));
+        var te = document.getElementById('hotIssuesTime');
+        if (te) te.innerText = timeStr + ' 업데이트';
+    }
+
+    list.innerHTML = html;
+}
+
+function toggleHotIssues() {
+    var list = document.getElementById('hotIssuesList');
+    var chev = document.getElementById('hotChev');
+    var btn = document.getElementById('hotToggleBtn');
+    if (!list) return;
+    var isHidden = list.classList.toggle('hidden');
+    if (chev) { chev.className = isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1'; }
+    if (btn) { btn.innerHTML = '<i class="' + (isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1') + '"></i>' + (isHidden ? '펼치기' : '접기'); }
+}
+
 function getCurrentQuad() {
     if (MACRO_DATA && MACRO_DATA.quad) return MACRO_DATA.quad.current;
     return null;
@@ -607,6 +714,10 @@ function initApp() {
         // 6. 주간 리포트 캐시 로드
         var cachedWeekly = loadWeeklyFromCache();
         if (cachedWeekly) renderWeeklyReport(cachedWeekly);
+
+        // 7. 핫이슈 캐시 로드 (30분 TTL, 없으면 버튼 대기)
+        var cachedHot = loadHotFromCache();
+        if (cachedHot) renderHotIssues(cachedHot);
 
     } catch(err) {
         console.error("Init Error:", err);

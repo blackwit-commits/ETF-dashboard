@@ -229,6 +229,25 @@ export default {
       }
     }
 
+    // 6. 실시간 핫이슈 브리핑 (/hot) - Gemini Flash 2.5 + Google Search Grounding
+    if (path === "/hot") {
+      if (!env.GEMINI_API_KEY) {
+        return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+      try {
+        const hotResult = await callGeminiHotIssues(env.GEMINI_API_KEY);
+        return new Response(JSON.stringify(hotResult), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), {
+          status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+    }
+
     return new Response("UMT API Worker is Running", { headers: corsHeaders });
   },
 };
@@ -393,6 +412,68 @@ async function callGeminiWeeklyReport(apiKey) {
     }
     try { result = JSON.parse(fixed); } catch { throw new Error(parseErr.message); }
   }
+  if (!result.timestamp) result.timestamp = new Date().toISOString();
+  return result;
+}
+
+// --- 실시간 핫이슈 브리핑 ---
+
+const HOT_PROMPT = `당신은 글로벌 매크로/시장 속보 큐레이터입니다. Google 검색으로 "최근 24시간 이내" 시장을 움직인 발언·뉴스·이벤트를 수집하세요. 모든 텍스트 값은 한국어로 작성합니다.
+
+수집 우선순위:
+1. 트럼프 대통령의 발언/포스팅 (관세, 연준, 무역, 지정학 등 시장 영향)
+2. 연준(Fed) 인사 발언, FOMC, 금리 관련 코멘트
+3. 지정학 이벤트 (전쟁, 분쟁, 제재, 선거)
+4. 블룸버그/로이터/CNBC 등 주요 매체의 시장 영향 헤드라인
+5. 주요 빅테크/대형주 실적·뉴스
+
+CRITICAL: 오직 유효한 JSON만 출력하세요. 마크다운/설명/사과 없이 { 로 시작해 } 로 끝나야 합니다.
+
+JSON 스키마:
+{"items":[{"category":"<trump|fed|geopolitics|market|earnings|policy>","source":"<출처 매체/인물>","time":"<상대 시간, 예: 2시간 전 / 오늘 오전>","severity":"<high|medium|low>","title":"<한글 제목>","summary":"<한글 2~3문장 요약>","quote":"<핵심 원문 발언 한 줄, 없으면 빈 문자열>","tickers":["<영향 받는 미국 티커>"],"direction":"<bullish|bearish|neutral>","url":"<실제 출처 URL>"}],"timestamp":"<ISO8601>"}
+
+규칙: items 6~8개, 최근 24시간 우선, severity 높은 순+최신 순 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.`;
+
+// Gemini 텍스트 응답에서 JSON 추출 + 불완전 JSON 복구 (공유 헬퍼)
+function parseGeminiJson(textContent) {
+  let jsonStr = textContent.trim();
+  if (jsonStr.startsWith("```")) jsonStr = jsonStr.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+  // 문자열 값 안의 raw 제어문자(줄바꿈/탭 등)로 인한 파싱 실패 방지 — JSON 구조 공백은 무해
+  jsonStr = jsonStr.replace(/[\u0000-\u001F]/g, " ");
+  try {
+    return JSON.parse(jsonStr);
+  } catch (parseErr) {
+    let fixed = jsonStr;
+    const lastQuote = fixed.lastIndexOf('"');
+    const afterLast = fixed.substring(lastQuote + 1).trim();
+    if (afterLast === '' || afterLast.match(/^[^"\]}]*$/)) fixed = fixed.substring(0, lastQuote + 1);
+    const opens = (fixed.match(/[\[{]/g) || []).length;
+    const closes = (fixed.match(/[\]}]/g) || []).length;
+    for (let i = 0; i < opens - closes; i++) {
+      const lastOpen = Math.max(fixed.lastIndexOf('['), fixed.lastIndexOf('{'));
+      fixed += fixed[lastOpen] === '[' ? ']' : '}';
+    }
+    return JSON.parse(fixed); // 실패 시 호출부에서 처리
+  }
+}
+
+async function callGeminiHotIssues(apiKey) {
+  const data = await callGeminiWithFallback(apiKey, {
+    system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never output text, markdown, or explanations." }] },
+    contents: [{ parts: [{ text: HOT_PROMPT }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.3, maxOutputTokens: 8000 },
+  });
+  let textContent = "";
+  const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+  if (parts) { for (const part of parts) { if (part.text) textContent += part.text; } }
+  if (!textContent) throw new Error("No text content in Gemini hot response: " + JSON.stringify(data).substring(0, 300));
+
+  let result;
+  try { result = parseGeminiJson(textContent); }
+  catch (e) { throw new Error("Hot JSON parse failed: " + e.message + " | Raw: " + textContent.substring(0, 400)); }
+
+  if (!Array.isArray(result.items)) result.items = [];
   if (!result.timestamp) result.timestamp = new Date().toISOString();
   return result;
 }
