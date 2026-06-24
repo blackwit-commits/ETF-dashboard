@@ -513,20 +513,24 @@ async function buildMarketBriefing(env, symbols) {
 
   // 보유 종목 (가격·등락률 + 감성 + 한국어 등락 이유)
   if (holdings.length) {
-    t += "📌 <b>보유 종목</b>\n";
+    t += "📌 <b>보유 종목</b>\n\n";
     holdings.forEach(h => {
+      const chg = h.quote ? h.quote.chg : null;
+      const dir = chg == null ? "▪️" : (chg >= 0 ? "🔴" : "🔵");
+      const arrow = chg == null ? "" : (chg >= 0 ? " ▲" : " ▼");
+      const px = h.quote ? `${arrow} ${fmtChg(chg)}  ·  $${h.quote.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "";
+      t += `${dir} <b>${tgEscape(h.ticker)}</b>  ${tgEscape(px)}\n`;
       const lab = sentLabel(h.score);
-      const px = h.quote ? ` $${h.quote.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} (${fmtChg(h.quote.chg)})` : "";
-      t += `<b>${tgEscape(h.ticker)}</b>${tgEscape(px)}${lab ? " " + lab : ""}\n`;
+      if (lab) t += `   뉴스 감성: ${lab}\n`;
       const reason = analysis[h.ticker];
       if (reason) {
-        t += `  ↳ ${tgEscape(String(reason))}\n`;
+        t += `   ↳ ${tgEscape(String(reason))}\n`;
       } else if (h.news && h.news.headline) {
         const dt = unixToKstDate(h.news.datetime);
-        t += `  ↳ ${tgEscape(h.news.headline.substring(0, 90))} <i>(${tgEscape(h.news.source)}${dt ? ", " + dt : ""})</i>\n`;
+        t += `   ↳ ${tgEscape(h.news.headline.substring(0, 90))} <i>(${tgEscape(h.news.source)}${dt ? ", " + dt : ""})</i>\n`;
       }
+      t += "\n";
     });
-    t += "\n";
   }
 
   // 핫이슈 (상세 요약 포함 — 흐름 파악용)
