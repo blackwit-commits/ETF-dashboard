@@ -586,19 +586,18 @@ function buildSectorChartUrl(sectors) {
     type: "bar",
     data: { labels, datasets: [{ data, backgroundColor: colors }] },
     options: {
-      indexAxis: "y",
       plugins: {
         legend: { display: false },
         title: { display: true, text: "섹터 당일 등락률 (%)", color: "#e2e8f0", font: { size: 16 } },
-        datalabels: { anchor: "end", align: "end", color: "#e2e8f0", formatter: (v) => (v >= 0 ? "+" : "") + v + "%" }
+        datalabels: { anchor: "end", align: "top", color: "#e2e8f0", font: { size: 11 }, formatter: (v) => (v >= 0 ? "+" : "") + v + "%" }
       },
       scales: {
-        x: { grid: { color: "#334155" }, ticks: { color: "#94a3b8" } },
-        y: { grid: { display: false }, ticks: { color: "#e2e8f0", font: { size: 13 } } }
+        x: { grid: { display: false }, ticks: { color: "#e2e8f0", font: { size: 12 }, maxRotation: 60, minRotation: 45 } },
+        y: { grid: { color: "#334155" }, ticks: { color: "#94a3b8" } }
       }
     }
   };
-  return `https://quickchart.io/chart?bkg=%230f172a&w=540&h=${120 + sectors.length * 38}&v=4&c=${encodeURIComponent(JSON.stringify(config))}`;
+  return `https://quickchart.io/chart?bkg=%230f172a&w=720&h=380&v=4&c=${encodeURIComponent(JSON.stringify(config))}`;
 }
 
 // 시장 스냅샷 + 보유종목 당일 등락률 막대 차트 (QuickChart, 무료). 한국식: 상승=빨강, 하락=파랑

@@ -220,22 +220,18 @@ function startMacroAnalysis() {
 
 function toggleMacroBriefing() {
     var list = document.getElementById('newsBriefingList');
-    var chev = document.getElementById('macroBriefingChev');
     var btn = document.getElementById('macroBriefingToggleBtn');
     if (!list) return;
     var isHidden = list.classList.toggle('hidden');
-    if (chev) { chev.className = isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1'; }
-    if (btn) { btn.innerHTML = '<i class="' + (isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1') + '"></i>' + (isHidden ? '펼치기' : '접기'); }
+    if (btn) { btn.innerHTML = '<i class="fa-solid ' + (isHidden ? 'fa-chevron-down' : 'fa-chevron-up') + ' text-xs" id="macroBriefingChev"></i>'; }
 }
 
 function toggleWeeklyReport() {
     var content = document.getElementById('weeklyReportContent');
-    var chev = document.getElementById('weeklyChev');
     var btn = document.getElementById('weeklyToggleBtn');
     if (!content) return;
     var isHidden = content.classList.toggle('hidden');
-    if (chev) { chev.className = isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1'; }
-    if (btn) { btn.innerHTML = '<i class="' + (isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1') + '"></i>' + (isHidden ? '펼치기' : '접기'); }
+    if (btn) { btn.innerHTML = '<i class="fa-solid ' + (isHidden ? 'fa-chevron-down' : 'fa-chevron-up') + ' text-xs" id="weeklyChev"></i>'; }
 }
 
 // ==========================================
@@ -396,8 +392,7 @@ function startHotIssues() {
     var list = document.getElementById('hotIssuesList');
     if (list) list.classList.remove('hidden');
     if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>최신 핫이슈 수집 중... (약 30초)</div>';
-    var chev = document.getElementById('hotChev'); if (chev) chev.className = 'fa-solid fa-chevron-up mr-1';
-    var btn = document.getElementById('hotToggleBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-chevron-up mr-1" id="hotChev"></i>접기';
+    var btn = document.getElementById('hotToggleBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-chevron-up text-xs" id="hotChev"></i>';
 
     fetch(API_BASE_URL + '/hot', { signal: AbortSignal.timeout ? AbortSignal.timeout(90000) : undefined })
     .then(function(resp) { return resp.json(); })
@@ -484,12 +479,10 @@ function sendTelegramBriefing() {
 
 function toggleHotIssues() {
     var list = document.getElementById('hotIssuesList');
-    var chev = document.getElementById('hotChev');
     var btn = document.getElementById('hotToggleBtn');
     if (!list) return;
     var isHidden = list.classList.toggle('hidden');
-    if (chev) { chev.className = isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1'; }
-    if (btn) { btn.innerHTML = '<i class="' + (isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1') + '"></i>' + (isHidden ? '펼치기' : '접기'); }
+    if (btn) { btn.innerHTML = '<i class="fa-solid ' + (isHidden ? 'fa-chevron-down' : 'fa-chevron-up') + ' text-xs" id="hotChev"></i>'; }
 }
 
 // ==========================================
@@ -520,7 +513,7 @@ function startStockNews() {
     var list = document.getElementById('stockNewsList');
     if (list) list.classList.remove('hidden');
     if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>뉴스 불러오는 중...</div>';
-    var btn = document.getElementById('stockNewsToggleBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-chevron-up mr-1" id="stockNewsChev"></i>접기';
+    var btn = document.getElementById('stockNewsToggleBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-chevron-up text-xs" id="stockNewsChev"></i>';
 
     var syms = getHeldSymbolsForNews();
     var qs = syms.length ? ('?symbols=' + encodeURIComponent(syms.join(','))) : '';
@@ -660,12 +653,10 @@ function renderStockNews(data) {
 
 function toggleStockNews() {
     var list = document.getElementById('stockNewsList');
-    var chev = document.getElementById('stockNewsChev');
     var btn = document.getElementById('stockNewsToggleBtn');
     if (!list) return;
     var isHidden = list.classList.toggle('hidden');
-    if (chev) { chev.className = isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1'; }
-    if (btn) { btn.innerHTML = '<i class="' + (isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1') + '"></i>' + (isHidden ? '펼치기' : '접기'); }
+    if (btn) { btn.innerHTML = '<i class="fa-solid ' + (isHidden ? 'fa-chevron-down' : 'fa-chevron-up') + ' text-xs" id="stockNewsChev"></i>'; }
 }
 
 function getCurrentQuad() {
