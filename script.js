@@ -3622,7 +3622,7 @@ function renderTradeLog() {
 
             var memoHtml = row.memoText ? '<div class="text-[10px] text-slate-500 mt-1 truncate"><i class="fa-solid fa-pen-nib mr-1 text-slate-600"></i>' + escapeHtml(row.memoText) + '</div>' : '';
 
-            cardList.innerHTML += '<div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50 border-l-4 ' + borderColor + ' cursor-pointer hover:bg-slate-800/60 transition" onclick="openTradeLogDetailModal(\'상세\', JSON.stringify(_tradeLogRows[' + idx + '], null, 2))">'
+            cardList.innerHTML += '<div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50 border-l-4 ' + borderColor + ' cursor-pointer hover:bg-slate-800/60 transition" onclick="showTradeDetail(' + idx + ')">'
                 + '<div class="flex items-center justify-between mb-1">'
                 + '<div class="flex items-center gap-2">'
                 + '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded border ' + typeColor + '">' + row.type + '</span>'
@@ -3659,6 +3659,81 @@ function openTradeLogDetailModal(title, content) {
     const contentEl = document.getElementById('tradelogDetailContent');
     if (titleEl) titleEl.textContent = title;
     if (contentEl) contentEl.textContent = content || '—';
+    if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+}
+
+// 매매일지 상세 — 포맷팅된 거래 카드 (체결/계획대비/분류/메모)
+function showTradeDetail(idx) {
+    var r = _tradeLogRows[idx];
+    if (!r) return;
+    var typeMap = {
+        BUY:  { label: '매수', cls: 'bg-red-900/40 text-red-300 border-red-800' },
+        SELL: { label: '매도', cls: 'bg-blue-900/40 text-blue-300 border-blue-800' },
+        DIV:  { label: '배당', cls: 'bg-yellow-900/40 text-yellow-300 border-yellow-800' }
+    };
+    var tm = typeMap[r.type] || { label: r.type || '거래', cls: 'bg-slate-700 text-slate-300 border-slate-600' };
+    var isSell = r.type === 'SELL';
+    var num = function(v, d) { return (v != null && v !== '' && !isNaN(v)) ? Number(v).toFixed(d) : null; };
+    var row = function(label, val, cls) {
+        return '<div class="flex justify-between gap-3 py-1.5 border-b border-slate-700/40 last:border-0">'
+            + '<span class="text-slate-400 shrink-0">' + label + '</span>'
+            + '<span class="font-bold text-right ' + (cls || 'text-white') + '">' + val + '</span></div>';
+    };
+    var sectionHead = function(t) { return '<div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 mt-3">' + t + '</div>'; };
+
+    var stageStr = (r.plannedStage != null && r.plannedStage !== '') ? ' · ' + r.plannedStage + '차'
+        : ((r.stage != null && r.stage !== '') ? ' · ' + r.stage + '차' : '');
+
+    var h = '';
+    // 헤더
+    h += '<div class="flex items-center gap-2 mb-1">'
+        + '<span class="text-[11px] font-bold px-2 py-0.5 rounded border ' + tm.cls + '">' + tm.label + '</span>'
+        + '<span class="text-lg font-black text-white">' + escapeHtml(r.sym || '') + '</span>'
+        + '<span class="text-xs text-slate-400">' + escapeHtml(r.date || '') + stageStr + '</span>'
+        + '</div>';
+
+    // 체결 내역
+    h += sectionHead('체결 내역');
+    h += '<div class="bg-slate-900/50 rounded-lg px-3 py-1 text-xs">';
+    h += row('체결가', num(r.price, 2) ? '$' + num(r.price, 2) : '—');
+    h += row('수량', (r.qty != null ? r.qty + '주' : '—'));
+    if (num(r.fee, 2)) h += row('수수료', '$' + num(r.fee, 2));
+    h += row(isSell ? '정산 금액' : '매수 금액', num(r.total, 2) ? '$' + Number(r.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');
+    if (isSell && r.returnPct != null && !isNaN(r.returnPct)) {
+        h += row('실현 수익률', (r.returnPct >= 0 ? '+' : '') + r.returnPct.toFixed(2) + '%', r.returnPct >= 0 ? 'text-red-400' : 'text-blue-400');
+    }
+    h += '</div>';
+
+    // 계획 대비 (계획가가 있을 때만)
+    if (num(r.plannedPrice, 2) && Number(r.plannedPrice) > 0) {
+        h += sectionHead('계획 대비');
+        h += '<div class="bg-slate-900/50 rounded-lg px-3 py-1 text-xs">';
+        var dp = (r.planVsResult && r.planVsResult.priceDiffPercent != null) ? r.planVsResult.priceDiffPercent : null;
+        var dpStr = dp != null ? ' <span class="' + (dp >= 0 ? 'text-red-400' : 'text-blue-400') + '">(' + (dp >= 0 ? '+' : '') + dp.toFixed(1) + '%)</span>' : '';
+        h += row('계획가 → 실제', '$' + num(r.plannedPrice, 2) + ' → $' + (num(r.price, 2) || '—') + dpStr);
+        if (r.plannedQty != null && r.plannedQty !== '') h += row('계획수량 → 실제', r.plannedQty + ' → ' + (r.qty != null ? r.qty : '—') + '주');
+        h += '</div>';
+    }
+
+    // 분류 & 메모
+    h += sectionHead('분류 & 메모');
+    h += '<div class="bg-slate-900/50 rounded-lg px-3 py-1 text-xs">';
+    h += row('매매 유형', escapeHtml(r.tagLabel || getTagLabel(r.tag)));
+    if (r.cycleId != null && r.cycleId !== '') h += row('사이클', '#' + r.cycleId);
+    h += '</div>';
+
+    var memo = String(r.memo || r.memoText || '').trim();
+    h += '<div class="mt-2 bg-slate-900/50 rounded-lg p-3">'
+        + '<div class="text-[10px] font-bold text-slate-500 mb-1.5"><i class="fa-solid fa-pen-nib mr-1"></i>' + (isSell ? '매도 이유 / 메모' : '매수 이유 / 메모') + '</div>'
+        + '<div class="text-xs whitespace-pre-wrap break-words ' + (memo ? 'text-slate-200' : 'text-slate-600') + '">'
+        + (memo ? escapeHtml(memo) : '기록된 메모가 없습니다. 매수·매도 시 이유(근거·시그널·심리)를 적어두면 복기에 큰 도움이 됩니다.')
+        + '</div></div>';
+
+    var titleEl = document.getElementById('tradelogDetailTitle');
+    var contentEl = document.getElementById('tradelogDetailContent');
+    if (titleEl) titleEl.textContent = tm.label + ' 상세 · ' + (r.sym || '');
+    if (contentEl) contentEl.innerHTML = h;
+    var modal = document.getElementById('tradelogDetailModal');
     if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
 }
 
