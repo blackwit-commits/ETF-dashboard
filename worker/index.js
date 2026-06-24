@@ -293,7 +293,59 @@ export default {
           } catch (e) { /* 개별 종목 실패는 무시 */ }
         }));
 
-        return new Response(JSON.stringify({ market, byTicker, timestamp: new Date().toISOString() }), { headers: jsonHeaders });
+        // 보유 종목 감성 점수 (Alpha Vantage NEWS_SENTIMENT — 한 번 호출로 전 종목 커버, 무료 25회/일 절약)
+        let sentiment = {};
+        if (env.ALPHAVANTAGE_API_KEY && symbols.length) {
+          try {
+            const avKey = env.ALPHAVANTAGE_API_KEY.trim();
+            const avUrl = `https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=${encodeURIComponent(symbols.join(","))}&apikey=${avKey}&limit=50&sort=LATEST`;
+            const avResp = await fetch(avUrl, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } });
+            const avData = await avResp.json();
+            const feed = Array.isArray(avData.feed) ? avData.feed : []; // 한도 초과 시 {Note:...} → feed 없음 → 감성 생략
+            const agg = {}; // ticker -> { wsum, wrel, count }
+            for (const article of feed) {
+              const tsArr = Array.isArray(article.ticker_sentiment) ? article.ticker_sentiment : [];
+              for (const ts of tsArr) {
+                const t = ts.ticker;
+                if (!symbols.includes(t)) continue;
+                const rel = parseFloat(ts.relevance_score) || 0;
+                const sc = parseFloat(ts.ticker_sentiment_score) || 0;
+                if (!agg[t]) agg[t] = { wsum: 0, wrel: 0, count: 0 };
+                agg[t].wsum += sc * rel; agg[t].wrel += rel; agg[t].count += 1;
+              }
+            }
+            const labelOf = (s) => s <= -0.35 ? "Bearish" : (s < -0.15 ? "Somewhat-Bearish" : (s < 0.15 ? "Neutral" : (s < 0.35 ? "Somewhat-Bullish" : "Bullish")));
+            for (const t of Object.keys(agg)) {
+              if (agg[t].wrel > 0) {
+                const score = agg[t].wsum / agg[t].wrel;
+                sentiment[t] = { score: Math.round(score * 1000) / 1000, label: labelOf(score), count: agg[t].count };
+              }
+            }
+          } catch (e) { /* 감성 실패는 무시 — 뉴스만 반환 */ }
+        }
+
+        return new Response(JSON.stringify({ market, byTicker, sentiment, timestamp: new Date().toISOString() }), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
+      }
+    }
+
+    // 8. 텔레그램 푸시 테스트 (/notify-test) - 봇 설정 확인용 수동 트리거
+    if (path === "/notify-test") {
+      const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+      if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+        return new Response(JSON.stringify({ error: "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not configured" }), { status: 500, headers: jsonHeaders });
+      }
+      try {
+        let text;
+        if (env.GEMINI_API_KEY) {
+          const hot = await callGeminiHotIssues(env.GEMINI_API_KEY);
+          text = buildHotDigest(hot.items);
+        } else {
+          text = "✅ UMT 텔레그램 알림 테스트 — 봇 연결 정상입니다.";
+        }
+        const tg = await sendTelegram(env, text);
+        return new Response(JSON.stringify({ ok: tg.ok, sent: text.substring(0, 200) }), { headers: jsonHeaders });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
       }
@@ -301,7 +353,58 @@ export default {
 
     return new Response("UMT API Worker is Running", { headers: corsHeaders });
   },
+
+  // Cron 트리거: 핫이슈 다이제스트를 텔레그램으로 푸시 (wrangler.toml [triggers] crons)
+  async scheduled(event, env, ctx) {
+    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID || !env.GEMINI_API_KEY) return;
+    ctx.waitUntil((async () => {
+      try {
+        const hot = await callGeminiHotIssues(env.GEMINI_API_KEY);
+        // high/medium 위주로 추려서 푸시 (저중요도 제외)
+        const important = (hot.items || []).filter(it => it.severity === "high" || it.severity === "medium");
+        if (!important.length) return;
+        await sendTelegram(env, buildHotDigest(important));
+      } catch (e) { /* 실패는 조용히 무시 — 다음 트리거에 재시도 */ }
+    })());
+  },
 };
+
+// --- 텔레그램 푸시 ---
+
+function buildHotDigest(items) {
+  const list = (items || []).slice(0, 6);
+  const sevIcon = { high: "🔴", medium: "🟡", low: "⚪" };
+  let text = "🔥 <b>UMT 실시간 핫이슈</b>\n\n";
+  list.forEach((it) => {
+    const icon = sevIcon[it.severity] || "⚪";
+    const tickers = Array.isArray(it.tickers) && it.tickers.length ? " (" + it.tickers.join(", ") + ")" : "";
+    text += `${icon} <b>${tgEscape((it.title || "") + tickers)}</b>\n`;
+    if (it.summary) text += `${tgEscape(it.summary.substring(0, 160))}\n`;
+    if (it.url) text += `<a href="${tgEscape(it.url)}">출처</a>\n`;
+    text += "\n";
+  });
+  return text.trim();
+}
+
+// 텔레그램 HTML 모드 이스케이프 (& < > 만)
+function tgEscape(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+async function sendTelegram(env, text) {
+  const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN.trim()}/sendMessage`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: env.TELEGRAM_CHAT_ID.trim(),
+      text: text,
+      parse_mode: "HTML",
+      disable_web_page_preview: true
+    })
+  });
+  return await resp.json();
+}
 
 // --- Gemini Flash 2.5 매크로 분석 ---
 

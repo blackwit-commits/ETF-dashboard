@@ -553,11 +553,24 @@ function newsItemHtml(x) {
     return '<div class="bg-slate-800/50 rounded-lg p-2.5">' + inner + '</div>';
 }
 
+// 감성 점수(-0.35~0.35) → 한글 배지 (강세=빨강, 약세=파랑)
+function sentimentBadgeHtml(s) {
+    if (!s || typeof s.score !== 'number') return '';
+    var meta;
+    if (s.score <= -0.35) meta = {t:'약세', c:'bg-blue-600/30 text-blue-300', i:'fa-arrow-trend-down'};
+    else if (s.score < -0.15) meta = {t:'약(弱)약세', c:'bg-blue-600/20 text-blue-300/90', i:'fa-arrow-trend-down'};
+    else if (s.score < 0.15) meta = {t:'중립', c:'bg-slate-600/40 text-slate-300', i:'fa-minus'};
+    else if (s.score < 0.35) meta = {t:'약(弱)강세', c:'bg-red-600/20 text-red-300/90', i:'fa-arrow-trend-up'};
+    else meta = {t:'강세', c:'bg-red-600/30 text-red-300', i:'fa-arrow-trend-up'};
+    return '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded ' + meta.c + '" title="뉴스 감성 점수 ' + s.score.toFixed(2) + ' (기사 ' + (s.count||0) + '개)"><i class="fa-solid ' + meta.i + ' mr-0.5"></i>' + meta.t + ' ' + s.score.toFixed(2) + '</span>';
+}
+
 function renderStockNews(data) {
     var list = document.getElementById('stockNewsList');
     if (!list) return;
     var market = (data && Array.isArray(data.market)) ? data.market : [];
     var byTicker = (data && data.byTicker) ? data.byTicker : {};
+    var sentiment = (data && data.sentiment) ? data.sentiment : {};
     var tickers = Object.keys(byTicker);
 
     if (!market.length && !tickers.length) {
@@ -567,13 +580,16 @@ function renderStockNews(data) {
 
     var html = '';
 
-    // 보유 종목별 뉴스
+    // 보유 종목별 뉴스 (+ 감성 배지)
     if (tickers.length) {
         tickers.forEach(function(tk) {
             var items = byTicker[tk] || [];
             if (!items.length) return;
             html += '<div class="glass-panel rounded-xl p-3">'
-                + '<div class="text-[11px] font-bold text-sky-300 mb-1.5 flex items-center gap-1.5"><i class="fa-solid fa-tag"></i>' + escapeHtml(tk) + '</div>'
+                + '<div class="flex items-center justify-between mb-1.5">'
+                +   '<div class="text-[11px] font-bold text-sky-300 flex items-center gap-1.5"><i class="fa-solid fa-tag"></i>' + escapeHtml(tk) + '</div>'
+                +   sentimentBadgeHtml(sentiment[tk])
+                + '</div>'
                 + '<div class="space-y-1.5">';
             items.forEach(function(x) { html += newsItemHtml(x); });
             html += '</div></div>';
