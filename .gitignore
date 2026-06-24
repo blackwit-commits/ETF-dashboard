@@ -1,0 +1,9 @@
+# Cloudflare Worker 빌드/로컬 산출물
+worker/dist/
+worker/.wrangler/
+
+# Claude Code 로컬 설정
+.claude/
+
+# 임시 로그
+*.log

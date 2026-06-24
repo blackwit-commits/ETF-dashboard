@@ -90,6 +90,38 @@ export default {
       }
     }
 
+    // 1-2. 종목 자동완성 검색 (/search?q=apple) - 야후 파이낸스 검색 프록시
+    if (path === "/search") {
+      const q = (url.searchParams.get("q") || "").trim();
+      const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+      if (!q) return new Response("[]", { headers: jsonHeaders });
+
+      try {
+        // 한글 쿼리는 야후가 지원하지 않으므로 영문으로 변환 (별칭 사전 → 번역 폴백)
+        let term = q;
+        if (/[가-힣]/.test(q)) {
+          term = await koreanToSearchTerm(q);
+        }
+
+        const yahooUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(term)}&quotesCount=10&newsCount=0&listsCount=0&enableFuzzyQuery=false`;
+        const resp = await fetch(yahooUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+        const data = await resp.json();
+
+        const list = (data.quotes || [])
+          .filter(x => x.symbol && (x.quoteType === "EQUITY" || x.quoteType === "ETF"))
+          .map(x => ({
+            symbol: x.symbol,
+            name: x.shortname || x.longname || "",
+            type: x.quoteType,
+            exchange: x.exchDisp || x.exchange || ""
+          }));
+
+        return new Response(JSON.stringify(list), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { headers: jsonHeaders });
+      }
+    }
+
     // 2. 뉴스 데이터 요청 (/news) - 구글 뉴스 RSS 파싱
     if (path === "/news") {
         try {
@@ -363,6 +395,44 @@ async function callGeminiWeeklyReport(apiKey) {
   }
   if (!result.timestamp) result.timestamp = new Date().toISOString();
   return result;
+}
+
+// --- 한글 종목 검색 변환 (별칭 사전 + 번역 폴백) ---
+
+// 자주 쓰는 종목의 한글명 → 영문 검색어 (번역이 틀리기 쉬운 것 위주로 보정)
+const KO_TICKER_ALIAS = {
+  "애플": "Apple", "테슬라": "Tesla", "엔비디아": "NVIDIA", "마이크로소프트": "Microsoft",
+  "마소": "Microsoft", "구글": "Alphabet", "알파벳": "Alphabet", "아마존": "Amazon",
+  "메타": "Meta Platforms", "페이스북": "Meta Platforms", "넷플릭스": "Netflix",
+  "팔란티어": "Palantir", "브로드컴": "Broadcom", "마이크론": "Micron", "인텔": "Intel",
+  "퀄컴": "Qualcomm", "코인베이스": "Coinbase", "아이온큐": "IonQ", "리게티": "Rigetti",
+  "슈퍼마이크로": "Super Micro Computer", "셀레스티카": "Celestica", "디즈니": "Disney",
+  "스타벅스": "Starbucks", "나이키": "Nike", "보잉": "Boeing", "버크셔": "Berkshire Hathaway",
+  "비자": "Visa", "마스터카드": "Mastercard", "제이피모건": "JPMorgan", "제이피모간": "JPMorgan",
+  "뱅크오브아메리카": "Bank of America", "코스트코": "Costco", "월마트": "Walmart",
+  "맥도날드": "McDonald's", "코카콜라": "Coca-Cola", "펩시": "PepsiCo", "화이자": "Pfizer",
+  "일라이릴리": "Eli Lilly", "유나이티드헬스": "UnitedHealth", "엑슨모빌": "Exxon Mobil",
+  "셰브론": "Chevron", "오라클": "Oracle", "세일즈포스": "Salesforce", "어도비": "Adobe",
+  "AMD": "AMD", "에이엠디": "AMD", "우버": "Uber", "에어비앤비": "Airbnb", "스포티파이": "Spotify",
+  "로블록스": "Roblox", "쇼피파이": "Shopify", "스노우플레이크": "Snowflake",
+  "삼성전자": "Samsung Electronics", "현대차": "Hyundai Motor", "기아": "Kia",
+  "네이버": "Naver", "카카오": "Kakao", "에스케이하이닉스": "SK hynix", "하이닉스": "SK hynix",
+  "엘지에너지솔루션": "LG Energy Solution", "포스코": "POSCO",
+  "비트코인": "Bitcoin", "이더리움": "Ethereum"
+};
+
+async function koreanToSearchTerm(q) {
+  const key = q.trim();
+  if (KO_TICKER_ALIAS[key]) return KO_TICKER_ALIAS[key];
+  // 별칭에 없으면 번역 API로 폴백
+  try {
+    const res = await fetch("https://api.mymemory.translated.net/get?q=" + encodeURIComponent(key) + "&langpair=ko|en");
+    const json = await res.json();
+    const t = json && json.responseData && json.responseData.translatedText ? json.responseData.translatedText.trim() : "";
+    // 번역 실패/무의미 응답이면 원문 유지
+    if (t && !/REQUEST NOT VALID/i.test(t)) return t.replace(/\s*Inc\.?$|\s*Corp\.?$/i, "").trim() || key;
+  } catch (e) {}
+  return key;
 }
 
 // --- Helper Functions (수학 계산) ---

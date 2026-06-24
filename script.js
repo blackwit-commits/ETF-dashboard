@@ -674,19 +674,22 @@ function fetchMarketDataInBackground() {
     });
 
     let successCount = 0;
-    ETF_DB.forEach(e => {
-        fetchMarketData(e.sym).then(data => {
-            MARKET_SNAPSHOT[e.sym] = data;
+    // 등록 ETF + 사용자가 추가한 일반 종목(미등록) 모두 갱신
+    const etfSyms = ETF_DB.map(e => e.sym);
+    const customSyms = Object.keys(portfolios).filter(s => !etfSyms.includes(s));
+    etfSyms.concat(customSyms).forEach(sym => {
+        fetchMarketData(sym).then(data => {
+            MARKET_SNAPSHOT[sym] = data;
             if (!data.error && data.price > 0) successCount++;
-            
+
             updateStatus(successCount > 0);
-            updateSingleCard(e.sym, data);
-            updateRecommendationsUI(); 
-            
-            if (activeTicker === e.sym) {
-                updateStrategyDataUI(e.sym);
+            updateSingleCard(sym, data);
+            updateRecommendationsUI();
+
+            if (activeTicker === sym) {
+                updateStrategyDataUI(sym);
                 renderSellPlan();
-                if (typeof renderStrategyProgressCard === 'function') renderStrategyProgressCard(e.sym);
+                if (typeof renderStrategyProgressCard === 'function') renderStrategyProgressCard(sym);
             }
         });
     });
@@ -2037,10 +2040,14 @@ function renderStrategyProgressCard(sym) {
 
 function loadTickerData(sym) { 
     if (!portfolios[sym]) return; 
-    const d = portfolios[sym]; 
-    const meta = ETF_DB.find(e => e.sym === sym) || {name:sym, desc:'Custom', lev:'?'}; 
-    
-    document.getElementById('activeTickerIcon').innerText = sym; 
+    const d = portfolios[sym];
+    const meta = ETF_DB.find(e => e.sym === sym) || {name:sym, desc:'일반 종목', lev:'?'};
+    // 시세 스냅샷이 아직 없으면 즉시 받아온다 (주로 추가 직후의 일반 종목)
+    if (!MARKET_SNAPSHOT[sym]) {
+        fetchMarketData(sym).then(data => { MARKET_SNAPSHOT[sym] = data; if (activeTicker === sym) { updateStrategyDataUI(sym); renderSellPlan(); if (typeof renderStrategyProgressCard === 'function') renderStrategyProgressCard(sym); } });
+    }
+
+    document.getElementById('activeTickerIcon').innerText = sym;
     document.getElementById('activeTickerSym').innerText = sym;
     document.getElementById('activeTickerDesc').innerText = meta.name; 
     
@@ -2762,11 +2769,58 @@ function calcAllocFromPct() { const pct = parseFloat(document.getElementById('al
 function calcAllocFromAmt() { const amt = parseFloat(document.getElementById('allocAmount').value)||0; const total = getTotalEquityUSD(); const pct = (amt / total) * 100; document.getElementById('allocPercent').value = pct.toFixed(1); updateKrwHint(amt); }
 function updateKrwHint(usdAmount) { const krwStr = formatKrw(usdAmount); document.getElementById('allocKRWHint').innerText = '≈ ' + krwStr.replace(/\u20A9/,'') + ' 원'; }
 function confirmAllocation() { const pct = parseFloat(document.getElementById('allocPercent').value)||0; if(pct <= 0) return alert("비중을 입력해주세요."); const sym = tempTickerToAdd || activeTicker; if(sym) { if (!portfolios[sym] && !checkCorrelationOnAdd(sym)) return; if (!portfolios[sym]) { let restoredHistory = []; try { const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); if (Array.isArray(archived[sym])) { restoredHistory = archived[sym]; delete archived[sym]; localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } } catch(e) {} portfolios[sym] = { qty: 0, avgPrice: 0, history: restoredHistory, config: { mode: 'GRID', stages: 4, mdd: 20, alloc: pct, drops: [0,-6.67,-13.33,-20], weights: [25,25,25,25], basePrice: 0, boosterOn: false, boosterAllocPct: 0, boosterStages: 2, boosterMdd: 10 } }; if (restoredHistory.length > 0) recalcPortfolio(portfolios[sym]); } else { portfolios[sym].config.alloc = pct; } saveAll(); if(activeTicker===sym) loadTickerData(sym); } document.getElementById('allocationModal').classList.add('hidden'); document.getElementById('allocationModal').classList.remove('flex'); renderTickerBar(); switchTab('strategy'); selectTicker(sym); }
-function openEtfSearchModal() { document.getElementById('etfSearchModal').classList.remove('hidden'); document.getElementById('etfSearchModal').classList.add('flex'); renderEtfSearchList(ETF_DB); }
+function openEtfSearchModal() { document.getElementById('etfSearchModal').classList.remove('hidden'); document.getElementById('etfSearchModal').classList.add('flex'); const inp=document.getElementById('etfSearchInput'); if(inp) inp.value=''; etfSearchSeq++; const old=document.getElementById('remoteSearchSection'); if(old) old.remove(); renderEtfSearchList(ETF_DB); }
 function closeEtfSearchModal() { document.getElementById('etfSearchModal').classList.add('hidden'); document.getElementById('etfSearchModal').classList.remove('flex'); }
+// 일반 종목/미등록 ETF 심볼 허용 형식 (예: AAPL, NVDA, BRK-B, BRK.B)
+function isValidTickerSymbol(sym) { return /^[A-Z0-9][A-Z0-9.\-^]{0,9}$/.test(sym); }
 function renderEtfSearchList(l) { const g=document.getElementById('etfSearchGrid'); g.innerHTML=''; l.forEach(e=>{ let b=e.lev==='3x'?'badge-3x':(e.lev==='2x'?'badge-2x':'badge-inv'); g.innerHTML+=`<div class="bg-slate-800 p-3 rounded-xl flex justify-between items-center active:bg-slate-700 transition"><div><span class="font-bold text-white">${e.sym}</span> <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${b}">${e.lev}</span><div class="text-xs text-slate-400">${e.desc}</div></div><button onclick="processAddTicker('${e.sym}')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg text-xs font-bold shadow transition">추가</button></div>`; }); }
 function processAddTicker(sym) { tempTickerToAdd = sym; closeEtfSearchModal(); openAllocationModal(sym); }
-function filterEtfSearch() { const q=document.getElementById('etfSearchInput').value.toUpperCase(); renderEtfSearchList(ETF_DB.filter(e=>e.sym.includes(q)||e.desc.includes(q))); }
+function processAddCustomTicker(sym) { sym=(sym||'').trim().toUpperCase(); if(!isValidTickerSymbol(sym)) { alert('올바른 심볼을 입력해주세요. (예: AAPL, NVDA)'); return; } if(portfolios[sym]) { alert('이미 추가된 종목입니다.'); return; } tempTickerToAdd = sym; closeEtfSearchModal();
+    // 일반 종목은 시세 스냅샷이 없으므로 즉시 받아온다
+    fetchMarketData(sym).then(data => { MARKET_SNAPSHOT[sym] = data; if (data.error || data.price === 0) { showToast('⚠️ ' + sym + ' 시세를 불러오지 못했습니다. 심볼을 확인해주세요.'); } if (activeTicker === sym) updateStrategyDataUI(sym); });
+    openAllocationModal(sym); }
+
+// --- 종목 검색(자동완성) ---
+let etfSearchSeq = 0;       // 원격 검색 응답 경쟁상태 방지용 시퀀스
+let etfSearchTimer = null;  // 디바운스 타이머
+function filterEtfSearch() {
+    const raw = document.getElementById('etfSearchInput').value;
+    const q = raw.toUpperCase();
+    // 1) 등록 ETF 부분 검색 (즉시)
+    renderEtfSearchList(ETF_DB.filter(e=>e.sym.includes(q)||e.desc.includes(q)||(e.name||'').toUpperCase().includes(q)));
+    // 2) 일반 종목 자동완성 (야후 검색, 디바운스 250ms)
+    clearTimeout(etfSearchTimer);
+    const term = raw.trim();
+    if (term.length < 1) { etfSearchSeq++; return; } // 입력 비면 진행 중 응답 무효화
+    etfSearchTimer = setTimeout(() => fetchTickerSuggestions(term), 250);
+}
+async function fetchTickerSuggestions(term) {
+    const seq = ++etfSearchSeq;
+    let list = [];
+    try { const res = await fetch(`${API_BASE_URL}/search?q=${encodeURIComponent(term)}`); if (res.ok) { const d = await res.json(); if (Array.isArray(d)) list = d; } } catch(e) {}
+    if (seq !== etfSearchSeq) return; // 더 최신 입력이 들어왔으면 폐기
+    renderTickerSuggestions(list, term.toUpperCase());
+}
+function renderTickerSuggestions(list, q) {
+    const g = document.getElementById('etfSearchGrid'); if (!g) return;
+    const old = document.getElementById('remoteSearchSection'); if (old) old.remove();
+    // 등록 ETF/이미 추가된 종목은 제외 (중복 방지)
+    const filtered = (list||[]).filter(x => x.symbol && !ETF_DB.some(e=>e.sym===x.symbol) && !portfolios[x.symbol]).slice(0, 10);
+    const wrap = document.createElement('div');
+    wrap.id = 'remoteSearchSection';
+    wrap.className = 'space-y-2';
+    if (filtered.length) {
+        wrap.innerHTML = '<div class="text-[10px] text-slate-500 font-bold px-1 pt-1">🔎 일반 종목 검색 결과</div>' + filtered.map(x => {
+            const t = x.type==='ETF' ? 'ETF' : '주식';
+            const info = [(x.name||'').slice(0,32), x.exchange].filter(Boolean).join(' · ');
+            return `<div class="bg-slate-800 p-3 rounded-xl flex justify-between items-center active:bg-slate-700 transition"><div class="min-w-0 pr-2"><span class="font-bold text-white">${x.symbol}</span> <span class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-slate-600 text-slate-200">${t}</span><div class="text-xs text-slate-400 truncate">${info}</div></div><button onclick="processAddCustomTicker('${x.symbol}')" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded-lg text-xs font-bold shadow transition shrink-0">추가</button></div>`;
+        }).join('');
+    } else if (q && isValidTickerSymbol(q) && !ETF_DB.some(e=>e.sym===q) && !portfolios[q]) {
+        // 검색 결과가 없지만 유효한 심볼이면 직접 추가 폴백 제공
+        wrap.innerHTML = `<div class="bg-slate-800 p-3 rounded-xl flex justify-between items-center border border-purple-500/40 active:bg-slate-700 transition"><div><span class="font-bold text-white">${q}</span> <span class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-purple-600 text-white">직접</span><div class="text-xs text-slate-400">검색 결과 없음 — 심볼로 직접 추가</div></div><button onclick="processAddCustomTicker('${q}')" class="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1 rounded-lg text-xs font-bold shadow transition">추가</button></div>`;
+    } else { return; }
+    g.appendChild(wrap);
+}
 function renderTickerBar() { const bar = document.getElementById('tickerBar'); bar.innerHTML = ''; Object.keys(portfolios).forEach(t => { const btn = document.createElement('button'); const active = t === activeTicker; btn.className = `ticker-tab px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition ${active?'active':''}`; btn.innerText = t; btn.onclick = () => selectTicker(t); bar.appendChild(btn); }); const addBtn = document.createElement('button'); addBtn.className = "px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 whitespace-nowrap"; addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>'; addBtn.onclick = openEtfSearchModal; bar.appendChild(addBtn); }
 function deleteActiveTicker() { if(!activeTicker) return; if(confirm(`'${activeTicker}' 종목을 삭제하시겠습니까?\n전략 설정은 삭제되지만 매매 기록은 보존됩니다.`)) { const d = portfolios[activeTicker]; if (d && Array.isArray(d.history) && d.history.length > 0) { try { const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); archived[activeTicker] = (archived[activeTicker] || []).concat(d.history); localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } catch(e) { console.error('History archive failed:', e); } } delete portfolios[activeTicker]; saveAll(); activeTicker = null; localStorage.removeItem('umt_last_ticker'); const keys = Object.keys(portfolios); if (keys.length > 0) { selectTicker(keys[0]); } else { switchTab('home'); renderTickerBar(); } } }
 function exportData(){ const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({global:globalData, ports:portfolios})); const node = document.createElement('a'); node.setAttribute("href", dataStr); node.setAttribute("download", "UMT_Backup.json"); document.body.appendChild(node); node.click(); node.remove(); }
