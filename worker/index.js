@@ -248,6 +248,57 @@ export default {
       }
     }
 
+    // 7. 종목·시장 뉴스 (/stocknews?symbols=AAPL,NVDA) - Finnhub
+    if (path === "/stocknews") {
+      const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+      if (!env.FINNHUB_API_KEY) {
+        return new Response(JSON.stringify({ error: "FINNHUB_API_KEY not configured" }), { status: 500, headers: jsonHeaders });
+      }
+      try {
+        const key = env.FINNHUB_API_KEY.trim();
+        const symbolsParam = (url.searchParams.get("symbols") || "").trim();
+        // 미국 일반 종목/ETF 심볼만 (해외 거래소 .KS 등, ^VIX 지수 제외)
+        const symbols = symbolsParam ? symbolsParam.split(",")
+          .map(s => s.trim().toUpperCase())
+          .filter(s => s && /^[A-Z][A-Z0-9.\-]{0,9}$/.test(s) && !s.includes("^"))
+          .slice(0, 10) : [];
+
+        const trim = (arr, n) => (Array.isArray(arr) ? arr.slice(0, n) : []);
+        const mapNews = x => ({
+          headline: x.headline || "",
+          source: x.source || "",
+          url: x.url || "",
+          datetime: x.datetime || 0,
+          summary: (x.summary || "").substring(0, 200)
+        });
+
+        // 시장 일반 뉴스
+        const marketResp = await fetch(`https://finnhub.io/api/v1/news?category=general&token=${key}`, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } });
+        const marketText = await marketResp.text();
+        let marketRaw = [];
+        try { marketRaw = JSON.parse(marketText); } catch (e) {}
+        const market = trim(Array.isArray(marketRaw) ? marketRaw : [], 8).map(mapNews);
+
+        // 보유 종목별 뉴스 (최근 7일)
+        const now = new Date();
+        const to = now.toISOString().slice(0, 10);
+        const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+        const byTicker = {};
+        await Promise.all(symbols.map(async (sym) => {
+          try {
+            const r = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(sym)}&from=${from}&to=${to}&token=${key}`);
+            const raw = r.ok ? await r.json() : [];
+            const news = trim(Array.isArray(raw) ? raw : [], 4).map(mapNews);
+            if (news.length) byTicker[sym] = news;
+          } catch (e) { /* 개별 종목 실패는 무시 */ }
+        }));
+
+        return new Response(JSON.stringify({ market, byTicker, timestamp: new Date().toISOString() }), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
+      }
+    }
+
     return new Response("UMT API Worker is Running", { headers: corsHeaders });
   },
 };

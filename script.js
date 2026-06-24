@@ -482,6 +482,134 @@ function toggleHotIssues() {
     if (btn) { btn.innerHTML = '<i class="' + (isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1') + '"></i>' + (isHidden ? '펼치기' : '접기'); }
 }
 
+// ==========================================
+// 📰 종목·시장 뉴스 (Finnhub)
+// ==========================================
+var STOCKNEWS_CACHE_KEY = 'umt_stocknews_cache';
+var STOCKNEWS_CACHE_TTL = 60 * 60 * 1000; // 1시간
+
+function loadStockNewsFromCache() {
+    var raw = localStorage.getItem(STOCKNEWS_CACHE_KEY);
+    if (!raw) return null;
+    try {
+        var cached = JSON.parse(raw);
+        if (!cached || !cached._cachedAt) return null;
+        if (Date.now() - cached._cachedAt > STOCKNEWS_CACHE_TTL) return null;
+        return cached;
+    } catch(e) { return null; }
+}
+
+function getHeldSymbolsForNews() {
+    // 보유/등록 종목 중 미국 심볼만 (^VIX 등 지수 제외)
+    return Object.keys(portfolios || {})
+        .filter(function(s) { return s && s.indexOf('^') === -1 && /^[A-Za-z][A-Za-z0-9.\-]{0,9}$/.test(s); })
+        .slice(0, 10);
+}
+
+function startStockNews() {
+    var list = document.getElementById('stockNewsList');
+    if (list) list.classList.remove('hidden');
+    if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>뉴스 불러오는 중...</div>';
+    var btn = document.getElementById('stockNewsToggleBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-chevron-up mr-1" id="stockNewsChev"></i>접기';
+
+    var syms = getHeldSymbolsForNews();
+    var qs = syms.length ? ('?symbols=' + encodeURIComponent(syms.join(','))) : '';
+    fetch(API_BASE_URL + '/stocknews' + qs, { signal: AbortSignal.timeout ? AbortSignal.timeout(30000) : undefined })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+        if (data.error) throw new Error(data.error);
+        data._cachedAt = Date.now();
+        localStorage.setItem(STOCKNEWS_CACHE_KEY, JSON.stringify(data));
+        renderStockNews(data);
+    })
+    .catch(function(e) {
+        if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i>뉴스 수집 실패: ' + escapeHtml(e.message).substring(0, 80) + '<br><button onclick="startStockNews()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
+    });
+}
+
+function newsRelativeTime(unixSec) {
+    if (!unixSec) return '';
+    var diffMin = Math.round((Date.now() - unixSec * 1000) / 60000);
+    if (diffMin < 1) return '방금';
+    if (diffMin < 60) return diffMin + '분 전';
+    var h = Math.round(diffMin / 60);
+    if (h < 24) return h + '시간 전';
+    return Math.round(h / 24) + '일 전';
+}
+
+function newsItemHtml(x) {
+    var time = newsRelativeTime(x.datetime);
+    var src = escapeHtml(x.source || '');
+    var head = escapeHtml(x.headline || '');
+    var link = x.url ? encodeURI(x.url) : '';
+    var inner = '<div class="text-[11px] text-white font-bold leading-snug">' + head + '</div>'
+        + '<div class="flex items-center gap-2 mt-0.5 text-[9px] text-slate-500">'
+        +   '<span>' + src + '</span>' + (time ? '<span>· ' + time + '</span>' : '')
+        +   (link ? '<span class="ml-auto text-blue-400"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>' : '')
+        + '</div>';
+    if (link) {
+        return '<a href="' + link + '" target="_blank" rel="noopener" class="block bg-slate-800/50 hover:bg-slate-800 rounded-lg p-2.5 transition">' + inner + '</a>';
+    }
+    return '<div class="bg-slate-800/50 rounded-lg p-2.5">' + inner + '</div>';
+}
+
+function renderStockNews(data) {
+    var list = document.getElementById('stockNewsList');
+    if (!list) return;
+    var market = (data && Array.isArray(data.market)) ? data.market : [];
+    var byTicker = (data && data.byTicker) ? data.byTicker : {};
+    var tickers = Object.keys(byTicker);
+
+    if (!market.length && !tickers.length) {
+        list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">표시할 뉴스가 없습니다</div>';
+        return;
+    }
+
+    var html = '';
+
+    // 보유 종목별 뉴스
+    if (tickers.length) {
+        tickers.forEach(function(tk) {
+            var items = byTicker[tk] || [];
+            if (!items.length) return;
+            html += '<div class="glass-panel rounded-xl p-3">'
+                + '<div class="text-[11px] font-bold text-sky-300 mb-1.5 flex items-center gap-1.5"><i class="fa-solid fa-tag"></i>' + escapeHtml(tk) + '</div>'
+                + '<div class="space-y-1.5">';
+            items.forEach(function(x) { html += newsItemHtml(x); });
+            html += '</div></div>';
+        });
+    }
+
+    // 시장 일반 뉴스
+    if (market.length) {
+        html += '<div class="glass-panel rounded-xl p-3">'
+            + '<div class="text-[11px] font-bold text-slate-300 mb-1.5 flex items-center gap-1.5"><i class="fa-solid fa-globe"></i>시장 전체 뉴스</div>'
+            + '<div class="space-y-1.5">';
+        market.forEach(function(x) { html += newsItemHtml(x); });
+        html += '</div></div>';
+    }
+
+    // 생성 시간
+    if (data._cachedAt) {
+        var mins = Math.round((Date.now() - data._cachedAt) / 60000);
+        var timeStr = mins < 1 ? '방금' : (mins < 60 ? (mins + '분 전') : (Math.round(mins / 60) + '시간 전'));
+        var te = document.getElementById('stockNewsTime');
+        if (te) te.innerText = timeStr + ' 업데이트';
+    }
+
+    list.innerHTML = html;
+}
+
+function toggleStockNews() {
+    var list = document.getElementById('stockNewsList');
+    var chev = document.getElementById('stockNewsChev');
+    var btn = document.getElementById('stockNewsToggleBtn');
+    if (!list) return;
+    var isHidden = list.classList.toggle('hidden');
+    if (chev) { chev.className = isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1'; }
+    if (btn) { btn.innerHTML = '<i class="' + (isHidden ? 'fa-solid fa-chevron-down mr-1' : 'fa-solid fa-chevron-up mr-1') + '"></i>' + (isHidden ? '펼치기' : '접기'); }
+}
+
 function getCurrentQuad() {
     if (MACRO_DATA && MACRO_DATA.quad) return MACRO_DATA.quad.current;
     return null;
@@ -718,6 +846,10 @@ function initApp() {
         // 7. 핫이슈 캐시 로드 (30분 TTL, 없으면 버튼 대기)
         var cachedHot = loadHotFromCache();
         if (cachedHot) renderHotIssues(cachedHot);
+
+        // 8. 종목·시장 뉴스 캐시 로드 (1시간 TTL, 없으면 버튼 대기)
+        var cachedStockNews = loadStockNewsFromCache();
+        if (cachedStockNews) renderStockNews(cachedStockNews);
 
     } catch(err) {
         console.error("Init Error:", err);
