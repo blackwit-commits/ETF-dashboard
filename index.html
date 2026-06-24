@@ -92,6 +92,55 @@
                 <div class="space-y-2" id="holdingStatusList"></div>
             </div>
 
+            <!-- ■ 6. 전체 포트폴리오 요약 (기존 유지) -->
+            <div class="glass-panel rounded-2xl p-5 border-t-2 border-blue-500 relative overflow-hidden bg-gradient-to-b from-slate-800/50 to-slate-900/50">
+                <h2 class="text-sm font-bold text-white mb-3">전체 포트폴리오 요약</h2>
+                <div class="grid grid-cols-2 gap-3 text-xs mb-3">
+                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 자산</div><div class="font-black text-white text-base" id="dashTotalAssets">$0</div><div class="text-[11px] text-slate-500" id="dashTotalAssetsKrw">₩0</div></div>
+                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 투자금</div><div class="font-black text-blue-400 text-base" id="dashTotalInvested">$0</div><div class="text-[11px] text-slate-500" id="dashTotalInvestedKrw">₩0</div></div>
+                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 현금</div><div class="font-black text-emerald-400 text-base" id="dashTotalCash">$0</div><div class="text-[11px] text-slate-500" id="dashTotalCashKrw">₩0</div></div>
+                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">전체 집행률</div><div class="font-black text-yellow-400 text-base" id="dashExecutionRate">0%</div></div>
+                </div>
+                <div class="text-[11px] text-slate-400 mb-1.5">종목별 할당 / 현재 투자 / 집행률</div>
+                <div class="space-y-1.5 text-xs mb-3" id="dashTickerAllocList"></div>
+                <div class="mt-3 flex items-center gap-4 border-t border-slate-800 pt-3">
+                    <div class="w-14 h-14 shrink-0 relative"><canvas id="portfolioChart"></canvas></div>
+                    <div class="flex-1 space-y-1 text-[10px]" id="portfolioLegend"></div>
+                </div>
+            </div>
+
+            <!-- ■ 7. AI 매수 포착 -->
+            <div>
+                <div class="flex justify-between items-center px-1 mb-2"><h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-microchip text-purple-500"></i> AI 매수 포착</h3></div>
+                <div class="space-y-2" id="recommendationList">
+                    <div class="glass-panel p-4 text-center text-slate-500 text-xs">종목 데이터 수신 중...</div>
+                </div>
+            </div>
+
+            <!-- ■ 8. S&P500 히트맵 (접기/펼치기) -->
+            <div class="glass-panel rounded-2xl p-4 border border-slate-700">
+                <button type="button" onclick="toggleHeatmap()" class="w-full flex justify-between items-center text-left py-1">
+                    <span class="text-sm font-bold text-white"><i class="fa-solid fa-grid-2 mr-2 text-amber-500"></i>S&P500 주식 히트맵</span>
+                    <span class="text-slate-500 text-sm" id="heatmapToggleIcon"><i class="fa-solid fa-chevron-down"></i></span>
+                </button>
+                <div id="heatmapContent" class="hidden mt-3 pt-3 border-t border-slate-700">
+                    <div class="text-xs text-slate-500 mb-2">시장 분위기 참고용 (접기/펼치기)</div>
+                    <div id="heatmapWidgetContainer" class="rounded-xl overflow-hidden border border-slate-700 bg-slate-900" style="height:380px;width:100%;min-height:320px;"></div>
+                    <div id="heatmapLoadError" class="hidden mt-2 p-3 rounded-lg bg-red-900/30 border border-red-800 text-red-300 text-sm text-center">히트맵을 불러오지 못했습니다.</div>
+                </div>
+            </div>
+
+            <!-- ■ 9. ETF 섹터별 리스트 -->
+            <div class="space-y-3 pb-6">
+                <div class="flex justify-between items-center px-1">
+                    <h3 class="text-sm font-bold text-white">ETF Quad별 리스트</h3>
+                    <span class="text-[10px] text-slate-500">시장 참고용</span>
+                </div>
+                <div id="marketList" class="space-y-3"></div>
+            </div>
+        </div>
+
+        <div id="tab-news" class="space-y-4 hidden">
             <!-- ■ 4.5 실시간 핫이슈 (Gemini 그라운딩) -->
             <div id="hotIssuesSection">
                 <div class="flex justify-between items-center px-1 mb-2">
@@ -144,53 +193,6 @@
                     </div>
                 </div>
                 <div id="weeklyReportContent" class="space-y-2"></div>
-            </div>
-
-            <!-- ■ 6. 전체 포트폴리오 요약 (기존 유지) -->
-            <div class="glass-panel rounded-2xl p-5 border-t-2 border-blue-500 relative overflow-hidden bg-gradient-to-b from-slate-800/50 to-slate-900/50">
-                <h2 class="text-sm font-bold text-white mb-3">전체 포트폴리오 요약</h2>
-                <div class="grid grid-cols-2 gap-3 text-xs mb-3">
-                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 자산</div><div class="font-black text-white text-base" id="dashTotalAssets">$0</div><div class="text-[11px] text-slate-500" id="dashTotalAssetsKrw">₩0</div></div>
-                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 투자금</div><div class="font-black text-blue-400 text-base" id="dashTotalInvested">$0</div><div class="text-[11px] text-slate-500" id="dashTotalInvestedKrw">₩0</div></div>
-                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 현금</div><div class="font-black text-emerald-400 text-base" id="dashTotalCash">$0</div><div class="text-[11px] text-slate-500" id="dashTotalCashKrw">₩0</div></div>
-                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">전체 집행률</div><div class="font-black text-yellow-400 text-base" id="dashExecutionRate">0%</div></div>
-                </div>
-                <div class="text-[11px] text-slate-400 mb-1.5">종목별 할당 / 현재 투자 / 집행률</div>
-                <div class="space-y-1.5 text-xs mb-3" id="dashTickerAllocList"></div>
-                <div class="mt-3 flex items-center gap-4 border-t border-slate-800 pt-3">
-                    <div class="w-14 h-14 shrink-0 relative"><canvas id="portfolioChart"></canvas></div>
-                    <div class="flex-1 space-y-1 text-[10px]" id="portfolioLegend"></div>
-                </div>
-            </div>
-
-            <!-- ■ 7. AI 매수 포착 -->
-            <div>
-                <div class="flex justify-between items-center px-1 mb-2"><h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-microchip text-purple-500"></i> AI 매수 포착</h3></div>
-                <div class="space-y-2" id="recommendationList">
-                    <div class="glass-panel p-4 text-center text-slate-500 text-xs">종목 데이터 수신 중...</div>
-                </div>
-            </div>
-
-            <!-- ■ 8. S&P500 히트맵 (접기/펼치기) -->
-            <div class="glass-panel rounded-2xl p-4 border border-slate-700">
-                <button type="button" onclick="toggleHeatmap()" class="w-full flex justify-between items-center text-left py-1">
-                    <span class="text-sm font-bold text-white"><i class="fa-solid fa-grid-2 mr-2 text-amber-500"></i>S&P500 주식 히트맵</span>
-                    <span class="text-slate-500 text-sm" id="heatmapToggleIcon"><i class="fa-solid fa-chevron-down"></i></span>
-                </button>
-                <div id="heatmapContent" class="hidden mt-3 pt-3 border-t border-slate-700">
-                    <div class="text-xs text-slate-500 mb-2">시장 분위기 참고용 (접기/펼치기)</div>
-                    <div id="heatmapWidgetContainer" class="rounded-xl overflow-hidden border border-slate-700 bg-slate-900" style="height:380px;width:100%;min-height:320px;"></div>
-                    <div id="heatmapLoadError" class="hidden mt-2 p-3 rounded-lg bg-red-900/30 border border-red-800 text-red-300 text-sm text-center">히트맵을 불러오지 못했습니다.</div>
-                </div>
-            </div>
-
-            <!-- ■ 9. ETF 섹터별 리스트 -->
-            <div class="space-y-3 pb-6">
-                <div class="flex justify-between items-center px-1">
-                    <h3 class="text-sm font-bold text-white">ETF Quad별 리스트</h3>
-                    <span class="text-[10px] text-slate-500">시장 참고용</span>
-                </div>
-                <div id="marketList" class="space-y-3"></div>
             </div>
         </div>
 
@@ -560,6 +562,7 @@
 
     <div class="fixed bottom-0 left-0 w-full bg-[#0f172a]/95 backdrop-blur border-t border-slate-800 h-[70px] flex justify-around items-center z-50 shadow-2xl nav-container px-1">
         <button onclick="switchTab('home')" class="nav-btn active flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-home"><i class="fa-solid fa-house text-lg"></i><span class="text-[9px] font-bold">홈</span></button>
+        <button onclick="switchTab('news')" class="nav-btn flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-news"><i class="fa-solid fa-fire text-lg"></i><span class="text-[9px] font-bold">뉴스</span></button>
         <button onclick="switchTab('strategy')" class="nav-btn flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-strategy"><i class="fa-solid fa-crosshairs text-lg"></i><span class="text-[9px] font-bold">전략</span></button>
         <button onclick="switchTab('tradelog')" class="nav-btn flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-tradelog"><i class="fa-solid fa-book-open text-lg"></i><span class="text-[9px] font-bold">매매일지</span></button>
         <button onclick="switchTab('settings')" class="nav-btn flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-settings"><i class="fa-solid fa-gear text-lg"></i><span class="text-[9px] font-bold">설정</span></button>

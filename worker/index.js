@@ -483,7 +483,9 @@ CRITICAL: 오직 유효한 JSON만 출력하세요. 마크다운/설명/사과 �
 JSON 스키마:
 {"items":[{"category":"<trump|fed|geopolitics|market|earnings|policy>","source":"<출처 매체/인물>","time":"<상대 시간, 예: 2시간 전 / 오늘 오전>","severity":"<high|medium|low>","title":"<한글 제목>","summary":"<한글 2~3문장 요약>","quote":"<핵심 원문 발언 한 줄, 없으면 빈 문자열>","tickers":["<영향 받는 미국 티커>"],"direction":"<bullish|bearish|neutral>","url":"<실제 출처 URL>"}],"timestamp":"<ISO8601>"}
 
-규칙: items 6~8개, 최근 24시간 우선, severity 높은 순+최신 순 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.`;
+규칙: items 6~8개, 최근 24시간 우선, severity 높은 순+최신 순 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.
+
+매우 중요(JSON 안정성): 문자열 값 안에서는 절대 큰따옴표(")를 쓰지 마세요. 인용·강조가 필요하면 작은따옴표(') 또는 「」 를 사용하세요. 줄바꿈/탭 없이 한 줄 문자열로 작성하세요.`;
 
 // Gemini 텍스트 응답에서 JSON 추출 + 불완전 JSON 복구 (공유 헬퍼)
 function parseGeminiJson(textContent) {
@@ -508,25 +510,69 @@ function parseGeminiJson(textContent) {
   }
 }
 
+// 깨진 JSON에서 item 객체들만 개별 추출 (escape 안 된 따옴표 등으로 전체 파싱 실패 시 폴백)
+function salvageItems(text) {
+  const found = [];
+  const stack = [];
+  let inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === "{") stack.push(i);
+    else if (c === "}") {
+      const s = stack.pop();
+      if (s != null) {
+        const chunk = text.substring(s, i + 1).replace(/[-]/g, " ");
+        try {
+          const o = JSON.parse(chunk);
+          if (o && typeof o === "object" && o.title && o.category) found.push(o);
+        } catch (e) { /* 개별 항목 실패는 무시 */ }
+      }
+    }
+  }
+  // 제목 기준 중복 제거
+  const seen = new Set(); const out = [];
+  for (const it of found) { const k = it.title; if (!seen.has(k)) { seen.add(k); out.push(it); } }
+  return out;
+}
+
 async function callGeminiHotIssues(apiKey) {
-  const data = await callGeminiWithFallback(apiKey, {
-    system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never output text, markdown, or explanations." }] },
-    contents: [{ parts: [{ text: HOT_PROMPT }] }],
-    tools: [{ google_search: {} }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 8000 },
-  });
-  let textContent = "";
-  const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
-  if (parts) { for (const part of parts) { if (part.text) textContent += part.text; } }
-  if (!textContent) throw new Error("No text content in Gemini hot response: " + JSON.stringify(data).substring(0, 300));
+  let lastErr = "unknown";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const data = await callGeminiWithFallback(apiKey, {
+      system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never output text, markdown, or explanations. Inside string values, never use double quotes." }] },
+      contents: [{ parts: [{ text: HOT_PROMPT }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 8000 },
+    });
+    let textContent = "";
+    const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+    if (parts) { for (const part of parts) { if (part.text) textContent += part.text; } }
+    if (!textContent) { lastErr = "No text content"; continue; }
 
-  let result;
-  try { result = parseGeminiJson(textContent); }
-  catch (e) { throw new Error("Hot JSON parse failed: " + e.message + " | Raw: " + textContent.substring(0, 400)); }
+    let result = null;
+    try { result = parseGeminiJson(textContent); }
+    catch (e) {
+      // 전체 파싱 실패 → 항목 단위 살리기
+      const items = salvageItems(textContent);
+      if (items.length) result = { items: items };
+      else { lastErr = e.message + " | Raw: " + textContent.substring(0, 300); continue; }
+    }
 
-  if (!Array.isArray(result.items)) result.items = [];
-  if (!result.timestamp) result.timestamp = new Date().toISOString();
-  return result;
+    if (!Array.isArray(result.items)) result.items = [];
+    if (result.items.length) {
+      if (!result.timestamp) result.timestamp = new Date().toISOString();
+      return result;
+    }
+    lastErr = "empty items";
+  }
+  throw new Error("Hot JSON parse failed: " + lastErr);
 }
 
 // --- 한글 종목 검색 변환 (별칭 사전 + 번역 폴백) ---

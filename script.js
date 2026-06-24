@@ -1942,7 +1942,7 @@ function selectTicker(sym) {
 }
 
 function switchTab(id) {
-    ['home','strategy','tradelog','settings'].forEach(t => {
+    ['home','news','strategy','tradelog','settings'].forEach(t => {
         const tabEl = document.getElementById('tab-'+t);
         if(tabEl) tabEl.classList.add('hidden');
         const btn = document.getElementById('nav-'+t);
