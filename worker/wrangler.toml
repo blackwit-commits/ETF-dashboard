@@ -5,3 +5,8 @@ compatibility_date = "2024-01-01"
 # 핫이슈 텔레그램 푸시 (UTC) — 평일 13:00(미장 개장 전, KR 22시) / 21:00(미장 마감, KR 06시)
 [triggers]
 crons = ["0 13 * * 1-5", "0 21 * * 1-5"]
+
+# 상태 저장 (Quad 전환 감지용 — 직전 국면 기억)
+[[kv_namespaces]]
+binding = "UMT_KV"
+id = "8dda3d8d630f4557be6a4e96f0f7b27a"

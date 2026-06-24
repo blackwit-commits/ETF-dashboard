@@ -438,15 +438,20 @@ async function getHoldingsBrief(env, symbols) {
   const to = now.toISOString().slice(0, 10);
   const from = new Date(now.getTime() - 3 * 86400000).toISOString().slice(0, 10);
   await Promise.all(symbols.map(async (sym) => {
-    let news = null;
-    if (key) {
-      try {
-        const r = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(sym)}&from=${from}&to=${to}&token=${key}`);
-        const raw = r.ok ? await r.json() : [];
-        if (Array.isArray(raw) && raw.length) news = { headline: raw[0].headline || "", source: raw[0].source || "", datetime: raw[0].datetime || 0 };
-      } catch (e) { /* 무시 */ }
-    }
-    out.push({ ticker: sym, score: sentiment[sym], news });
+    // 가격·등락률(Yahoo) + 최신 뉴스(Finnhub) 병렬
+    const [quote, news] = await Promise.all([
+      fetchQuoteBrief(sym),
+      (async () => {
+        if (!key) return null;
+        try {
+          const r = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(sym)}&from=${from}&to=${to}&token=${key}`);
+          const raw = r.ok ? await r.json() : [];
+          if (Array.isArray(raw) && raw.length) return { headline: raw[0].headline || "", source: raw[0].source || "", datetime: raw[0].datetime || 0 };
+        } catch (e) { /* 무시 */ }
+        return null;
+      })()
+    ]);
+    out.push({ ticker: sym, score: sentiment[sym], quote, news });
   }));
   out.sort((a, b) => symbols.indexOf(a.ticker) - symbols.indexOf(b.ticker));
   return out;
@@ -462,9 +467,29 @@ async function buildMarketBriefing(env, symbols) {
 
   let t = `🔥 <b>UMT 마켓 브리핑</b>\n📅 ${tgEscape(kstStamp())}\n\n`;
 
+  // Quad 전환 감지 (KV에 직전 국면 저장) — 변경 시 경고 배너
+  const quadNames = { 1: "골디락스", 2: "과열", 3: "스태그플레이션", 4: "침체" };
+  const q = hot.quad;
+  if (q && q.current) {
+    let transitionLine = "";
+    if (env.UMT_KV) {
+      try {
+        const prev = await env.UMT_KV.get("last_quad");
+        if (prev && String(prev) !== String(q.current)) {
+          transitionLine = `⚠️ <b>Quad 전환: Q${prev}(${quadNames[prev] || ""}) → Q${q.current}(${quadNames[q.current] || ""})</b>\n`;
+        }
+        await env.UMT_KV.put("last_quad", String(q.current));
+      } catch (e) { /* KV 실패 무시 */ }
+    }
+    if (transitionLine) t += transitionLine + "\n";
+    t += `🧭 <b>현재 국면: Q${q.current} ${tgEscape(q.name || quadNames[q.current] || "")}</b>\n`;
+    if (q.summary) t += `${tgEscape(q.summary)}\n`;
+    t += "\n";
+  }
+
   // 시장 스냅샷
   t += "📊 <b>시장 스냅샷</b>\n";
-  const ln = (label, q) => q ? `${label} ${q.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} (${fmtChg(q.chg)})\n` : "";
+  const ln = (label, qd) => qd ? `${label} ${qd.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} (${fmtChg(qd.chg)})\n` : "";
   t += ln("S&amp;P500", snap.sp);
   t += ln("나스닥", snap.ndx);
   t += ln("VIX", snap.vix);
@@ -476,12 +501,24 @@ async function buildMarketBriefing(env, symbols) {
     t += `${tgEscape(hot.overview)}\n\n`;
   }
 
-  // 보유 종목 (감성 + 최신 뉴스 + 날짜)
+  // 핵심 일정 (향후 catalyst)
+  const upcoming = Array.isArray(hot.upcoming) ? hot.upcoming.slice(0, 5) : [];
+  if (upcoming.length) {
+    t += "📅 <b>핵심 일정</b>\n";
+    const impIcon = { high: "🔴", medium: "🟡", low: "⚪" };
+    upcoming.forEach(ev => {
+      t += `${impIcon[ev.importance] || "⚪"} ${tgEscape(ev.date || "")} ${tgEscape(ev.name || "")}\n`;
+    });
+    t += "\n";
+  }
+
+  // 보유 종목 (가격·등락률 + 감성 + 최신 뉴스 + 날짜)
   if (holdings.length) {
     t += "📌 <b>보유 종목</b>\n";
     holdings.forEach(h => {
       const lab = sentLabel(h.score);
-      t += `<b>${tgEscape(h.ticker)}</b>${lab ? " " + lab : ""}\n`;
+      const px = h.quote ? ` $${h.quote.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} (${fmtChg(h.quote.chg)})` : "";
+      t += `<b>${tgEscape(h.ticker)}</b>${tgEscape(px)}${lab ? " " + lab : ""}\n`;
       if (h.news && h.news.headline) {
         const dt = unixToKstDate(h.news.datetime);
         t += `  ↳ ${tgEscape(h.news.headline.substring(0, 90))} <i>(${tgEscape(h.news.source)}${dt ? ", " + dt : ""})</i>\n`;
@@ -712,9 +749,9 @@ const HOT_PROMPT = `당신은 글로벌 매크로/시장 속보 큐레이터입�
 CRITICAL: 오직 유효한 JSON만 출력하세요. 마크다운/설명/사과 없이 { 로 시작해 } 로 끝나야 합니다.
 
 JSON 스키마:
-{"overview":"<오늘 시장 전반의 흐름을 꿰는 3~4문장 내러티브. 개별 뉴스 나열이 아니라 '무엇이 시장을 주도하고 있고(주도 테마), 위험 요인은 무엇이며, 투자자 분위기(위험선호/회피)는 어떤지'를 이야기하듯 연결해서 서술. 지수 방향과 금리·유가·달러 등 매크로 맥락 포함>","items":[{"category":"<trump|fed|geopolitics|market|earnings|policy>","source":"<출처 매체/인물>","time":"<상대 시간, 예: 2시간 전 / 오늘 오전>","severity":"<high|medium|low>","title":"<한글 제목>","summary":"<한글 2~3문장 상세 요약, 배경과 영향까지>","quote":"<핵심 원문 발언 한 줄, 없으면 빈 문자열>","tickers":["<영향 받는 미국 티커>"],"direction":"<bullish|bearish|neutral>","url":"<실제 출처 URL>"}],"timestamp":"<ISO8601>"}
+{"quad":{"current":<1-4>,"name":"<골디락스|과열|스태그플레이션|침체>","summary":"<현재 성장·인플레 국면을 1문장으로>"},"overview":"<오늘 시장 전반의 흐름을 꿰는 3~4문장 내러티브. 개별 뉴스 나열이 아니라 '무엇이 시장을 주도하고 있고(주도 테마), 위험 요인은 무엇이며, 투자자 분위기(위험선호/회피)는 어떤지'를 이야기하듯 연결해서 서술. 지수 방향과 금리·유가·달러 등 매크로 맥락 포함>","upcoming":[{"date":"<M/D>","name":"<이벤트명, 예: 미 CPI 발표 / FOMC / 엔비디아 실적>","importance":"<high|medium|low>"}],"items":[{"category":"<trump|fed|geopolitics|market|earnings|policy>","source":"<출처 매체/인물>","time":"<상대 시간, 예: 2시간 전 / 오늘 오전>","severity":"<high|medium|low>","title":"<한글 제목>","summary":"<한글 2~3문장 상세 요약, 배경과 영향까지>","quote":"<핵심 원문 발언 한 줄, 없으면 빈 문자열>","tickers":["<영향 받는 미국 티커>"],"direction":"<bullish|bearish|neutral>","url":"<실제 출처 URL>"}],"timestamp":"<ISO8601>"}
 
-규칙: overview는 반드시 채울 것(전체를 꿰는 내러티브), items 6~8개, 최근 24시간 우선, severity 높은 순+최신 순 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.
+규칙: quad는 Hedgeye식 4국면 판정(1=골디락스 성장↑인플레↓, 2=과열 성장↑인플레↑, 3=스태그 성장↓인플레↑, 4=침체 성장↓인플레↓). overview는 반드시 채울 것(전체를 꿰는 내러티브). upcoming은 향후 7일 내 핵심 경제지표·실적·정책 일정 3~5개(없으면 빈 배열). items 6~8개, 최근 24시간 우선, severity 높은 순+최신 순 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.
 
 매우 중요(JSON 안정성): 문자열 값 안에서는 절대 큰따옴표(")를 쓰지 마세요. 인용·강조가 필요하면 작은따옴표(') 또는 「」 를 사용하세요. 줄바꿈/탭 없이 한 줄 문자열로 작성하세요.`;
 
@@ -780,7 +817,7 @@ async function callGeminiHotIssues(apiKey) {
       system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never output text, markdown, or explanations. Inside string values, never use double quotes." }] },
       contents: [{ parts: [{ text: HOT_PROMPT }] }],
       tools: [{ google_search: {} }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 8000 },
+      generationConfig: { temperature: 0.2, maxOutputTokens: 10000 },
     });
     let textContent = "";
     const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
