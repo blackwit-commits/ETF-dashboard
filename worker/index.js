@@ -470,6 +470,12 @@ async function buildMarketBriefing(env, symbols) {
   t += ln("VIX", snap.vix);
   t += "\n";
 
+  // 시장 흐름 (오늘 전반의 내러티브)
+  if (hot.overview) {
+    t += "🌐 <b>시장 흐름</b>\n";
+    t += `${tgEscape(hot.overview)}\n\n`;
+  }
+
   // 보유 종목 (감성 + 최신 뉴스 + 날짜)
   if (holdings.length) {
     t += "📌 <b>보유 종목</b>\n";
@@ -484,16 +490,19 @@ async function buildMarketBriefing(env, symbols) {
     t += "\n";
   }
 
-  // 핫이슈 (high/medium)
-  const items = (hot.items || []).filter(it => it.severity === "high" || it.severity === "medium").slice(0, 5);
+  // 핫이슈 (상세 요약 포함 — 흐름 파악용)
+  const items = (hot.items || []).slice(0, 6);
   if (items.length) {
-    t += "🔥 <b>핫이슈 (24h)</b>\n";
+    t += "🔥 <b>핫이슈 (24h)</b>\n\n";
     const sev = { high: "🔴", medium: "🟡", low: "⚪" };
     items.forEach(it => {
       const tk = Array.isArray(it.tickers) && it.tickers.length ? " (" + it.tickers.join(", ") + ")" : "";
-      const tm = it.time ? " · " + it.time : "";
-      t += `${sev[it.severity] || "⚪"} ${tgEscape((it.title || "") + tk)}<i>${tgEscape(tm)}</i>\n`;
-      if (it.url) t += `  <a href="${tgEscape(it.url)}">출처</a>\n`;
+      const tm = it.time ? " · " + tgEscape(it.time) : "";
+      t += `${sev[it.severity] || "⚪"} <b>${tgEscape((it.title || "") + tk)}</b><i>${tm}</i>\n`;
+      if (it.summary) t += `${tgEscape(it.summary)}\n`;
+      if (it.quote) t += `💬 <i>${tgEscape(it.quote)}</i>\n`;
+      if (it.url) t += `<a href="${tgEscape(it.url)}">출처</a>\n`;
+      t += "\n";
     });
   }
   return t.trim();
@@ -506,6 +515,12 @@ function tgEscape(s) {
 
 async function sendTelegram(env, text) {
   const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN.trim()}/sendMessage`;
+  // 텔레그램 단일 메시지 한도 4096자 — 초과 시 마지막 줄바꿈 기준으로 안전하게 자름 (태그 중간 절단 방지)
+  if (text.length > 4000) {
+    const cut = text.substring(0, 3990);
+    const nl = cut.lastIndexOf("\n");
+    text = (nl > 1000 ? cut.substring(0, nl) : cut) + "\n…";
+  }
   const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -697,9 +712,9 @@ const HOT_PROMPT = `당신은 글로벌 매크로/시장 속보 큐레이터입�
 CRITICAL: 오직 유효한 JSON만 출력하세요. 마크다운/설명/사과 없이 { 로 시작해 } 로 끝나야 합니다.
 
 JSON 스키마:
-{"items":[{"category":"<trump|fed|geopolitics|market|earnings|policy>","source":"<출처 매체/인물>","time":"<상대 시간, 예: 2시간 전 / 오늘 오전>","severity":"<high|medium|low>","title":"<한글 제목>","summary":"<한글 2~3문장 요약>","quote":"<핵심 원문 발언 한 줄, 없으면 빈 문자열>","tickers":["<영향 받는 미국 티커>"],"direction":"<bullish|bearish|neutral>","url":"<실제 출처 URL>"}],"timestamp":"<ISO8601>"}
+{"overview":"<오늘 시장 전반의 흐름을 꿰는 3~4문장 내러티브. 개별 뉴스 나열이 아니라 '무엇이 시장을 주도하고 있고(주도 테마), 위험 요인은 무엇이며, 투자자 분위기(위험선호/회피)는 어떤지'를 이야기하듯 연결해서 서술. 지수 방향과 금리·유가·달러 등 매크로 맥락 포함>","items":[{"category":"<trump|fed|geopolitics|market|earnings|policy>","source":"<출처 매체/인물>","time":"<상대 시간, 예: 2시간 전 / 오늘 오전>","severity":"<high|medium|low>","title":"<한글 제목>","summary":"<한글 2~3문장 상세 요약, 배경과 영향까지>","quote":"<핵심 원문 발언 한 줄, 없으면 빈 문자열>","tickers":["<영향 받는 미국 티커>"],"direction":"<bullish|bearish|neutral>","url":"<실제 출처 URL>"}],"timestamp":"<ISO8601>"}
 
-규칙: items 6~8개, 최근 24시간 우선, severity 높은 순+최신 순 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.
+규칙: overview는 반드시 채울 것(전체를 꿰는 내러티브), items 6~8개, 최근 24시간 우선, severity 높은 순+최신 순 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.
 
 매우 중요(JSON 안정성): 문자열 값 안에서는 절대 큰따옴표(")를 쓰지 마세요. 인용·강조가 필요하면 작은따옴표(') 또는 「」 를 사용하세요. 줄바꿈/탭 없이 한 줄 문자열로 작성하세요.`;
 
