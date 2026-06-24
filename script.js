@@ -472,6 +472,16 @@ function renderHotIssues(data) {
     list.innerHTML = html;
 }
 
+function sendTelegramBriefing() {
+    var syms = getHeldSymbolsForNews();
+    var qs = syms.length ? ('?symbols=' + encodeURIComponent(syms.join(','))) : '';
+    showToast('📲 텔레그램 브리핑 생성 중... (약 30초)');
+    fetch(API_BASE_URL + '/notify-test' + qs, { signal: AbortSignal.timeout ? AbortSignal.timeout(120000) : undefined })
+    .then(function(r){ return r.json(); })
+    .then(function(d){ showToast(d.ok ? '✅ 텔레그램으로 브리핑을 보냈습니다' : ('전송 실패: ' + ((d.error||'알 수 없음').substring(0,60)))); })
+    .catch(function(e){ showToast('전송 실패: ' + e.message); });
+}
+
 function toggleHotIssues() {
     var list = document.getElementById('hotIssuesList');
     var chev = document.getElementById('hotChev');
@@ -536,17 +546,26 @@ function newsRelativeTime(unixSec) {
     if (h < 24) return h + '시간 전';
     return Math.round(h / 24) + '일 전';
 }
+// 절대 날짜/시각 (예: 6/25 14:30) — 직관적 표시용
+function newsAbsStamp(unixSec) {
+    if (!unixSec) return '';
+    var d = new Date(unixSec * 1000);
+    var p = function(n) { return ('0' + n).slice(-2); };
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
 
 function newsItemHtml(x) {
     var time = newsRelativeTime(x.datetime);
+    var abs = newsAbsStamp(x.datetime);
     var src = escapeHtml(x.source || '');
     var head = escapeHtml(x.headline || '');
     var link = x.url ? encodeURI(x.url) : '';
+    var timeStr = time ? (time + (abs ? ' · ' + abs : '')) : abs;
     var inner = '<div class="text-[13px] text-white font-bold leading-snug">' + head + '</div>'
         + '<div class="news-ko text-[11.5px] text-sky-200/75 leading-snug mt-1" data-en="' + head + '"></div>'
         + '<div class="flex items-center gap-2 mt-2 text-[10px]">'
         +   '<span class="font-bold text-slate-300">' + src + '</span>'
-        +   (time ? '<span class="text-slate-500">· ' + time + '</span>' : '')
+        +   (timeStr ? '<span class="text-slate-500">· ' + timeStr + '</span>' : '')
         +   (link ? '<span class="ml-auto text-blue-400 font-bold">원문 <i class="fa-solid fa-arrow-up-right-from-square"></i></span>' : '')
         + '</div>';
     if (link) {
@@ -625,12 +644,13 @@ function renderStockNews(data) {
         html += '</div></div>';
     }
 
-    // 생성 시간
+    // 생성 시간 (상대 + 절대)
     if (data._cachedAt) {
         var mins = Math.round((Date.now() - data._cachedAt) / 60000);
-        var timeStr = mins < 1 ? '방금' : (mins < 60 ? (mins + '분 전') : (Math.round(mins / 60) + '시간 전'));
+        var rel = mins < 1 ? '방금' : (mins < 60 ? (mins + '분 전') : (Math.round(mins / 60) + '시간 전'));
+        var abs = newsAbsStamp(Math.round(data._cachedAt / 1000));
         var te = document.getElementById('stockNewsTime');
-        if (te) te.innerText = timeStr + ' 업데이트';
+        if (te) te.innerText = abs + ' 업데이트 (' + rel + ')';
     }
 
     list.innerHTML = html;

@@ -337,15 +337,10 @@ export default {
         return new Response(JSON.stringify({ error: "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not configured" }), { status: 500, headers: jsonHeaders });
       }
       try {
-        let text;
-        if (env.GEMINI_API_KEY) {
-          const hot = await callGeminiHotIssues(env.GEMINI_API_KEY);
-          text = buildHotDigest(hot.items);
-        } else {
-          text = "✅ UMT 텔레그램 알림 테스트 — 봇 연결 정상입니다.";
-        }
+        const symbols = parseBriefSymbols(url.searchParams.get("symbols") || env.WATCH_TICKERS);
+        const text = await buildMarketBriefing(env, symbols);
         const tg = await sendTelegram(env, text);
-        return new Response(JSON.stringify({ ok: tg.ok, sent: text.substring(0, 200) }), { headers: jsonHeaders });
+        return new Response(JSON.stringify({ ok: tg.ok, desc: tg.description || "", sent: text.substring(0, 300) }), { headers: jsonHeaders });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
       }
@@ -354,16 +349,14 @@ export default {
     return new Response("UMT API Worker is Running", { headers: corsHeaders });
   },
 
-  // Cron 트리거: 핫이슈 다이제스트를 텔레그램으로 푸시 (wrangler.toml [triggers] crons)
+  // Cron 트리거: 마켓 브리핑을 텔레그램으로 푸시 (wrangler.toml [triggers] crons)
   async scheduled(event, env, ctx) {
-    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID || !env.GEMINI_API_KEY) return;
+    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
     ctx.waitUntil((async () => {
       try {
-        const hot = await callGeminiHotIssues(env.GEMINI_API_KEY);
-        // high/medium 위주로 추려서 푸시 (저중요도 제외)
-        const important = (hot.items || []).filter(it => it.severity === "high" || it.severity === "medium");
-        if (!important.length) return;
-        await sendTelegram(env, buildHotDigest(important));
+        const symbols = parseBriefSymbols(env.WATCH_TICKERS);
+        const text = await buildMarketBriefing(env, symbols);
+        await sendTelegram(env, text);
       } catch (e) { /* 실패는 조용히 무시 — 다음 트리거에 재시도 */ }
     })());
   },
@@ -371,19 +364,139 @@ export default {
 
 // --- 텔레그램 푸시 ---
 
-function buildHotDigest(items) {
-  const list = (items || []).slice(0, 6);
-  const sevIcon = { high: "🔴", medium: "🟡", low: "⚪" };
-  let text = "🔥 <b>UMT 실시간 핫이슈</b>\n\n";
-  list.forEach((it) => {
-    const icon = sevIcon[it.severity] || "⚪";
-    const tickers = Array.isArray(it.tickers) && it.tickers.length ? " (" + it.tickers.join(", ") + ")" : "";
-    text += `${icon} <b>${tgEscape((it.title || "") + tickers)}</b>\n`;
-    if (it.summary) text += `${tgEscape(it.summary.substring(0, 160))}\n`;
-    if (it.url) text += `<a href="${tgEscape(it.url)}">출처</a>\n`;
-    text += "\n";
-  });
-  return text.trim();
+// 브리핑용 심볼 파싱 (미국 종목/ETF, 지수 제외, 최대 10개)
+function parseBriefSymbols(raw) {
+  return (raw || "").split(",").map(s => s.trim().toUpperCase())
+    .filter(s => s && /^[A-Z][A-Z0-9.\-]{0,9}$/.test(s) && !s.includes("^")).slice(0, 10);
+}
+
+// 현재 시각을 KST 문자열로 (Workers는 UTC 기준)
+function kstStamp() {
+  const d = new Date(Date.now() + 9 * 3600 * 1000);
+  const days = ["일", "월", "화", "수", "목", "금", "토"];
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const mm = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}(${days[d.getUTCDay()]}) ${hh}:${mm} KST`;
+}
+function unixToKstDate(sec) {
+  if (!sec) return "";
+  const d = new Date(sec * 1000 + 9 * 3600 * 1000);
+  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+}
+function fmtChg(c) {
+  if (c == null) return "";
+  return (c >= 0 ? "+" : "") + c.toFixed(2) + "%";
+}
+
+async function fetchQuoteBrief(symbol) {
+  try {
+    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const d = await r.json();
+    const meta = d.chart.result[0].meta;
+    const price = meta.regularMarketPrice;
+    const prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
+    const chg = (prev && price) ? ((price - prev) / prev) * 100 : 0;
+    return { price, chg };
+  } catch (e) { return null; }
+}
+async function fetchMarketSnapshot() {
+  const [sp, ndx, vix] = await Promise.all([fetchQuoteBrief("^GSPC"), fetchQuoteBrief("^IXIC"), fetchQuoteBrief("^VIX")]);
+  return { sp, ndx, vix };
+}
+
+function sentLabel(s) {
+  if (s == null) return "";
+  if (s <= -0.35) return "🔵 약세";
+  if (s < -0.15) return "🔵 약(弱)약세";
+  if (s < 0.15) return "⚪ 중립";
+  if (s < 0.35) return "🔴 약(弱)강세";
+  return "🔴 강세";
+}
+
+// 보유 종목별 감성(AV 1회) + 최신 뉴스(Finnhub)
+async function getHoldingsBrief(env, symbols) {
+  if (!symbols.length) return [];
+  let sentiment = {};
+  if (env.ALPHAVANTAGE_API_KEY) {
+    try {
+      const avKey = env.ALPHAVANTAGE_API_KEY.trim();
+      const r = await fetch(`https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=${encodeURIComponent(symbols.join(","))}&apikey=${avKey}&limit=50&sort=LATEST`, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const d = await r.json();
+      const feed = Array.isArray(d.feed) ? d.feed : [];
+      const agg = {};
+      for (const a of feed) for (const ts of (a.ticker_sentiment || [])) {
+        const t = ts.ticker; if (!symbols.includes(t)) continue;
+        const rel = parseFloat(ts.relevance_score) || 0, sc = parseFloat(ts.ticker_sentiment_score) || 0;
+        if (!agg[t]) agg[t] = { w: 0, r: 0 }; agg[t].w += sc * rel; agg[t].r += rel;
+      }
+      for (const t of Object.keys(agg)) if (agg[t].r > 0) sentiment[t] = agg[t].w / agg[t].r;
+    } catch (e) { /* 감성 실패 무시 */ }
+  }
+  const out = [];
+  const key = env.FINNHUB_API_KEY ? env.FINNHUB_API_KEY.trim() : "";
+  const now = new Date();
+  const to = now.toISOString().slice(0, 10);
+  const from = new Date(now.getTime() - 3 * 86400000).toISOString().slice(0, 10);
+  await Promise.all(symbols.map(async (sym) => {
+    let news = null;
+    if (key) {
+      try {
+        const r = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(sym)}&from=${from}&to=${to}&token=${key}`);
+        const raw = r.ok ? await r.json() : [];
+        if (Array.isArray(raw) && raw.length) news = { headline: raw[0].headline || "", source: raw[0].source || "", datetime: raw[0].datetime || 0 };
+      } catch (e) { /* 무시 */ }
+    }
+    out.push({ ticker: sym, score: sentiment[sym], news });
+  }));
+  out.sort((a, b) => symbols.indexOf(a.ticker) - symbols.indexOf(b.ticker));
+  return out;
+}
+
+// 텔레그램 마켓 브리핑 본문 생성
+async function buildMarketBriefing(env, symbols) {
+  const [snap, hot] = await Promise.all([
+    fetchMarketSnapshot(),
+    env.GEMINI_API_KEY ? callGeminiHotIssues(env.GEMINI_API_KEY).catch(() => ({ items: [] })) : Promise.resolve({ items: [] })
+  ]);
+  const holdings = await getHoldingsBrief(env, symbols).catch(() => []);
+
+  let t = `🔥 <b>UMT 마켓 브리핑</b>\n📅 ${tgEscape(kstStamp())}\n\n`;
+
+  // 시장 스냅샷
+  t += "📊 <b>시장 스냅샷</b>\n";
+  const ln = (label, q) => q ? `${label} ${q.price.toLocaleString(undefined, { maximumFractionDigits: 2 })} (${fmtChg(q.chg)})\n` : "";
+  t += ln("S&amp;P500", snap.sp);
+  t += ln("나스닥", snap.ndx);
+  t += ln("VIX", snap.vix);
+  t += "\n";
+
+  // 보유 종목 (감성 + 최신 뉴스 + 날짜)
+  if (holdings.length) {
+    t += "📌 <b>보유 종목</b>\n";
+    holdings.forEach(h => {
+      const lab = sentLabel(h.score);
+      t += `<b>${tgEscape(h.ticker)}</b>${lab ? " " + lab : ""}\n`;
+      if (h.news && h.news.headline) {
+        const dt = unixToKstDate(h.news.datetime);
+        t += `  ↳ ${tgEscape(h.news.headline.substring(0, 90))} <i>(${tgEscape(h.news.source)}${dt ? ", " + dt : ""})</i>\n`;
+      }
+    });
+    t += "\n";
+  }
+
+  // 핫이슈 (high/medium)
+  const items = (hot.items || []).filter(it => it.severity === "high" || it.severity === "medium").slice(0, 5);
+  if (items.length) {
+    t += "🔥 <b>핫이슈 (24h)</b>\n";
+    const sev = { high: "🔴", medium: "🟡", low: "⚪" };
+    items.forEach(it => {
+      const tk = Array.isArray(it.tickers) && it.tickers.length ? " (" + it.tickers.join(", ") + ")" : "";
+      const tm = it.time ? " · " + it.time : "";
+      t += `${sev[it.severity] || "⚪"} ${tgEscape((it.title || "") + tk)}<i>${tgEscape(tm)}</i>\n`;
+      if (it.url) t += `  <a href="${tgEscape(it.url)}">출처</a>\n`;
+    });
+  }
+  return t.trim();
 }
 
 // 텔레그램 HTML 모드 이스케이프 (& < > 만)
