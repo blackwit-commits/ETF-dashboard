@@ -455,10 +455,11 @@ async function getHoldingsBrief(env, symbols) {
   return out;
 }
 
-// 텔레그램 마켓 브리핑 본문 생성 → { text, chartUrl }
+// 텔레그램 마켓 브리핑 본문 생성 → { text, chartUrl, sectorChartUrl }
 async function buildMarketBriefing(env, symbols) {
-  const [snap, hot] = await Promise.all([
+  const [snap, sectors, hot] = await Promise.all([
     fetchMarketSnapshot(),
+    fetchSectorBreadth().catch(() => []),
     env.GEMINI_API_KEY ? callGeminiHotIssues(env.GEMINI_API_KEY, symbols).catch(() => ({ items: [] })) : Promise.resolve({ items: [] })
   ]);
   const holdings = await getHoldingsBrief(env, symbols).catch(() => []);
@@ -493,6 +494,15 @@ async function buildMarketBriefing(env, symbols) {
   t += ln("나스닥", snap.ndx);
   t += ln("VIX", snap.vix);
   t += "\n";
+
+  // 섹터 등락 (전체 시장 폭 — 강세/약세 섹터)
+  if (sectors.length) {
+    const top = sectors.slice(0, 3).map(s => `${s.label} ${fmtChg(s.chg)}`).join(", ");
+    const bot = sectors.slice(-3).reverse().map(s => `${s.label} ${fmtChg(s.chg)}`).join(", ");
+    t += "🗺️ <b>섹터 등락</b>\n";
+    t += `🔴 강세: ${tgEscape(top)}\n`;
+    t += `🔵 약세: ${tgEscape(bot)}\n\n`;
+  }
 
   // 시장 흐름 (오늘 전반의 내러티브)
   if (hot.overview) {
@@ -550,7 +560,45 @@ async function buildMarketBriefing(env, symbols) {
   }
 
   const chartUrl = buildSnapshotChartUrl(snap, holdings);
-  return { text: t.trim(), chartUrl };
+  const sectorChartUrl = buildSectorChartUrl(sectors);
+  return { text: t.trim(), chartUrl, sectorChartUrl };
+}
+
+// 11개 SPDR 섹터 + 반도체(SMH) 당일 등락률 (전체 시장 폭)
+const SECTOR_ETFS = [
+  ["XLK", "기술"], ["SMH", "반도체"], ["XLC", "커뮤니케이션"], ["XLY", "임의소비"],
+  ["XLF", "금융"], ["XLI", "산업재"], ["XLB", "소재"], ["XLE", "에너지"],
+  ["XLP", "필수소비"], ["XLV", "헬스케어"], ["XLU", "유틸리티"], ["XLRE", "부동산"]
+];
+async function fetchSectorBreadth() {
+  const res = await Promise.all(SECTOR_ETFS.map(async ([sym, label]) => {
+    const q = await fetchQuoteBrief(sym);
+    return q ? { label, chg: q.chg } : null;
+  }));
+  return res.filter(Boolean).sort((a, b) => b.chg - a.chg);
+}
+function buildSectorChartUrl(sectors) {
+  if (!sectors || !sectors.length) return null;
+  const labels = sectors.map(s => s.label);
+  const data = sectors.map(s => Math.round(s.chg * 100) / 100);
+  const colors = data.map(v => v >= 0 ? "#ef4444" : "#3b82f6");
+  const config = {
+    type: "bar",
+    data: { labels, datasets: [{ data, backgroundColor: colors }] },
+    options: {
+      indexAxis: "y",
+      plugins: {
+        legend: { display: false },
+        title: { display: true, text: "섹터 당일 등락률 (%)", color: "#e2e8f0", font: { size: 16 } },
+        datalabels: { anchor: "end", align: "end", color: "#e2e8f0", formatter: (v) => (v >= 0 ? "+" : "") + v + "%" }
+      },
+      scales: {
+        x: { grid: { color: "#334155" }, ticks: { color: "#94a3b8" } },
+        y: { grid: { display: false }, ticks: { color: "#e2e8f0", font: { size: 13 } } }
+      }
+    }
+  };
+  return `https://quickchart.io/chart?bkg=%230f172a&w=540&h=${120 + sectors.length * 38}&v=4&c=${encodeURIComponent(JSON.stringify(config))}`;
 }
 
 // 시장 스냅샷 + 보유종목 당일 등락률 막대 차트 (QuickChart, 무료). 한국식: 상승=빨강, 하락=파랑
@@ -641,8 +689,9 @@ async function sendTelegramPhoto(env, photoUrl, caption) {
 
 // 브리핑 빌드 + 전송 (차트 이미지 먼저, 본문은 분할 전송)
 async function pushBriefing(env, symbols) {
-  const { text, chartUrl } = await buildMarketBriefing(env, symbols);
+  const { text, chartUrl, sectorChartUrl } = await buildMarketBriefing(env, symbols);
   if (chartUrl) await sendTelegramPhoto(env, chartUrl, "📊 <b>시장 스냅샷</b> · 당일 등락률");
+  if (sectorChartUrl) await sendTelegramPhoto(env, sectorChartUrl, "🗺️ <b>섹터 히트맵</b> · 전체 시장 폭");
   return await sendTelegramChunks(env, text);
 }
 
