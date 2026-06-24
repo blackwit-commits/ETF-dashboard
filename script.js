@@ -542,15 +542,35 @@ function newsItemHtml(x) {
     var src = escapeHtml(x.source || '');
     var head = escapeHtml(x.headline || '');
     var link = x.url ? encodeURI(x.url) : '';
-    var inner = '<div class="text-[11px] text-white font-bold leading-snug">' + head + '</div>'
-        + '<div class="flex items-center gap-2 mt-0.5 text-[9px] text-slate-500">'
-        +   '<span>' + src + '</span>' + (time ? '<span>· ' + time + '</span>' : '')
-        +   (link ? '<span class="ml-auto text-blue-400"><i class="fa-solid fa-arrow-up-right-from-square"></i></span>' : '')
+    var inner = '<div class="text-[13px] text-white font-bold leading-snug">' + head + '</div>'
+        + '<div class="news-ko text-[11.5px] text-sky-200/75 leading-snug mt-1" data-en="' + head + '"></div>'
+        + '<div class="flex items-center gap-2 mt-2 text-[10px]">'
+        +   '<span class="font-bold text-slate-300">' + src + '</span>'
+        +   (time ? '<span class="text-slate-500">· ' + time + '</span>' : '')
+        +   (link ? '<span class="ml-auto text-blue-400 font-bold">원문 <i class="fa-solid fa-arrow-up-right-from-square"></i></span>' : '')
         + '</div>';
     if (link) {
-        return '<a href="' + link + '" target="_blank" rel="noopener" class="block bg-slate-800/50 hover:bg-slate-800 rounded-lg p-2.5 transition">' + inner + '</a>';
+        return '<a href="' + link + '" target="_blank" rel="noopener" class="block bg-slate-800/60 hover:bg-slate-700/70 rounded-lg p-3 transition border border-slate-700/50">' + inner + '</a>';
     }
-    return '<div class="bg-slate-800/50 rounded-lg p-2.5">' + inner + '</div>';
+    return '<div class="bg-slate-800/60 rounded-lg p-3 border border-slate-700/50">' + inner + '</div>';
+}
+
+// 종목·시장 뉴스 영문 헤드라인 → 한글 번역 (mymemory, 캐시 내장). 순차 처리로 레이트리밋 회피
+async function translateStockNewsHeadlines() {
+    var els = Array.prototype.slice.call(document.querySelectorAll('#stockNewsList .news-ko'));
+    for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (el.getAttribute('data-done')) continue;
+        el.setAttribute('data-done', '1');
+        var en = el.getAttribute('data-en') || '';
+        if (!en.trim()) continue;
+        try {
+            var ko = await translateText(en);
+            if (ko && ko.trim() && ko.trim().toLowerCase() !== en.trim().toLowerCase()) {
+                el.textContent = ko;
+            }
+        } catch (e) { /* 번역 실패는 무시 */ }
+    }
 }
 
 // 감성 점수(-0.35~0.35) → 한글 배지 (강세=빨강, 약세=파랑)
@@ -585,12 +605,12 @@ function renderStockNews(data) {
         tickers.forEach(function(tk) {
             var items = byTicker[tk] || [];
             if (!items.length) return;
-            html += '<div class="glass-panel rounded-xl p-3">'
-                + '<div class="flex items-center justify-between mb-1.5">'
-                +   '<div class="text-[11px] font-bold text-sky-300 flex items-center gap-1.5"><i class="fa-solid fa-tag"></i>' + escapeHtml(tk) + '</div>'
+            html += '<div class="glass-panel rounded-xl p-3.5">'
+                + '<div class="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-700/60">'
+                +   '<div class="text-[13px] font-black text-sky-300 flex items-center gap-2"><i class="fa-solid fa-tag"></i>' + escapeHtml(tk) + '</div>'
                 +   sentimentBadgeHtml(sentiment[tk])
                 + '</div>'
-                + '<div class="space-y-1.5">';
+                + '<div class="space-y-2">';
             items.forEach(function(x) { html += newsItemHtml(x); });
             html += '</div></div>';
         });
@@ -598,9 +618,9 @@ function renderStockNews(data) {
 
     // 시장 일반 뉴스
     if (market.length) {
-        html += '<div class="glass-panel rounded-xl p-3">'
-            + '<div class="text-[11px] font-bold text-slate-300 mb-1.5 flex items-center gap-1.5"><i class="fa-solid fa-globe"></i>시장 전체 뉴스</div>'
-            + '<div class="space-y-1.5">';
+        html += '<div class="glass-panel rounded-xl p-3.5">'
+            + '<div class="text-[13px] font-black text-slate-200 mb-2.5 pb-2 border-b border-slate-700/60 flex items-center gap-2"><i class="fa-solid fa-globe text-slate-400"></i>시장 전체 뉴스</div>'
+            + '<div class="space-y-2">';
         market.forEach(function(x) { html += newsItemHtml(x); });
         html += '</div></div>';
     }
@@ -614,6 +634,8 @@ function renderStockNews(data) {
     }
 
     list.innerHTML = html;
+    // 영문 헤드라인 한글 번역 (비동기, 캐시)
+    translateStockNewsHeadlines();
 }
 
 function toggleStockNews() {
