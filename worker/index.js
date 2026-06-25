@@ -263,7 +263,8 @@ export default {
           .filter(s => s && /^[A-Z][A-Z0-9.\-]{0,9}$/.test(s) && !s.includes("^"))
           .slice(0, 10) : [];
 
-        const trim = (arr, n) => (Array.isArray(arr) ? arr.slice(0, n) : []);
+        // 최신순 정렬 후 N개 (datetime 내림차순)
+        const sortTrim = (arr, n) => (Array.isArray(arr) ? arr.slice().sort((a, b) => (b.datetime || 0) - (a.datetime || 0)).slice(0, n) : []);
         const mapNews = x => ({
           headline: x.headline || "",
           source: x.source || "",
@@ -277,7 +278,7 @@ export default {
         const marketText = await marketResp.text();
         let marketRaw = [];
         try { marketRaw = JSON.parse(marketText); } catch (e) {}
-        const market = trim(Array.isArray(marketRaw) ? marketRaw : [], 8).map(mapNews);
+        const market = sortTrim(Array.isArray(marketRaw) ? marketRaw : [], 8).map(mapNews);
 
         // 보유 종목별 뉴스 (최근 7일)
         const now = new Date();
@@ -288,7 +289,7 @@ export default {
           try {
             const r = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(sym)}&from=${from}&to=${to}&token=${key}`);
             const raw = r.ok ? await r.json() : [];
-            const news = trim(Array.isArray(raw) ? raw : [], 4).map(mapNews);
+            const news = sortTrim(Array.isArray(raw) ? raw : [], 4).map(mapNews);
             if (news.length) byTicker[sym] = news;
           } catch (e) { /* 개별 종목 실패는 무시 */ }
         }));

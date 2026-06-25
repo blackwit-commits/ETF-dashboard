@@ -509,6 +509,18 @@ function getHeldSymbolsForNews() {
         .slice(0, 10);
 }
 
+// 뉴스 탭 진입 시 자동 로딩: 신선한 캐시(15분 이내)면 표시, 아니면 새로 불러옴 (Finnhub는 빠름)
+function ensureStockNewsLoaded() {
+    var raw = localStorage.getItem(STOCKNEWS_CACHE_KEY);
+    if (raw) {
+        try {
+            var c = JSON.parse(raw);
+            if (c && c._cachedAt && (Date.now() - c._cachedAt) < 15 * 60 * 1000) { renderStockNews(c); return; }
+        } catch (e) {}
+    }
+    startStockNews();
+}
+
 function startStockNews() {
     var list = document.getElementById('stockNewsList');
     if (list) list.classList.remove('hidden');
@@ -2013,6 +2025,7 @@ function switchTab(id) {
         }
         if (activeTicker) setTimeout(() => loadTickerData(activeTicker), 10);
     }
+    if(id==='news') setTimeout(() => ensureStockNewsLoaded(), 10);
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') initInputs();
     if(id==='home') { updateGlobalCalc(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }

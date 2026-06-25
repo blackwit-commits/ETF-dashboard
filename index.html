@@ -141,6 +141,20 @@
         </div>
 
         <div id="tab-news" class="space-y-4 hidden">
+            <!-- ■ 4.6 종목·시장 뉴스 (Finnhub) -->
+            <div id="stockNewsSection">
+                <div class="flex justify-between items-center px-1 mb-2">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-newspaper text-sky-400"></i> 종목·시장 뉴스 <span class="text-[10px] text-slate-500 font-normal" id="stockNewsTime"></span></h3>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button onclick="startStockNews()" class="w-8 h-7 flex items-center justify-center bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition" title="새로고침"><i class="fa-solid fa-arrows-rotate text-xs"></i></button>
+                        <button onclick="toggleStockNews()" class="w-8 h-7 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition" id="stockNewsToggleBtn" title="접기/펼치기"><i class="fa-solid fa-chevron-up text-xs" id="stockNewsChev"></i></button>
+                    </div>
+                </div>
+                <div class="space-y-2" id="stockNewsList">
+                    <div class="glass-panel p-4 text-center text-slate-500 text-xs">새로고침을 눌러 시장·보유종목 뉴스를 불러오세요</div>
+                </div>
+            </div>
+
             <!-- ■ 4.5 실시간 핫이슈 (Gemini 그라운딩) -->
             <div id="hotIssuesSection">
                 <div class="flex justify-between items-center px-1 mb-2">
@@ -153,20 +167,6 @@
                 </div>
                 <div class="space-y-2" id="hotIssuesList">
                     <div class="glass-panel p-4 text-center text-slate-500 text-xs">새로고침을 눌러 최신 핫이슈를 불러오세요</div>
-                </div>
-            </div>
-
-            <!-- ■ 4.6 종목·시장 뉴스 (Finnhub) -->
-            <div id="stockNewsSection">
-                <div class="flex justify-between items-center px-1 mb-2">
-                    <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-newspaper text-sky-400"></i> 종목·시장 뉴스 <span class="text-[10px] text-slate-500 font-normal" id="stockNewsTime"></span></h3>
-                    <div class="flex items-center gap-1.5 shrink-0">
-                        <button onclick="startStockNews()" class="w-8 h-7 flex items-center justify-center bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition" title="새로고침"><i class="fa-solid fa-arrows-rotate text-xs"></i></button>
-                        <button onclick="toggleStockNews()" class="w-8 h-7 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition" id="stockNewsToggleBtn" title="접기/펼치기"><i class="fa-solid fa-chevron-up text-xs" id="stockNewsChev"></i></button>
-                    </div>
-                </div>
-                <div class="space-y-2" id="stockNewsList">
-                    <div class="glass-panel p-4 text-center text-slate-500 text-xs">새로고침을 눌러 시장·보유종목 뉴스를 불러오세요</div>
                 </div>
             </div>
 
