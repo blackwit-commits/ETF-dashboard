@@ -615,20 +615,19 @@ function buildSnapshotChartUrl(snap, holdings) {
     type: "bar",
     data: { labels, datasets: [{ data, backgroundColor: colors }] },
     options: {
-      indexAxis: "y",
       plugins: {
         legend: { display: false },
         title: { display: true, text: "당일 등락률 (%)", color: "#e2e8f0", font: { size: 16 } },
-        datalabels: { anchor: "end", align: "end", color: "#e2e8f0", formatter: (v) => (v >= 0 ? "+" : "") + v + "%" }
+        datalabels: { anchor: "end", align: "top", color: "#e2e8f0", font: { size: 11 }, formatter: (v) => (v >= 0 ? "+" : "") + v + "%" }
       },
       scales: {
-        x: { grid: { color: "#334155" }, ticks: { color: "#94a3b8" } },
-        y: { grid: { display: false }, ticks: { color: "#e2e8f0", font: { size: 13 } } }
+        x: { grid: { display: false }, ticks: { color: "#e2e8f0", font: { size: 12 }, maxRotation: 60, minRotation: 45 } },
+        y: { grid: { color: "#334155" }, ticks: { color: "#94a3b8" } }
       }
     }
   };
   const c = encodeURIComponent(JSON.stringify(config));
-  return `https://quickchart.io/chart?bkg=%230f172a&w=520&h=${120 + rows.length * 42}&v=4&c=${c}`;
+  return `https://quickchart.io/chart?bkg=%230f172a&w=${Math.max(420, 90 * rows.length)}&h=340&v=4&c=${c}`;
 }
 
 // 텔레그램 HTML 모드 이스케이프 (& < > 만)

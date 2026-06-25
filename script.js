@@ -3485,12 +3485,51 @@ function renderTradeLog() {
 
     var statsBody = document.getElementById('tradelogReviewStatsBody');
     if (statsBody) {
-        statsBody.innerHTML =
-            '<div class="bg-slate-800/50 rounded-lg px-2 py-2"><div class="text-slate-500 text-[10px]">총 매매(SELL)</div><div class="font-bold text-white">' + stats.totalTrades + '회</div></div>' +
-            '<div class="bg-slate-800/50 rounded-lg px-2 py-2"><div class="text-slate-500 text-[10px]">승률</div><div class="font-bold text-white">' + stats.winRate.toFixed(1) + '%</div></div>' +
-            '<div class="bg-slate-800/50 rounded-lg px-2 py-2"><div class="text-slate-500 text-[10px]">평균 수익률</div><div class="font-bold ' + (stats.avgReturn >= 0 ? 'text-red-400' : 'text-blue-400') + '">' + (stats.totalTrades ? stats.avgReturn.toFixed(2) + '%' : '—') + '</div></div>' +
-            '<div class="bg-slate-800/50 rounded-lg px-2 py-2"><div class="text-slate-500 text-[10px]">최대 수익률</div><div class="font-bold text-red-400">' + (stats.totalTrades ? stats.maxReturn.toFixed(2) + '%' : '—') + '</div></div>' +
-            '<div class="bg-slate-800/50 rounded-lg px-2 py-2"><div class="text-slate-500 text-[10px]">최대 손실률</div><div class="font-bold text-blue-400">' + (stats.totalTrades ? stats.minReturn.toFixed(2) + '%' : '—') + '</div></div>';
+        statsBody.className = 'space-y-3';
+        if (!stats.totalTrades) {
+            statsBody.innerHTML = '<div class="text-center text-slate-500 text-xs py-3">매도 기록이 쌓이면 통계가 표시됩니다.</div>';
+        } else {
+            var retCol = function(v) { return v >= 0 ? 'text-red-400' : 'text-blue-400'; };
+            var sbox = function(label, val, cls) { return '<div class="bg-slate-800/50 rounded-lg px-2.5 py-1.5"><div class="text-slate-500 text-[9px]">' + label + '</div><div class="font-bold text-sm ' + (cls || 'text-white') + '">' + val + '</div></div>'; };
+            var wr = stats.winRate;
+            // 승률 도넛 (한국식: 빨강=승)
+            var donut = '<div class="shrink-0 w-[78px] h-[78px] rounded-full flex items-center justify-center" style="background:conic-gradient(#ef4444 0% ' + wr + '%, #1e293b ' + wr + '% 100%)">'
+                + '<div class="w-[58px] h-[58px] rounded-full bg-slate-900 flex flex-col items-center justify-center">'
+                + '<div class="text-base font-black text-white leading-none">' + wr.toFixed(0) + '%</div>'
+                + '<div class="text-[8px] text-slate-500 mt-0.5">승률</div></div></div>';
+            var miniStats = '<div class="flex-1 grid grid-cols-2 gap-2">'
+                + sbox('총 매매', stats.totalTrades + '회')
+                + sbox('승 / 패', '<span class="text-red-400">' + stats.winCount + '</span> / <span class="text-blue-400">' + stats.loseCount + '</span>')
+                + sbox('평균 수익률', (stats.avgReturn >= 0 ? '+' : '') + stats.avgReturn.toFixed(2) + '%', retCol(stats.avgReturn))
+                + sbox('최대 / 최소', '<span class="text-red-400">' + stats.maxReturn.toFixed(1) + '%</span> / <span class="text-blue-400">' + stats.minReturn.toFixed(1) + '%</span>', '')
+                + '</div>';
+            // 수익률 범위 바 (최소 ~ 최대, 평균 위치 표시)
+            var lo = Math.min(0, stats.minReturn), hi = Math.max(0, stats.maxReturn), span = (hi - lo) || 1;
+            var posPct = function(v) { return Math.max(0, Math.min(100, ((v - lo) / span) * 100)); };
+            var rangeBar = '<div><div class="flex justify-between text-[9px] text-slate-500 mb-1"><span>최소 ' + stats.minReturn.toFixed(1) + '%</span><span>평균 ' + (stats.avgReturn >= 0 ? '+' : '') + stats.avgReturn.toFixed(2) + '%</span><span>최대 ' + stats.maxReturn.toFixed(1) + '%</span></div>'
+                + '<div class="relative h-2.5 rounded-full" style="background:linear-gradient(to right,#1d4ed866,#47556966,#dc262666)">'
+                + '<div class="absolute top-0 w-px h-2.5 bg-slate-400/70" style="left:' + posPct(0) + '%"></div>'
+                + '<div class="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white border-2 border-slate-900" style="left:calc(' + posPct(stats.avgReturn) + '% - 5px)"></div>'
+                + '</div></div>';
+            // 최근 매매 수익률 추이 (SVG 막대)
+            var sells = (all || []).filter(function(t) { return t.type === 'SELL' && t.returnPct != null && !isNaN(t.returnPct); })
+                .slice().sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
+            var data = sells.map(function(t) { return t.returnPct; }).slice(-24);
+            var spark = '';
+            if (data.length) {
+                var W = 320, H = 56, mid = H / 2, n = data.length, bw = W / n;
+                var maxAbs = Math.max.apply(null, data.map(function(v) { return Math.abs(v); })); if (!maxAbs || maxAbs < 0.01) maxAbs = 1;
+                var bars = data.map(function(v, i) {
+                    var bh = (Math.abs(v) / maxAbs) * (mid - 2);
+                    var x = i * bw + 0.75;
+                    var y = v >= 0 ? mid - bh : mid;
+                    return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (bw - 1.5).toFixed(1) + '" height="' + bh.toFixed(1) + '" fill="' + (v >= 0 ? '#ef4444' : '#3b82f6') + '" rx="1"/>';
+                }).join('');
+                spark = '<div><div class="text-[10px] text-slate-500 mb-1">최근 매매 수익률 추이 (최근 ' + data.length + '건)</div>'
+                    + '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" preserveAspectRatio="none"><line x1="0" y1="' + mid + '" x2="' + W + '" y2="' + mid + '" stroke="#475569" stroke-width="0.5"/>' + bars + '</svg></div>';
+            }
+            statsBody.innerHTML = '<div class="flex items-center gap-3">' + donut + miniStats + '</div>' + rangeBar + spark;
+        }
     }
     var tagStatsBody = document.getElementById('tradelogTagStatsBody');
     var tagStatsPanel = document.getElementById('tradelogTagStats');
@@ -3502,7 +3541,14 @@ function renderTradeLog() {
             tagStatsBody.innerHTML = tagKeys.map(function(tag) {
                 var s = stats.tagStats[tag];
                 var label = tagLabels[tag] || tag;
-                return '<div class="flex flex-wrap items-center justify-between gap-2 bg-slate-800/50 rounded-lg px-3 py-2"><span class="text-slate-300 font-bold">' + label + '</span><span class="text-slate-400">' + s.count + '회 / 승률 ' + s.winRate.toFixed(1) + '% / 평균 ' + (s.avgReturn >= 0 ? '' : '') + s.avgReturn.toFixed(2) + '%</span></div>';
+                var avgCol = s.avgReturn >= 0 ? 'text-red-400' : 'text-blue-400';
+                var wrt = Math.max(0, Math.min(100, s.winRate));
+                return '<div class="bg-slate-800/50 rounded-lg px-3 py-2">'
+                    + '<div class="flex items-center justify-between mb-1.5"><span class="text-slate-200 font-bold">' + label + '</span>'
+                    + '<span class="text-[10px] text-slate-400">' + s.count + '회 · 평균 <span class="' + avgCol + ' font-bold">' + (s.avgReturn >= 0 ? '+' : '') + s.avgReturn.toFixed(2) + '%</span></span></div>'
+                    + '<div class="flex items-center gap-2"><div class="flex-1 h-2 rounded-full bg-slate-700 overflow-hidden"><div class="h-full bg-emerald-500" style="width:' + wrt + '%"></div></div>'
+                    + '<span class="text-[10px] text-slate-300 font-bold w-14 text-right">승률 ' + s.winRate.toFixed(0) + '%</span></div>'
+                    + '</div>';
             }).join('');
         } else {
             tagStatsPanel.classList.add('hidden');
