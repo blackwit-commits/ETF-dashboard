@@ -953,6 +953,7 @@ function initApp() {
 
         fetchNews();
         fetchMarketDataInBackground();
+        fetchMacroIndicatorsLive();
 
         // 5. 매크로 데이터: 유효한 캐시 있으면 즉시 표시, 없으면 버튼 대기
         var cachedMacro = loadMacroFromCache();
@@ -1032,6 +1033,31 @@ async function fetchNews() {
         const el = document.getElementById('newsDisplay');
         if(el) el.innerText = "뉴스 서버 접속 실패";
     }
+}
+
+// 홈 매크로 지표(WTI/GOLD/DXY/US10Y/VIX)를 야후에서 실시간으로 채움 (/macro 분석과 무관하게 항상 표시)
+function fetchMacroIndicatorsLive() {
+    var map = [
+        { id: 'Wti', ticker: 'CL=F', fmt: 1 },
+        { id: 'Gold', ticker: 'GC=F', fmt: 0 },
+        { id: 'Dxy', ticker: 'DX-Y.NYB', fmt: 1 },
+        { id: 'Us10y', ticker: '^TNX', fmt: 2 },
+        { id: 'Vix', ticker: '^VIX', fmt: 1 }
+    ];
+    map.forEach(function(m) {
+        fetchMarketData(m.ticker).then(function(d) {
+            if (!d || d.error || !(d.price > 0)) return;
+            MARKET_SNAPSHOT[m.ticker] = d;
+            var valEl = document.getElementById('mk' + m.id);
+            var chgEl = document.getElementById('mk' + m.id + 'Chg');
+            if (valEl) valEl.innerText = Number(d.price).toFixed(m.fmt);
+            if (chgEl && d.change != null && !isNaN(d.change)) {
+                var chg = d.change;
+                chgEl.innerText = (chg > 0 ? '+' : '') + chg.toFixed(1) + '%';
+                chgEl.className = 'text-[9px] font-bold ' + (chg > 0 ? 'text-red-400' : (chg < 0 ? 'text-blue-400' : 'text-slate-500'));
+            }
+        });
+    });
 }
 
 function fetchMarketDataInBackground() {
@@ -2092,7 +2118,7 @@ function switchTab(id) {
     if(id==='news') { setTimeout(() => ensureStockNewsLoaded(), 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') initInputs();
-    if(id==='home') { updateGlobalCalc(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
+    if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }
 
 function loadTradingViewChart(sym) {
