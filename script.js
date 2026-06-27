@@ -3842,7 +3842,12 @@ function getAggregatedTrades() {
             }
         });
     } catch(e) {}
-    list.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // 날짜 내림차순, 같은 날짜는 실행(기록) 시각(id) 내림차순 → 가장 최근 실행이 최상단
+    list.sort((a, b) => {
+        var dd = new Date(b.date) - new Date(a.date);
+        if (dd !== 0) return dd;
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
+    });
     const byTicker = {};
     list.forEach(t => {
         byTicker[t.sym] = (byTicker[t.sym] || 0) + 1;
@@ -4130,6 +4135,10 @@ function renderCycleSummary(trades) {
     if (!keys.length) { panel.classList.add('hidden'); return; }
     panel.classList.remove('hidden');
 
+    // 종목별 최신 사이클 id (실제 보유 수량과 대조해 '보유중' 판정)
+    var latestCidBySym = {};
+    keys.forEach(function(k) { var g = groups[k]; var n = Number(g.cycleId) || 0; if (latestCidBySym[g.sym] == null || n > latestCidBySym[g.sym]) latestCidBySym[g.sym] = n; });
+
     var sumQC = function(arr) {
         var q = 0, c = 0;
         arr.forEach(function(t) { var qty = Number(t.qty) || 0; var tot = (t.total != null && !isNaN(t.total)) ? Math.abs(Number(t.total)) : (Number(t.price) || 0) * qty; q += qty; c += tot; });
@@ -4142,8 +4151,12 @@ function renderCycleSummary(trades) {
         var b = sumQC(g.buys), s = sumQC(g.sells);
         var avgBuy = b.qty ? b.cost / b.qty : 0;
         var avgSell = s.qty ? s.cost / s.qty : 0;
-        var openQty = b.qty - s.qty;
-        var closed = openQty <= 0.0001 && s.qty > 0;
+        // '보유중' = 해당 종목의 최신 사이클이고 실제 포트폴리오에 보유수량이 있을 때 (실제 보유와 대조)
+        var realHeld = (portfolios[g.sym] && portfolios[g.sym].qty) || 0;
+        var isLatest = (Number(g.cycleId) || 0) === latestCidBySym[g.sym];
+        var isOpen = isLatest && realHeld > 0.0001;
+        var openQty = isOpen ? realHeld : 0;
+        var closed = !isOpen;
         var dates = g.dates.slice().sort();
         var firstDate = dates[0] || '';
         var lastDate = dates[dates.length - 1] || '';
