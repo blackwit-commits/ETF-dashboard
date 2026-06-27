@@ -4250,6 +4250,7 @@ function showTradeDetail(idx) {
     h += '<div class="mt-1 mb-2">'
         + '<div class="flex items-center gap-3 text-[9px] mb-1 px-0.5">'
         + '<span class="text-white font-bold">━ ' + escapeHtml(r.sym || '종목') + '</span>'
+        + '<span class="text-amber-400">┈ 평단</span>'
         + '<span class="ml-auto text-slate-500">🔵 매수  🔴 매도</span></div>'
         + '<div id="tradeChartContainer" style="width:100%;height:200px;" class="rounded-lg overflow-hidden bg-slate-900/50"></div>'
         + '<div id="tradeChartPeriodRet" class="text-[10px] text-slate-400 mt-1.5 px-0.5"></div>'
@@ -4351,6 +4352,16 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
             return { time: t.date, position: buy ? 'belowBar' : 'aboveBar', color: buy ? '#3b82f6' : '#f43f5e', shape: buy ? 'arrowUp' : 'arrowDown', text: (buy ? '매수' : '매도') + (t.price ? ' $' + Number(t.price).toFixed(2) : '') };
         }).sort(function(a, b) { return a.time < b.time ? -1 : 1; });
         try { stock.setMarkers(markers); } catch (e) {}
+
+        // 평단가 선 (해당 사이클 매수 평균 체결가)
+        var bq = 0, bc = 0;
+        cycleTrades.forEach(function(t) { if (t.type === 'BUY') { var q = Number(t.qty) || 0; bq += q; bc += (Number(t.price) || 0) * q; } });
+        if (bq > 0) {
+            var avgBuy = bc / bq;
+            try {
+                stock.createPriceLine({ price: Math.round(avgBuy * 100) / 100, color: '#fbbf24', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '평단 $' + avgBuy.toFixed(2) });
+            } catch (e) {}
+        }
         chart.timeScale().fitContent();
 
         // 당일 시장 상황 (거래일 기준 지수 레벨 + 등락률)
