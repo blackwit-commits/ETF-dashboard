@@ -401,6 +401,7 @@ function startHotIssues() {
         data._cachedAt = Date.now();
         localStorage.setItem(HOT_CACHE_KEY, JSON.stringify(data));
         renderHotIssues(data);
+        renderMarketFlow();
     })
     .catch(function(e) {
         if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i>핫이슈 수집 실패: ' + escapeHtml(e.message).substring(0, 80) + '<br><button onclick="startHotIssues()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
@@ -550,7 +551,7 @@ function startStockNews(silent) {
 // 뉴스탭 자동 갱신 (보는 동안 5분마다 조용히 새로고침)
 function startNewsAutoRefresh() {
     stopNewsAutoRefresh();
-    _newsAutoTimer = setInterval(function() { startStockNews(true); startKrNews(true); }, 5 * 60 * 1000);
+    _newsAutoTimer = setInterval(function() { startStockNews(true); startKrNews(true); startUsNews(true); }, 5 * 60 * 1000);
 }
 function stopNewsAutoRefresh() {
     if (_newsAutoTimer) { clearInterval(_newsAutoTimer); _newsAutoTimer = null; }
@@ -605,9 +606,9 @@ function newsItemHtml(x, opts) {
     return '<div class="bg-slate-800/60 rounded-lg p-3 border ' + border + '">' + inner + '</div>';
 }
 
-// 종목·시장 뉴스 영문 헤드라인 → 한글 번역 (mymemory, 캐시 내장). 순차 처리로 레이트리밋 회피
-async function translateStockNewsHeadlines() {
-    var els = Array.prototype.slice.call(document.querySelectorAll('#stockNewsList .news-ko'));
+// 영문 헤드라인 → 한글 번역 (mymemory, 캐시 내장). 순차 처리로 레이트리밋 회피
+async function translateNewsHeadlines(rootId) {
+    var els = Array.prototype.slice.call(document.querySelectorAll('#' + rootId + ' .news-ko'));
     for (var i = 0; i < els.length; i++) {
         var el = els[i];
         if (el.getAttribute('data-done')) continue;
@@ -622,6 +623,7 @@ async function translateStockNewsHeadlines() {
         } catch (e) { /* 번역 실패는 무시 */ }
     }
 }
+function translateStockNewsHeadlines() { return translateNewsHeadlines('stockNewsList'); }
 
 // 감성 점수(-0.35~0.35) → 한글 배지 (강세=빨강, 약세=파랑)
 function sentimentBadgeHtml(s) {
@@ -833,6 +835,87 @@ function renderKrNews(data) {
 }
 
 function expandKrNews() { _krNewsExpanded = true; var c = _krCache()[_krCat()]; if (c) renderKrNews(c); }
+
+// ==========================================
+// 🌎 글로벌 뉴스 (CNBC RSS, 카테고리)
+// ==========================================
+var USNEWS_CATS = [['markets', '시장'], ['economy', '경제'], ['technology', '기술'], ['finance', '금융'], ['politics', '정치'], ['investing', '투자']];
+var USNEWS_CAT_KEY = 'umt_usnews_cat';
+var USNEWS_CACHE_KEY = 'umt_usnews_cache';
+var _usNewsExpanded = false;
+function _usCat() { return localStorage.getItem(USNEWS_CAT_KEY) || 'markets'; }
+function _usCache() { try { return JSON.parse(localStorage.getItem(USNEWS_CACHE_KEY) || '{}'); } catch (e) { return {}; } }
+function renderUsNewsTabs() {
+    var el = document.getElementById('usNewsTabs'); if (!el) return;
+    var cur = _usCat();
+    el.innerHTML = USNEWS_CATS.map(function(c) {
+        var active = c[0] === cur;
+        return '<button onclick="setUsNewsCat(\'' + c[0] + '\')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ' + (active ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400') + '">' + c[1] + '</button>';
+    }).join('');
+}
+function setUsNewsCat(cat) {
+    localStorage.setItem(USNEWS_CAT_KEY, cat); _usNewsExpanded = false; renderUsNewsTabs();
+    var cache = _usCache();
+    if (cache[cat] && cache[cat]._cachedAt && (Date.now() - cache[cat]._cachedAt) < 15 * 60 * 1000) renderUsNews(cache[cat]); else startUsNews();
+}
+function ensureUsNewsLoaded() {
+    renderUsNewsTabs();
+    var cat = _usCat(); var cache = _usCache();
+    if (cache[cat] && cache[cat]._cachedAt && (Date.now() - cache[cat]._cachedAt) < 15 * 60 * 1000) renderUsNews(cache[cat]); else startUsNews();
+}
+function startUsNews(silent) {
+    var list = document.getElementById('usNewsList'); var cat = _usCat();
+    if (!silent && list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>글로벌 뉴스 불러오는 중...</div>';
+    fetch(API_BASE_URL + '/usnews?cat=' + encodeURIComponent(cat), { signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) throw new Error(data.error);
+        data._cachedAt = Date.now();
+        var cache = _usCache(); cache[cat] = data; localStorage.setItem(USNEWS_CACHE_KEY, JSON.stringify(cache));
+        renderUsNews(data);
+    })
+    .catch(function(e) { if (!silent && list) list.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs">글로벌 뉴스 실패: ' + escapeHtml(e.message).substring(0, 60) + '<br><button onclick="startUsNews()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>'; });
+}
+function renderUsNews(data) {
+    var list = document.getElementById('usNewsList'); if (!list) return;
+    var items = (data && Array.isArray(data.items)) ? data.items : [];
+    if (!items.length) { list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">표시할 뉴스가 없습니다</div>'; return; }
+    var seen = parseFloat(localStorage.getItem('umt_usnews_seen') || '0');
+    var curMax = 0; items.forEach(function(x) { if ((x.datetime || 0) > curMax) curMax = x.datetime; });
+    if (curMax > 0) localStorage.setItem('umt_usnews_seen', String(curMax));
+    var limit = _usNewsExpanded ? items.length : 7;
+    var html = '<div class="glass-panel rounded-xl p-3.5"><div class="space-y-2">';
+    items.slice(0, limit).forEach(function(x) { html += newsItemHtml(x, { isNew: seen > 0 && (x.datetime || 0) > seen }); });
+    html += '</div>';
+    if (items.length > limit) html += '<button onclick="expandUsNews()" class="w-full mt-2 py-2 text-[11px] text-indigo-300 bg-slate-800/60 rounded-lg font-bold">더보기 (' + (items.length - limit) + '개)</button>';
+    html += '</div>';
+    list.innerHTML = html;
+    translateNewsHeadlines('usNewsList');
+    if (data._cachedAt) { var mins = Math.round((Date.now() - data._cachedAt) / 60000); var te = document.getElementById('usNewsTime'); if (te) te.innerText = (mins < 60 ? mins + '분 전' : Math.round(mins / 60) + '시간 전') + ' 업데이트'; }
+}
+function expandUsNews() { _usNewsExpanded = true; var c = _usCache()[_usCat()]; if (c) renderUsNews(c); }
+function toggleUsNews() {
+    var list = document.getElementById('usNewsList'); var tabs = document.getElementById('usNewsTabs'); var btn = document.getElementById('usNewsToggleBtn');
+    if (!list) return;
+    var isHidden = list.classList.toggle('hidden');
+    if (tabs) tabs.classList.toggle('hidden', isHidden);
+    if (btn) btn.innerHTML = '<i class="fa-solid ' + (isHidden ? 'fa-chevron-down' : 'fa-chevron-up') + ' text-xs" id="usNewsChev"></i>';
+}
+
+// 🌐 시장 흐름 (핫이슈 Gemini overview 재활용)
+function renderMarketFlow() {
+    var sec = document.getElementById('marketFlowSection'); var body = document.getElementById('marketFlowBody');
+    if (!sec || !body) return;
+    var hot = null; try { hot = JSON.parse(localStorage.getItem(HOT_CACHE_KEY) || 'null'); } catch (e) {}
+    if (!hot || !hot.overview) { sec.classList.add('hidden'); return; }
+    sec.classList.remove('hidden');
+    var quadNames = { 1: '골디락스', 2: '과열', 3: '스태그플레이션', 4: '침체' };
+    var q = hot.quad, quadHtml = '';
+    if (q && q.current) quadHtml = '<div class="text-[11px] font-bold text-cyan-300 mb-1.5">🧭 현재 국면: Q' + q.current + ' ' + escapeHtml(q.name || quadNames[q.current] || '') + '</div>';
+    body.innerHTML = quadHtml + '<div class="text-[12px] text-slate-300 leading-relaxed">' + escapeHtml(hot.overview) + '</div>';
+    var te = document.getElementById('marketFlowTime');
+    if (te && hot._cachedAt) { var mins = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = (mins < 60 ? mins + '분 전' : Math.round(mins / 60) + '시간 전') + ' 기준'; }
+}
 
 // ==========================================
 // 📅 경제 일정 (Gemini + 12h 캐시)
@@ -2404,7 +2487,7 @@ function switchTab(id) {
         if (activeTicker) setTimeout(() => loadTickerData(activeTicker), 10);
     }
     stopNewsAutoRefresh();
-    if(id==='news') { setTimeout(() => { ensureStockNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); }, 10); startNewsAutoRefresh(); }
+    if(id==='news') { setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') { initInputs(); fetchLiveFxRate(); }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }

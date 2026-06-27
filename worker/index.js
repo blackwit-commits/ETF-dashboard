@@ -401,6 +401,39 @@ export default {
       }
     }
 
+    // 12. 글로벌 뉴스 (/usnews?cat=markets) - CNBC RSS 카테고리 파싱
+    if (path === "/usnews") {
+      const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+      const catMap = { economy: "20910258", markets: "20409666", technology: "19854910", finance: "10000664", politics: "10000113", investing: "15839069" };
+      const catKey = (url.searchParams.get("cat") || "markets");
+      const id = catMap[catKey] || catMap.markets;
+      try {
+        const resp = await fetch(`https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=${id}`, { headers: { "User-Agent": "Mozilla/5.0" } });
+        if (!resp.ok) return new Response(JSON.stringify({ error: "RSS " + resp.status }), { headers: jsonHeaders });
+        const text = await resp.text();
+        const strip = (s) => (s || "").replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+        const items = [];
+        const blocks = text.split("<item>").slice(1);
+        for (let block of blocks) {
+          if (items.length >= 15) break;
+          const end = block.indexOf("</item>");
+          if (end > 0) block = block.substring(0, end);
+          const tm = block.match(/<title>([\s\S]*?)<\/title>/);
+          const lm = block.match(/<link>([\s\S]*?)<\/link>/);
+          const dm = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
+          const sm = block.match(/<description>([\s\S]*?)<\/description>/);
+          if (tm && lm) {
+            let dt = 0;
+            if (dm) { const p = Date.parse(strip(dm[1])); if (!isNaN(p)) dt = Math.floor(p / 1000); }
+            items.push({ headline: strip(tm[1]), url: strip(lm[1]), summary: sm ? strip(sm[1]).substring(0, 200) : "", datetime: dt, source: "CNBC" });
+          }
+        }
+        return new Response(JSON.stringify({ items, cat: catKey, timestamp: new Date().toISOString() }), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { headers: jsonHeaders });
+      }
+    }
+
     // 9. 한국 뉴스 (/krnews?cat=economy) - 한국경제 RSS 카테고리 파싱
     if (path === "/krnews") {
       const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };

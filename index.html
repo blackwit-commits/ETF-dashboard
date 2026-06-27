@@ -142,6 +142,14 @@
         </div>
 
         <div id="tab-news" class="space-y-4 hidden">
+            <!-- ■ 4.55 시장 흐름 (Gemini overview) -->
+            <div id="marketFlowSection" class="hidden">
+                <div class="flex justify-between items-center px-1 mb-2">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-water text-cyan-400"></i> 시장 흐름 <span class="text-[10px] text-slate-500 font-normal" id="marketFlowTime"></span></h3>
+                </div>
+                <div class="glass-panel rounded-xl p-3.5" id="marketFlowBody"></div>
+            </div>
+
             <!-- ■ 4.6 종목·시장 뉴스 (Finnhub) -->
             <div id="stockNewsSection">
                 <div class="flex justify-between items-center px-1 mb-2">
@@ -153,6 +161,21 @@
                 </div>
                 <div class="space-y-2" id="stockNewsList">
                     <div class="glass-panel p-4 text-center text-slate-500 text-xs">새로고침을 눌러 시장·보유종목 뉴스를 불러오세요</div>
+                </div>
+            </div>
+
+            <!-- ■ 4.65 글로벌 뉴스 (CNBC RSS, 카테고리) -->
+            <div id="usNewsSection">
+                <div class="flex justify-between items-center px-1 mb-2">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">🌎 글로벌 뉴스 <span class="text-[10px] text-slate-500 font-normal" id="usNewsTime"></span></h3>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button onclick="startUsNews()" class="w-8 h-7 flex items-center justify-center bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition" title="새로고침"><i class="fa-solid fa-arrows-rotate text-xs"></i></button>
+                        <button onclick="toggleUsNews()" class="w-8 h-7 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition" id="usNewsToggleBtn" title="접기/펼치기"><i class="fa-solid fa-chevron-up text-xs" id="usNewsChev"></i></button>
+                    </div>
+                </div>
+                <div class="flex gap-1 mb-2 overflow-x-auto no-scrollbar" id="usNewsTabs"></div>
+                <div class="space-y-2" id="usNewsList">
+                    <div class="glass-panel p-4 text-center text-slate-500 text-xs">새로고침을 눌러 글로벌 뉴스를 불러오세요</div>
                 </div>
             </div>
 
