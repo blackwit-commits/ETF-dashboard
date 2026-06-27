@@ -589,7 +589,7 @@ function newsItemHtml(x, opts) {
     var summaryHtml = '';
     if (summ && summ.length > 30 && summ.toLowerCase().indexOf((x.headline || '').toLowerCase().substring(0, 30)) === -1) {
         var summEsc = escapeHtml(summ.substring(0, 180));
-        summaryHtml = '<div class="news-ko text-[11px] text-slate-400 leading-snug mt-1.5 pt-1.5 border-t border-slate-700/40" data-en="' + summEsc + '">' + summEsc + '</div>';
+        summaryHtml = '<div class="text-[11px] text-slate-400 leading-snug mt-1.5 pt-1.5 border-t border-slate-700/40">' + summEsc + '</div>';
     }
     var inner = '<div class="text-[13px] text-white font-bold leading-snug">' + newBadge + tickerChip + head + '</div>'
         + '<div class="news-ko text-[11.5px] text-sky-200/75 leading-snug mt-1" data-en="' + head + '"></div>'
@@ -947,11 +947,16 @@ async function translateText(enText) {
     try {
         const res = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(key) + '&langpair=en|ko');
         const json = await res.json();
-        const translated = json.responseData && json.responseData.translatedText ? json.responseData.translatedText.trim() : null;
-        _translateCache[key] = translated || null;
-        return _translateCache[key];
+        const status = json && json.responseStatus;
+        let translated = (json && json.responseData && json.responseData.translatedText) ? json.responseData.translatedText.trim() : '';
+        // 한도 초과/경고/오류 응답은 번역 실패로 처리(원문 유지, 캐시 안 함 → 나중에 재시도)
+        if (!translated || (status && Number(status) !== 200) || json.quotaFinished ||
+            /MYMEMORY WARNING|YOU USED ALL|QUOTA|INVALID|NOT VALID|PLEASE (TRY|SELECT)|限/i.test(translated)) {
+            return null;
+        }
+        _translateCache[key] = translated;
+        return translated;
     } catch (e) {
-        _translateCache[key] = null;
         return null;
     }
 }
