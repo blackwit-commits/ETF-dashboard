@@ -4117,10 +4117,13 @@ function openTradeLogDetailModal(title, content) {
 }
 
 // 사이클(매수→매도) 요약 — 종목+사이클별 평균 진입/청산·보유기간·실현손익
+var _cycleExpanded = false;
+var _lastCycleTrades = null;
 function renderCycleSummary(trades) {
     var panel = document.getElementById('tradelogCycleSummary');
     var body = document.getElementById('cycleSummaryBody');
     if (!panel || !body) return;
+    _lastCycleTrades = trades;
 
     var groups = {};
     (trades || []).forEach(function(t) {
@@ -4172,7 +4175,8 @@ function renderCycleSummary(trades) {
         return (b.lastDate || '').localeCompare(a.lastDate || '');
     });
 
-    body.innerHTML = cards.map(function(c) {
+    var shown = _cycleExpanded ? cards : cards.slice(0, 3);
+    var html = shown.map(function(c) {
         var statusBadge = c.closed
             ? '<span class="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-bold">종료</span>'
             : '<span class="text-[9px] bg-emerald-900/50 text-emerald-300 px-1.5 py-0.5 rounded font-bold">보유중</span>';
@@ -4189,15 +4193,28 @@ function renderCycleSummary(trades) {
             + (c.s.qty ? '  →  매도 ' + Math.round(c.s.qty) + '주 @ $' + c.avgSell.toFixed(2) : '')
             + (c.openQty > 0.0001 ? '  · 잔여 ' + Math.round(c.openQty) + '주' : '');
         var period = c.firstDate + (c.lastDate && c.lastDate !== c.firstDate ? ' ~ ' + c.lastDate : '');
+        // 단계 진행 (실행 매수 횟수 / 총 단계)
+        var sd = c.g.buys ? c.g.buys.length : 0;
+        var cfg = portfolios[c.g.sym] && portfolios[c.g.sym].config;
+        var st = (cfg && cfg.stages) ? cfg.stages : sd;
+        if (cfg && cfg.boosterOn && cfg.boosterStages) st += cfg.boosterStages;
+        var stagePct = st ? Math.min(100, sd / st * 100) : 0;
+        var stageHtml = st ? ('<div class="flex items-center gap-2 mt-1.5"><span class="text-[10px] text-slate-400 shrink-0 font-bold">단계 ' + sd + '/' + st + '</span><div class="flex-1 h-1.5 rounded-full bg-slate-700 overflow-hidden"><div class="h-full bg-purple-500" style="width:' + stagePct + '%"></div></div></div>') : '';
         return '<div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50">'
             + '<div class="flex items-center justify-between mb-1">'
             + '<div class="flex items-center gap-2"><span class="font-black text-white">' + escapeHtml(c.g.sym) + '</span>' + cidLabel + statusBadge + '</div>'
             + pnlHtml + '</div>'
             + '<div class="text-[11px] text-slate-300">' + line2 + '</div>'
+            + stageHtml
             + '<div class="text-[10px] text-slate-500 mt-0.5"><i class="fa-regular fa-clock mr-1"></i>' + period + (c.days ? ' (' + c.days + ')' : '') + '</div>'
             + '</div>';
     }).join('');
+    if (!_cycleExpanded && cards.length > 3) {
+        html += '<button onclick="expandCycleSummary()" class="w-full mt-1 py-2 text-[11px] text-purple-300 bg-slate-800/60 rounded-lg font-bold">더보기 (' + (cards.length - 3) + '개)</button>';
+    }
+    body.innerHTML = html;
 }
+function expandCycleSummary() { _cycleExpanded = true; if (_lastCycleTrades) renderCycleSummary(_lastCycleTrades); }
 
 // 매매일지 상세 — 포맷팅된 거래 카드 (체결/계획대비/분류/메모)
 function showTradeDetail(idx) {
@@ -4229,14 +4246,13 @@ function showTradeDetail(idx) {
         + '<span class="text-xs text-slate-400">' + escapeHtml(r.date || '') + stageStr + '</span>'
         + '</div>';
 
-    // 차트 (종목 vs 나스닥 vs 다우, 매수/매도 지점 표시)
+    // 차트 (해당 종목 단독, 매수/매도 지점 표시) + 당일 시장 상황(수치)
     h += '<div class="mt-1 mb-2">'
         + '<div class="flex items-center gap-3 text-[9px] mb-1 px-0.5">'
         + '<span class="text-white font-bold">━ ' + escapeHtml(r.sym || '종목') + '</span>'
-        + '<span class="text-emerald-400">━ 나스닥</span><span class="text-amber-400">━ 다우</span>'
-        + '<span class="ml-auto text-slate-500">🔵매수 🔴매도</span></div>'
+        + '<span class="ml-auto text-slate-500">🔵 매수  🔴 매도</span></div>'
         + '<div id="tradeChartContainer" style="width:100%;height:200px;" class="rounded-lg overflow-hidden bg-slate-900/50"></div>'
-        + '<div id="tradeChartPeriodRet" class="text-[10px] text-slate-400 mt-1 px-0.5"></div>'
+        + '<div id="tradeChartPeriodRet" class="text-[10px] text-slate-400 mt-1.5 px-0.5"></div>'
         + '</div>';
 
     // 체결 내역
@@ -4310,16 +4326,11 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
     var todayS = new Date().toISOString().slice(0, 10);
     var winStart = pad(startD, -21), winEnd = pad(endD, 21); if (winEnd > todayS) winEnd = todayS;
 
-    Promise.all([_fetchOhlc(sym), _fetchOhlc('^IXIC'), _fetchOhlc('^DJI')]).then(function(res) {
+    Promise.all([_fetchOhlc(sym), _fetchOhlc('^IXIC'), _fetchOhlc('^DJI'), _fetchOhlc('^GSPC')]).then(function(res) {
         var inWin = function(arr) { return (arr || []).filter(function(p) { return p.time >= winStart && p.time <= winEnd; }); };
-        var rebase = function(arr) {
-            arr = inWin(arr); if (!arr.length) return [];
-            var base = arr[0].close; if (!base) return [];
-            return arr.map(function(p) { return { time: p.time, value: Math.round((p.close / base - 1) * 1000) / 10 }; });
-        };
-        var stockData = rebase(res[0]);
+        // 종목은 실제 가격으로 표시 (매수/매도가와 일치)
+        var stockData = inWin(res[0]).map(function(p) { return { time: p.time, value: Math.round(p.close * 100) / 100 }; });
         if (!stockData.length) { cont.parentElement.style.display = 'none'; return; }
-        var ndxData = rebase(res[1]), dowData = rebase(res[2]);
 
         try { if (_tradeChartObj) { _tradeChartObj.remove(); _tradeChartObj = null; } } catch (e) {}
         cont.innerHTML = '';
@@ -4331,11 +4342,7 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
             crosshair: { mode: 0 }, handleScroll: false, handleScale: false
         });
         _tradeChartObj = chart;
-        var dow = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-        dow.setData(dowData);
-        var ndx = chart.addLineSeries({ color: '#22c55e', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-        ndx.setData(ndxData);
-        var stock = chart.addLineSeries({ color: '#ffffff', lineWidth: 2, priceLineVisible: false });
+        var stock = chart.addAreaSeries({ lineColor: '#38bdf8', topColor: 'rgba(56,189,248,0.25)', bottomColor: 'rgba(56,189,248,0.02)', lineWidth: 2, priceLineVisible: false });
         stock.setData(stockData);
 
         // 매수/매도 마커
@@ -4346,12 +4353,23 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
         try { stock.setMarkers(markers); } catch (e) {}
         chart.timeScale().fitContent();
 
-        // 기간 수익률 비교
-        var ret = function(arr) { return arr.length ? arr[arr.length - 1].value : null; };
-        var rs = ret(stockData), rn = ret(ndxData), rd = ret(dowData);
-        var fmt = function(v, label, cls) { return v == null ? '' : '<span class="' + cls + '">' + label + ' ' + (v >= 0 ? '+' : '') + v.toFixed(1) + '%</span>'; };
+        // 당일 시장 상황 (거래일 기준 지수 레벨 + 등락률)
+        var dayMetric = function(series, dateStr) {
+            series = series || []; var idx = -1;
+            for (var i = 0; i < series.length; i++) { if (series[i].time <= dateStr) idx = i; else break; }
+            if (idx < 1) return null;
+            var cur = series[idx].close, prev = series[idx - 1].close;
+            return { level: cur, chg: prev ? (cur / prev - 1) * 100 : 0 };
+        };
+        var fmtIdx = function(m, label) {
+            if (!m) return '';
+            var col = m.chg >= 0 ? 'text-red-400' : 'text-blue-400';
+            return '<span class="text-slate-400">' + label + ' <span class="text-slate-200 font-bold">' + Math.round(m.level).toLocaleString() + '</span> <span class="' + col + '">' + (m.chg >= 0 ? '+' : '') + m.chg.toFixed(2) + '%</span></span>';
+        };
+        var d = focusDate || (stockData[stockData.length - 1] && stockData[stockData.length - 1].time);
+        var parts = [fmtIdx(dayMetric(res[1], d), '나스닥'), fmtIdx(dayMetric(res[3], d), 'S&P500'), fmtIdx(dayMetric(res[2], d), '다우')].filter(Boolean);
         var pe = document.getElementById('tradeChartPeriodRet');
-        if (pe) pe.innerHTML = '이 기간 ' + [fmt(rs, sym, 'text-white font-bold'), fmt(rn, '나스닥', 'text-emerald-400'), fmt(rd, '다우', 'text-amber-400')].filter(Boolean).join(' · ');
+        if (pe) pe.innerHTML = parts.length ? ('<span class="text-slate-500">📅 ' + escapeHtml(d) + ' 시장</span><br>' + parts.join('  ·  ')) : '';
     });
 }
 
