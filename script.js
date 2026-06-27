@@ -834,6 +834,86 @@ function renderKrNews(data) {
 
 function expandKrNews() { _krNewsExpanded = true; var c = _krCache()[_krCat()]; if (c) renderKrNews(c); }
 
+// ==========================================
+// 📅 경제 일정 (Gemini + 12h 캐시)
+// ==========================================
+var CALENDAR_CACHE_KEY = 'umt_calendar_cache';
+var CALENDAR_TTL = 12 * 60 * 60 * 1000;
+
+function ensureCalendarLoaded() {
+    try {
+        var c = JSON.parse(localStorage.getItem(CALENDAR_CACHE_KEY) || 'null');
+        if (c && c._cachedAt && (Date.now() - c._cachedAt) < CALENDAR_TTL) { renderCalendar(c); return; }
+    } catch (e) {}
+    startCalendar();
+}
+
+function startCalendar() {
+    var list = document.getElementById('econCalendarList');
+    if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>경제 일정 불러오는 중...</div>';
+    fetch(API_BASE_URL + '/calendar', { signal: AbortSignal.timeout ? AbortSignal.timeout(90000) : undefined })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) throw new Error(data.error);
+        data._cachedAt = Date.now();
+        localStorage.setItem(CALENDAR_CACHE_KEY, JSON.stringify(data));
+        renderCalendar(data);
+    })
+    .catch(function(e) {
+        if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs">경제 일정 실패: ' + escapeHtml(e.message).substring(0, 60) + '<br><button onclick="startCalendar()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
+    });
+}
+
+function renderCalendar(data) {
+    var list = document.getElementById('econCalendarList');
+    if (!list) return;
+    var events = (data && Array.isArray(data.events)) ? data.events : [];
+    if (!events.length) { list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">예정된 일정이 없습니다</div>'; return; }
+
+    // 날짜별 그룹
+    var groups = {}, order = [];
+    events.forEach(function(e) {
+        var k = (e.date || '') + (e.weekday ? '(' + e.weekday + ')' : '');
+        if (!groups[k]) { groups[k] = []; order.push(k); }
+        groups[k].push(e);
+    });
+    var impDot = { high: 'bg-red-500', medium: 'bg-yellow-500', low: 'bg-slate-500' };
+    var flag = { US: '🇺🇸', KR: '🇰🇷' };
+    var html = '<div class="glass-panel rounded-xl p-3.5 space-y-3">';
+    order.forEach(function(k) {
+        html += '<div><div class="text-[11px] font-black text-emerald-300 mb-1.5 pb-1 border-b border-slate-700/60">' + escapeHtml(k) + '</div><div class="space-y-1.5">';
+        groups[k].forEach(function(e) {
+            var meta = [];
+            if (e.time) meta.push(escapeHtml(e.time));
+            if (e.forecast) meta.push('예상 ' + escapeHtml(e.forecast));
+            if (e.previous) meta.push('이전 ' + escapeHtml(e.previous));
+            html += '<div class="flex items-start gap-2">'
+                + '<span class="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ' + (impDot[e.importance] || 'bg-slate-500') + '"></span>'
+                + '<div class="flex-1 min-w-0">'
+                + '<div class="text-[12px] text-white font-bold leading-snug">' + (flag[e.country] || '') + ' ' + escapeHtml(e.name || '') + '</div>'
+                + (meta.length ? '<div class="text-[10px] text-slate-500">' + meta.join(' · ') + '</div>' : '')
+                + '</div></div>';
+        });
+        html += '</div></div>';
+    });
+    html += '</div>';
+    list.innerHTML = html;
+
+    if (data._cachedAt) {
+        var mins = Math.round((Date.now() - data._cachedAt) / 60000);
+        var rel = mins < 60 ? (mins + '분 전') : (Math.round(mins / 60) + '시간 전');
+        var te = document.getElementById('econCalendarTime'); if (te) te.innerText = rel + ' 업데이트';
+    }
+}
+
+function toggleCalendar() {
+    var list = document.getElementById('econCalendarList');
+    var btn = document.getElementById('econCalendarToggleBtn');
+    if (!list) return;
+    var isHidden = list.classList.toggle('hidden');
+    if (btn) { btn.innerHTML = '<i class="fa-solid ' + (isHidden ? 'fa-chevron-down' : 'fa-chevron-up') + ' text-xs" id="econCalendarChev"></i>'; }
+}
+
 function toggleKrNews() {
     var list = document.getElementById('krNewsList');
     var tabs = document.getElementById('krNewsTabs');
@@ -2225,7 +2305,7 @@ function switchTab(id) {
         if (activeTicker) setTimeout(() => loadTickerData(activeTicker), 10);
     }
     stopNewsAutoRefresh();
-    if(id==='news') { setTimeout(() => { ensureStockNewsLoaded(); ensureKrNewsLoaded(); }, 10); startNewsAutoRefresh(); }
+    if(id==='news') { setTimeout(() => { ensureStockNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') initInputs();
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }

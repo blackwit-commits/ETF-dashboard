@@ -346,6 +346,26 @@ export default {
       }
     }
 
+    // 10. 경제 일정 (/calendar) - Gemini 그라운딩 + KV 12시간 캐시 (미국+한국 지표)
+    if (path === "/calendar") {
+      const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+      try {
+        if (env.UMT_KV) {
+          const cached = await env.UMT_KV.get("econ_calendar", "json");
+          if (cached && cached.ts && (Date.now() - cached.ts < 12 * 3600 * 1000)) {
+            return new Response(JSON.stringify(cached), { headers: jsonHeaders });
+          }
+        }
+        if (!env.GEMINI_API_KEY) return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), { status: 500, headers: jsonHeaders });
+        const result = await callGeminiCalendar(env.GEMINI_API_KEY);
+        result.ts = Date.now();
+        if (env.UMT_KV) await env.UMT_KV.put("econ_calendar", JSON.stringify(result));
+        return new Response(JSON.stringify(result), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
+      }
+    }
+
     // 9. 한국 뉴스 (/krnews?cat=economy) - 한국경제 RSS 카테고리 파싱
     if (path === "/krnews") {
       const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
@@ -853,6 +873,41 @@ Quad: 1=골디락스(Growth↑Inflation↓), 2=과열(Growth↑Inflation↑), 3=
 
 JSON schema:
 {"week_summary":"<한줄 요약>","quad_status":{"current":1,"name":"골디락스","maintained":true,"change_from":null,"confidence":75},"transition_checklist":[{"item":"<항목>","checked":true,"detail":"<설명>"}],"transition_probability":{"to_quad1":0,"to_quad2":20,"to_quad3":10,"to_quad4":5},"week_highlights":[{"date":"4/1","event":"<이벤트>","impact":"<영향>","quad_effect":"<Quad 영향>"}],"next_week":{"key_events":[{"date":"4/7","name":"<이벤트>","importance":"high","expected_impact":"<예상>"}],"scenarios":[{"name":"<시나리오>","probability":50,"strategy":"<전략>","etf_action":[{"ticker":"TQQQ","action":"buy","reason":"<이유>"}]}],"risk_factors":["<리스크>"]},"market_week_review":{"sp500":{"close":5200,"weekly_change":"+1.2%"},"nasdaq":{"close":16300,"weekly_change":"+1.5%"},"vix":{"close":18,"weekly_change":"-5%"},"us10y":{"close":4.2,"weekly_change":"+3bp"},"wti":{"close":78,"weekly_change":"+2%"},"gold":{"close":3300,"weekly_change":"+0.5%"},"dxy":{"close":103,"weekly_change":"-0.3%"}},"timestamp":"2026-04-05T00:00:00Z"}`;
+
+const CALENDAR_PROMPT = `당신은 경제지표 일정 큐레이터입니다. Google 검색으로 "오늘부터 향후 14일" 미국과 한국의 주요 경제지표·이벤트 발표 일정을 수집하세요. 모든 텍스트는 한국어.
+
+포함 대상: 미국(CPI, PCE, NFP/고용, FOMC/금리결정, GDP, 소매판매, ISM, 미시간소비심리 등), 한국(소비자물가 CPI, 금통위 기준금리, 수출입, GDP, 고용 등), 주요 빅테크 실적 발표일.
+
+CRITICAL: 오직 유효한 JSON만. 마크다운/설명 없이 { 로 시작해 } 로 끝.
+문자열 값 안에서 큰따옴표(") 금지(작은따옴표 사용), 줄바꿈 금지.
+
+JSON 스키마:
+{"events":[{"date":"<M/D>","weekday":"<월|화|수|목|금|토|일>","country":"<US|KR>","name":"<지표/이벤트명 한국어>","importance":"<high|medium|low>","time":"<한국시간 발표시각, 모르면 빈 문자열>","forecast":"<예상치, 없으면 빈 문자열>","previous":"<이전치, 없으면 빈 문자열>"}],"timestamp":"<ISO8601>"}
+
+규칙: 날짜 오름차순 정렬, 최대 20개, 확실한 일정만(추측 금지), importance는 시장 영향도 기준.`;
+
+async function callGeminiCalendar(apiKey) {
+  let lastErr = "unknown";
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const data = await callGeminiWithFallback(apiKey, {
+      system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never output text, markdown, or explanations. Inside string values, never use double quotes." }] },
+      contents: [{ parts: [{ text: CALENDAR_PROMPT }] }],
+      tools: [{ google_search: {} }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 6000 },
+    });
+    let textContent = "";
+    const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+    if (parts) { for (const part of parts) { if (part.text) textContent += part.text; } }
+    if (!textContent) { lastErr = "No text content"; continue; }
+    try {
+      const result = parseGeminiJson(textContent);
+      if (!Array.isArray(result.events)) result.events = [];
+      if (!result.timestamp) result.timestamp = new Date().toISOString();
+      return result;
+    } catch (e) { lastErr = e.message; }
+  }
+  throw new Error("Calendar JSON parse failed: " + lastErr);
+}
 
 async function callGeminiWeeklyReport(apiKey) {
   const data = await callGeminiWithFallback(apiKey, {
