@@ -1250,13 +1250,33 @@ function fetchMacroIndicatorsLive() {
     });
 }
 
-// 매크로 지표 클릭 → TradingView 차트 모달
+// 매크로 지표 클릭 → TradingView 차트 모달 (임베드 가능한 실거래소 피드 심볼 사용)
 var MACRO_CHART_MAP = {
-    wti:   { tv: 'TVC:USOIL',  name: 'WTI 원유',           desc: '서부텍사스산 원유 선물. 인플레이션·경기·지정학(중동) 영향. 상승=물가압력↑' },
-    gold:  { tv: 'TVC:GOLD',   name: '금 (Gold)',          desc: '안전자산. 실질금리↓·달러약세·위험회피 시 상승. 인플레 헤지 역할' },
-    dxy:   { tv: 'TVC:DXY',    name: '달러 인덱스 (DXY)',  desc: '주요 6개 통화 대비 달러 가치. 상승=달러강세 → 신흥국·원자재·수출주에 부담' },
-    us10y: { tv: 'TVC:US10Y',  name: '미 10년물 국채금리', desc: '글로벌 금리의 기준. 상승=긴축/성장기대 → 성장주·채권 부담, 하락=완화기대' },
-    vix:   { tv: 'TVC:VIX',    name: 'VIX 변동성지수',     desc: '공포지수. S&P500 변동성 기대치. 20↑ 불안, 30↑ 공포. 급등=위험회피 신호' }
+    wti:   { tv: 'TVC:USOIL',      mkId: 'Wti',   name: 'WTI 원유', unit: '$',
+             desc: '서부텍사스산 원유 선물 가격. 인플레이션·경기·지정학(특히 중동) 흐름을 반영하는 대표 원자재.',
+             up: '물가 상승 압력↑, 에너지주(XLE·NRGU) 수혜, 항공·운송엔 부담',
+             down: '인플레 둔화 기대↑, 소비·운송주 수혜, 에너지주 부담',
+             quad: 'Quad2(과열) 국면에서 강세 경향' },
+    gold:  { tv: 'TVC:GOLD',       mkId: 'Gold',  name: '금 (Gold)', unit: '$',
+             desc: '대표 안전자산. 실질금리·달러와 역의 관계, 위험회피·인플레 헤지 수단.',
+             up: '실질금리↓ / 달러약세 / 위험회피 심리. 금광주(NUGT·GDXU) 수혜',
+             down: '실질금리↑ / 달러강세 / 위험선호 회복',
+             quad: 'Quad3(스태그플레이션)·위기 국면에서 강세' },
+    dxy:   { tv: 'CAPITALCOM:DXY', mkId: 'Dxy',   name: '달러 인덱스 (DXY)', unit: '',
+             desc: '주요 6개 통화 대비 미 달러의 상대 가치. 글로벌 자금 흐름의 바로미터.',
+             up: '달러강세 → 신흥국·원자재·수출주·금에 부담, 환차손 주의',
+             down: '달러약세 → 원자재·신흥국·금 우호적',
+             quad: '안전자산 선호(Quad4)·긴축기에 강세' },
+    us10y: { tv: 'FRED:DGS10',     mkId: 'Us10y', name: '미 10년물 국채금리', unit: '%',
+             desc: '글로벌 금리의 기준점(벤치마크). 성장·인플레·통화정책 기대를 종합 반영.',
+             up: '긴축/성장기대 → 성장주·기술주(TQQQ)·채권(TMF)에 부담',
+             down: '완화기대/경기둔화 → 성장주·장기채 우호적',
+             quad: '상승=Quad2, 하락=Quad4 신호로 자주 작용' },
+    vix:   { tv: 'CBOE:VIX',       mkId: 'Vix',   name: 'VIX 변동성지수', unit: '',
+             desc: 'S&P500 향후 30일 변동성 기대치 = 시장의 공포지수.',
+             up: '불안·공포 확대 → 위험회피, 레버리지 비중 축소 신호',
+             down: '안정·위험선호 → 추세 추종 우호적',
+             quad: '<20 안정 / 20~30 경계 / 30↑ 공포' }
 };
 var _macroChartWidget = null;
 function openMacroChart(key) {
@@ -1264,11 +1284,31 @@ function openMacroChart(key) {
     if (!m) return;
     var modal = document.getElementById('macroChartModal');
     var titleEl = document.getElementById('macroChartTitle');
-    var descEl = document.getElementById('macroChartDesc');
+    var detailEl = document.getElementById('macroChartDetail');
     var cont = document.getElementById('macroChartContainer');
+
+    // 현재 값/변동률 (실시간 스냅샷에서)
+    var snapTicker = { wti: 'CL=F', gold: 'GC=F', dxy: 'DX-Y.NYB', us10y: '^TNX', vix: '^VIX' }[key];
+    var md = MARKET_SNAPSHOT[snapTicker];
+    var valLine = '';
+    if (md && md.price > 0) {
+        var chg = md.change != null ? md.change : 0;
+        var col = chg >= 0 ? 'text-red-400' : 'text-blue-400';
+        valLine = '<div class="flex items-baseline gap-2 mb-2"><span class="text-xl font-black text-white">' + (m.unit === '$' ? '$' : '') + Number(md.price).toLocaleString(undefined, { maximumFractionDigits: 2 }) + (m.unit === '%' ? '%' : '') + '</span>'
+            + '<span class="text-sm font-bold ' + col + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</span></div>';
+    }
+
     if (titleEl) titleEl.innerText = m.name;
-    if (descEl) descEl.innerText = m.desc;
     if (cont) cont.innerHTML = '';
+    if (detailEl) {
+        detailEl.innerHTML = valLine
+            + '<div class="text-[12px] text-slate-300 leading-relaxed">' + escapeHtml(m.desc) + '</div>'
+            + '<div class="grid grid-cols-1 gap-1.5 mt-1">'
+            + '<div class="bg-slate-800/50 rounded-lg p-2 text-[11px]"><span class="text-red-400 font-bold">▲ 상승 시</span> <span class="text-slate-300">' + escapeHtml(m.up) + '</span></div>'
+            + '<div class="bg-slate-800/50 rounded-lg p-2 text-[11px]"><span class="text-blue-400 font-bold">▼ 하락 시</span> <span class="text-slate-300">' + escapeHtml(m.down) + '</span></div>'
+            + '<div class="bg-slate-800/50 rounded-lg p-2 text-[11px]"><span class="text-purple-300 font-bold"><i class="fa-solid fa-compass mr-1"></i>전략</span> <span class="text-slate-300">' + escapeHtml(m.quad) + '</span></div>'
+            + '</div>';
+    }
     if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
     if (typeof TradingView !== 'undefined') {
         try {

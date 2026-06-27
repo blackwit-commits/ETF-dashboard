@@ -68,11 +68,11 @@
 
             <!-- ■ 2. 핵심 시장 지표 5개 -->
             <div class="grid grid-cols-5 gap-1.5" id="marketIndicators">
-                <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('wti')" title="WTI 원유 선물 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">WTI</div><div class="text-[7px] text-slate-600 leading-none mt-0.5">원유</div><div class="text-xs font-black text-white mt-0.5" id="mkWti">--</div><div class="text-[9px] font-bold" id="mkWtiChg">--</div></div>
-                <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('gold')" title="금 선물 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">GOLD</div><div class="text-[7px] text-slate-600 leading-none mt-0.5">금</div><div class="text-xs font-black text-white mt-0.5" id="mkGold">--</div><div class="text-[9px] font-bold" id="mkGoldChg">--</div></div>
-                <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('dxy')" title="달러 인덱스 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">DXY</div><div class="text-[7px] text-slate-600 leading-none mt-0.5">달러</div><div class="text-xs font-black text-white mt-0.5" id="mkDxy">--</div><div class="text-[9px] font-bold" id="mkDxyChg">--</div></div>
-                <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('us10y')" title="미국 10년물 국채금리 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">US10Y</div><div class="text-[7px] text-slate-600 leading-none mt-0.5">美10년</div><div class="text-xs font-black text-white mt-0.5" id="mkUs10y">--</div><div class="text-[9px] font-bold" id="mkUs10yChg">--</div></div>
-                <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('vix')" title="변동성지수(공포지수) 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">VIX</div><div class="text-[7px] text-slate-600 leading-none mt-0.5">변동성</div><div class="text-xs font-black text-white mt-0.5" id="mkVix">--</div><div class="text-[9px] font-bold" id="mkVixChg">--</div></div>
+                <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('wti')" title="WTI 원유 선물 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">WTI</div><div class="text-[8px] text-slate-300 leading-none mt-0.5">원유</div><div class="text-xs font-black text-white mt-0.5" id="mkWti">--</div><div class="text-[9px] font-bold" id="mkWtiChg">--</div></div>
+                <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('gold')" title="금 선물 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">GOLD</div><div class="text-[8px] text-slate-300 leading-none mt-0.5">금</div><div class="text-xs font-black text-white mt-0.5" id="mkGold">--</div><div class="text-[9px] font-bold" id="mkGoldChg">--</div></div>
+                <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('dxy')" title="달러 인덱스 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">DXY</div><div class="text-[8px] text-slate-300 leading-none mt-0.5">달러</div><div class="text-xs font-black text-white mt-0.5" id="mkDxy">--</div><div class="text-[9px] font-bold" id="mkDxyChg">--</div></div>
+                <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('us10y')" title="미국 10년물 국채금리 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">US10Y</div><div class="text-[8px] text-slate-300 leading-none mt-0.5">美10년</div><div class="text-xs font-black text-white mt-0.5" id="mkUs10y">--</div><div class="text-[9px] font-bold" id="mkUs10yChg">--</div></div>
+                <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('vix')" title="변동성지수(공포지수) 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">VIX</div><div class="text-[8px] text-slate-300 leading-none mt-0.5">변동성</div><div class="text-xs font-black text-white mt-0.5" id="mkVix">--</div><div class="text-[9px] font-bold" id="mkVixChg">--</div></div>
             </div>
 
             <!-- ■ 3. 이벤트 캘린더 (타임라인) -->
@@ -617,8 +617,8 @@
                 <h3 class="font-bold text-white text-sm" id="macroChartTitle">차트</h3>
                 <button type="button" onclick="closeMacroChart()" class="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <div id="macroChartDesc" class="px-3 py-2 text-[11px] text-slate-400 bg-slate-800/50 border-b border-slate-700"></div>
-            <div id="macroChartContainer" style="height:60vh;width:100%;"></div>
+            <div id="macroChartContainer" style="height:45vh;width:100%;"></div>
+            <div id="macroChartDetail" class="p-3 space-y-2 overflow-y-auto border-t border-slate-700" style="max-height:32vh;"></div>
         </div>
     </div>
     <div id="tradelogDetailModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm">
