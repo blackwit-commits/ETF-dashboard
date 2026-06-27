@@ -1250,6 +1250,47 @@ function fetchMacroIndicatorsLive() {
     });
 }
 
+// 매크로 지표 클릭 → TradingView 차트 모달
+var MACRO_CHART_MAP = {
+    wti:   { tv: 'TVC:USOIL',  name: 'WTI 원유',           desc: '서부텍사스산 원유 선물. 인플레이션·경기·지정학(중동) 영향. 상승=물가압력↑' },
+    gold:  { tv: 'TVC:GOLD',   name: '금 (Gold)',          desc: '안전자산. 실질금리↓·달러약세·위험회피 시 상승. 인플레 헤지 역할' },
+    dxy:   { tv: 'TVC:DXY',    name: '달러 인덱스 (DXY)',  desc: '주요 6개 통화 대비 달러 가치. 상승=달러강세 → 신흥국·원자재·수출주에 부담' },
+    us10y: { tv: 'TVC:US10Y',  name: '미 10년물 국채금리', desc: '글로벌 금리의 기준. 상승=긴축/성장기대 → 성장주·채권 부담, 하락=완화기대' },
+    vix:   { tv: 'TVC:VIX',    name: 'VIX 변동성지수',     desc: '공포지수. S&P500 변동성 기대치. 20↑ 불안, 30↑ 공포. 급등=위험회피 신호' }
+};
+var _macroChartWidget = null;
+function openMacroChart(key) {
+    var m = MACRO_CHART_MAP[key];
+    if (!m) return;
+    var modal = document.getElementById('macroChartModal');
+    var titleEl = document.getElementById('macroChartTitle');
+    var descEl = document.getElementById('macroChartDesc');
+    var cont = document.getElementById('macroChartContainer');
+    if (titleEl) titleEl.innerText = m.name;
+    if (descEl) descEl.innerText = m.desc;
+    if (cont) cont.innerHTML = '';
+    if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    if (typeof TradingView !== 'undefined') {
+        try {
+            _macroChartWidget = new TradingView.widget({
+                "autosize": true, "symbol": m.tv, "interval": "D", "timezone": "Etc/UTC", "theme": "dark",
+                "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false,
+                "hide_top_toolbar": false, "hide_side_toolbar": true, "allow_symbol_change": false,
+                "container_id": "macroChartContainer", "studies": ["MASimple@tv-basicstudies"]
+            });
+        } catch (e) {
+            if (cont) cont.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">차트를 불러올 수 없습니다.</div>';
+        }
+    }
+}
+function closeMacroChart() {
+    var modal = document.getElementById('macroChartModal');
+    var cont = document.getElementById('macroChartContainer');
+    if (cont) cont.innerHTML = '';
+    _macroChartWidget = null;
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+}
+
 function fetchMarketDataInBackground() {
     fetchMarketData('^VIX').then(data => {
         MARKET_SNAPSHOT['^VIX'] = data;

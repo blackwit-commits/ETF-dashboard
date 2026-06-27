@@ -56,8 +56,16 @@ export default {
 
         // --- 지표 계산 로직 (Quant Logic) ---
 
-        // 1. 등락률
-        const change = ((currentPrice - prevClose) / prevClose) * 100;
+        // 1. 등락률 — 종가 배열 기반(선물 연속계약의 chartPreviousClose 오류 방지), 부족 시 meta 폴백
+        let basePrevClose = prevClose;
+        if (validCloses.length >= 2) {
+            const lastClose = validCloses[validCloses.length - 1];
+            const prevArr = validCloses[validCloses.length - 2];
+            // 현재가가 마지막 일봉 종가와 거의 같으면(장 마감) 그 일봉이 '오늘' → 전일은 직전 종가
+            // 다르면(장중) 마지막 일봉이 '전일 완성봉' → 그 값을 전일 종가로 사용
+            basePrevClose = (Math.abs(currentPrice - lastClose) / lastClose < 0.002) ? prevArr : lastClose;
+        }
+        const change = (basePrevClose ? ((currentPrice - basePrevClose) / basePrevClose) * 100 : 0);
 
         // 2. MA 200 (단순이동평균)
         const ma200 = calculateSMA(validCloses, 200);
