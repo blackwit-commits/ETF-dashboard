@@ -389,7 +389,7 @@ export default {
             if (dm) { const p = Date.parse(dm[1].trim()); if (!isNaN(p)) dt = Math.floor(p / 1000); }
             items.push({
               headline: tm[1].replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim(),
-              url: lm[1].trim(),
+              url: lm[1].replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").trim(),
               datetime: dt,
               source: "한국경제"
             });
