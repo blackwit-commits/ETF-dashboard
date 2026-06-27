@@ -106,8 +106,6 @@ let modalWidget = null;
 let currentChartSym = null;
 let SYNC_URL = "";
 let _translateCache = {};
-// mymemory 번역 무료 한도 상향용 이메일 (요청 URL에 노출됨 — 필요시 전용 이메일로 교체)
-const MYMEMORY_EMAIL = 'hansung@hansungtools.co.kr';
 
 // ==========================================
 // Macro API 호출 + localStorage 캐싱 (하루 1~2회)
@@ -1030,8 +1028,8 @@ async function translateText(enText) {
     if (!key) return null;
     if (_translateCache[key] !== undefined) return _translateCache[key];
     try {
-        // de(email) 파라미터로 mymemory 일일 무료 한도 상향 (약 1천 → 5만 단어/일)
-        const res = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(key) + '&langpair=en|ko&de=' + encodeURIComponent(MYMEMORY_EMAIL));
+        // 번역은 Worker 경유 (한도상향 이메일은 서버측 secret으로 처리 → 클라이언트/소스에 미노출)
+        const res = await fetch(API_BASE_URL + '/translate?q=' + encodeURIComponent(key) + '&pair=en|ko');
         const json = await res.json();
         const status = json && json.responseStatus;
         let translated = (json && json.responseData && json.responseData.translatedText) ? json.responseData.translatedText.trim() : '';

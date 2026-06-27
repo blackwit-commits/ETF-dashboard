@@ -401,6 +401,42 @@ export default {
       }
     }
 
+    // 13. 번역 프록시 (/translate?q=...&pair=en|ko) - mymemory + 이메일(한도상향)을 서버측에서 처리(이메일 비노출)
+    if (path === "/translate") {
+      const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+      const q = url.searchParams.get("q") || "";
+      const pair = url.searchParams.get("pair") || "en|ko";
+      if (!q.trim()) return new Response(JSON.stringify({ responseStatus: 400 }), { headers: jsonHeaders });
+      const parts = pair.split("|");
+      const sl = (parts[0] || "en").toUpperCase();
+      const tl = (parts[1] || "ko").toUpperCase();
+      // 1순위: DeepL (키 있으면) — IP 제한 없음, 키는 secret으로 비노출
+      if (env.DEEPL_API_KEY) {
+        try {
+          const dr = await fetch("https://api-free.deepl.com/v2/translate", {
+            method: "POST",
+            headers: { "Authorization": "DeepL-Auth-Key " + env.DEEPL_API_KEY.trim(), "Content-Type": "application/x-www-form-urlencoded" },
+            body: "text=" + encodeURIComponent(q) + "&source_lang=" + sl + "&target_lang=" + tl
+          });
+          if (dr.ok) {
+            const dj = await dr.json();
+            const t = dj.translations && dj.translations[0] && dj.translations[0].text;
+            if (t) return new Response(JSON.stringify({ responseStatus: 200, responseData: { translatedText: t } }), { headers: jsonHeaders });
+          }
+        } catch (e) { /* DeepL 실패 시 mymemory 폴백 */ }
+      }
+      // 2순위: mymemory (이메일 한도상향)
+      try {
+        const email = (env.MYMEMORY_EMAIL || "").trim();
+        const murl = "https://api.mymemory.translated.net/get?q=" + encodeURIComponent(q) + "&langpair=" + encodeURIComponent(pair) + (email ? "&de=" + encodeURIComponent(email) : "");
+        const r = await fetch(murl, { headers: { "User-Agent": "Mozilla/5.0" } });
+        const j = await r.json();
+        return new Response(JSON.stringify(j), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ responseStatus: 500, error: e.message }), { headers: jsonHeaders });
+      }
+    }
+
     // 12. 글로벌 뉴스 (/usnews?cat=markets) - CNBC RSS 카테고리 파싱
     if (path === "/usnews") {
       const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
