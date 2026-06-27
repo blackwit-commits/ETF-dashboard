@@ -4229,6 +4229,16 @@ function showTradeDetail(idx) {
         + '<span class="text-xs text-slate-400">' + escapeHtml(r.date || '') + stageStr + '</span>'
         + '</div>';
 
+    // 차트 (종목 vs 나스닥 vs 다우, 매수/매도 지점 표시)
+    h += '<div class="mt-1 mb-2">'
+        + '<div class="flex items-center gap-3 text-[9px] mb-1 px-0.5">'
+        + '<span class="text-white font-bold">━ ' + escapeHtml(r.sym || '종목') + '</span>'
+        + '<span class="text-emerald-400">━ 나스닥</span><span class="text-amber-400">━ 다우</span>'
+        + '<span class="ml-auto text-slate-500">🔵매수 🔴매도</span></div>'
+        + '<div id="tradeChartContainer" style="width:100%;height:200px;" class="rounded-lg overflow-hidden bg-slate-900/50"></div>'
+        + '<div id="tradeChartPeriodRet" class="text-[10px] text-slate-400 mt-1 px-0.5"></div>'
+        + '</div>';
+
     // 체결 내역
     h += sectionHead('체결 내역');
     h += '<div class="bg-slate-900/50 rounded-lg px-3 py-1 text-xs">';
@@ -4272,11 +4282,83 @@ function showTradeDetail(idx) {
     if (contentEl) contentEl.innerHTML = h;
     var modal = document.getElementById('tradelogDetailModal');
     if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+    // 차트 렌더 (종목 vs 지수 + 매수/매도 마커)
+    setTimeout(function() { renderTradeJournalChart(r.sym, r.cycleId, r.date); }, 30);
+}
+
+// 매매일지 상세 차트: 종목·나스닥·다우를 % 리베이스 라인 + 매수/매도 마커
+var _tradeChartObj = null;
+function _fetchOhlc(ticker) {
+    return fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(ticker) + '&range=1y', { signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined })
+        .then(function(r) { return r.json(); })
+        .then(function(d) { return (d && Array.isArray(d.series)) ? d.series : []; })
+        .catch(function() { return []; });
+}
+function renderTradeJournalChart(sym, cycleId, focusDate) {
+    var cont = document.getElementById('tradeChartContainer');
+    if (!cont) return;
+    if (typeof LightweightCharts === 'undefined') { cont.parentElement.style.display = 'none'; return; }
+
+    // 해당 사이클 매수/매도 거래 (전체 이력에서)
+    var cycleTrades = getAggregatedTrades().filter(function(t) {
+        return t.sym === sym && String(t.cycleId) === String(cycleId) && (t.type === 'BUY' || t.type === 'SELL');
+    });
+    var tdates = cycleTrades.map(function(t) { return t.date; }).filter(Boolean).sort();
+    var startD = tdates[0] || focusDate, endD = tdates[tdates.length - 1] || focusDate;
+    // 윈도우: 시작 -21일 ~ 종료 +21일 (오늘 한도)
+    var pad = function(ds, days) { var d = new Date(ds); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
+    var todayS = new Date().toISOString().slice(0, 10);
+    var winStart = pad(startD, -21), winEnd = pad(endD, 21); if (winEnd > todayS) winEnd = todayS;
+
+    Promise.all([_fetchOhlc(sym), _fetchOhlc('^IXIC'), _fetchOhlc('^DJI')]).then(function(res) {
+        var inWin = function(arr) { return (arr || []).filter(function(p) { return p.time >= winStart && p.time <= winEnd; }); };
+        var rebase = function(arr) {
+            arr = inWin(arr); if (!arr.length) return [];
+            var base = arr[0].close; if (!base) return [];
+            return arr.map(function(p) { return { time: p.time, value: Math.round((p.close / base - 1) * 1000) / 10 }; });
+        };
+        var stockData = rebase(res[0]);
+        if (!stockData.length) { cont.parentElement.style.display = 'none'; return; }
+        var ndxData = rebase(res[1]), dowData = rebase(res[2]);
+
+        try { if (_tradeChartObj) { _tradeChartObj.remove(); _tradeChartObj = null; } } catch (e) {}
+        cont.innerHTML = '';
+        var chart = LightweightCharts.createChart(cont, {
+            width: cont.clientWidth, height: 200,
+            layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontSize: 9 },
+            grid: { vertLines: { color: 'rgba(51,65,85,0.3)' }, horzLines: { color: 'rgba(51,65,85,0.3)' } },
+            rightPriceScale: { borderColor: '#334155' }, timeScale: { borderColor: '#334155' },
+            crosshair: { mode: 0 }, handleScroll: false, handleScale: false
+        });
+        _tradeChartObj = chart;
+        var dow = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+        dow.setData(dowData);
+        var ndx = chart.addLineSeries({ color: '#22c55e', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+        ndx.setData(ndxData);
+        var stock = chart.addLineSeries({ color: '#ffffff', lineWidth: 2, priceLineVisible: false });
+        stock.setData(stockData);
+
+        // 매수/매도 마커
+        var markers = cycleTrades.map(function(t) {
+            var buy = t.type === 'BUY';
+            return { time: t.date, position: buy ? 'belowBar' : 'aboveBar', color: buy ? '#3b82f6' : '#f43f5e', shape: buy ? 'arrowUp' : 'arrowDown', text: (buy ? '매수' : '매도') + (t.price ? ' $' + Number(t.price).toFixed(2) : '') };
+        }).sort(function(a, b) { return a.time < b.time ? -1 : 1; });
+        try { stock.setMarkers(markers); } catch (e) {}
+        chart.timeScale().fitContent();
+
+        // 기간 수익률 비교
+        var ret = function(arr) { return arr.length ? arr[arr.length - 1].value : null; };
+        var rs = ret(stockData), rn = ret(ndxData), rd = ret(dowData);
+        var fmt = function(v, label, cls) { return v == null ? '' : '<span class="' + cls + '">' + label + ' ' + (v >= 0 ? '+' : '') + v.toFixed(1) + '%</span>'; };
+        var pe = document.getElementById('tradeChartPeriodRet');
+        if (pe) pe.innerHTML = '이 기간 ' + [fmt(rs, sym, 'text-white font-bold'), fmt(rn, '나스닥', 'text-emerald-400'), fmt(rd, '다우', 'text-amber-400')].filter(Boolean).join(' · ');
+    });
 }
 
 function closeTradeLogDetailModal() {
     const modal = document.getElementById('tradelogDetailModal');
     if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+    try { if (_tradeChartObj) { _tradeChartObj.remove(); _tradeChartObj = null; } } catch (e) {}
 }
 
 function updateGlobalCalc() { 

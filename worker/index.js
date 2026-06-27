@@ -354,6 +354,33 @@ export default {
       }
     }
 
+    // 11. 일봉 시계열 (/ohlc?ticker=AAPL&range=1y) - 차트용 종가 배열
+    if (path === "/ohlc") {
+      const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+      const ticker = url.searchParams.get("ticker");
+      const range = url.searchParams.get("range") || "1y";
+      if (!ticker) return new Response(JSON.stringify({ error: "ticker required" }), { status: 400, headers: jsonHeaders });
+      try {
+        const yurl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=${encodeURIComponent(range)}`;
+        const resp = await fetch(yurl, { headers: { "User-Agent": "Mozilla/5.0" } });
+        const data = await resp.json();
+        const r = data.chart && data.chart.result && data.chart.result[0];
+        if (!r) throw new Error("No data");
+        const ts = r.timestamp || [];
+        const cl = (r.indicators && r.indicators.quote && r.indicators.quote[0] && r.indicators.quote[0].close) || [];
+        const out = [];
+        for (let i = 0; i < ts.length; i++) {
+          if (cl[i] == null) continue;
+          const d = new Date(ts[i] * 1000);
+          const time = d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
+          out.push({ time, close: cl[i] });
+        }
+        return new Response(JSON.stringify({ ticker, series: out }), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
+      }
+    }
+
     // 10. 경제 일정 (/calendar) - Gemini 그라운딩 + KV 12시간 캐시 (미국+한국 지표)
     if (path === "/calendar") {
       const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
