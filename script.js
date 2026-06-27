@@ -1272,7 +1272,7 @@ var MACRO_CHART_MAP = {
              up: '긴축/성장기대 → 성장주·기술주(TQQQ)·채권(TMF)에 부담',
              down: '완화기대/경기둔화 → 성장주·장기채 우호적',
              quad: '상승=Quad2, 하락=Quad4 신호로 자주 작용' },
-    vix:   { tv: 'CBOE:VIX',       mkId: 'Vix',   name: 'VIX 변동성지수', unit: '',
+    vix:   { tv: 'CAPITALCOM:VIX',  mkId: 'Vix',   name: 'VIX 변동성지수', unit: '',
              desc: 'S&P500 향후 30일 변동성 기대치 = 시장의 공포지수.',
              up: '불안·공포 확대 → 위험회피, 레버리지 비중 축소 신호',
              down: '안정·위험선호 → 추세 추종 우호적',
