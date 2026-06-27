@@ -346,6 +346,41 @@ export default {
       }
     }
 
+    // 9. 한국 뉴스 (/krnews?cat=economy) - 한국경제 RSS 카테고리 파싱
+    if (path === "/krnews") {
+      const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+      const catMap = { economy: "economy", politics: "politics", society: "society", international: "international", finance: "finance", it: "it" };
+      const cat = catMap[(url.searchParams.get("cat") || "economy")] || "economy";
+      try {
+        const resp = await fetch(`https://www.hankyung.com/feed/${cat}`, { headers: { "User-Agent": "Mozilla/5.0" } });
+        if (!resp.ok) return new Response(JSON.stringify({ error: "RSS " + resp.status }), { headers: jsonHeaders });
+        const text = await resp.text();
+        const items = [];
+        const blocks = text.split("<item>").slice(1);
+        for (let block of blocks) {
+          if (items.length >= 15) break;
+          const end = block.indexOf("</item>");
+          if (end > 0) block = block.substring(0, end);
+          const tm = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/);
+          const lm = block.match(/<link>([\s\S]*?)<\/link>/);
+          const dm = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
+          if (tm && lm) {
+            let dt = 0;
+            if (dm) { const p = Date.parse(dm[1].trim()); if (!isNaN(p)) dt = Math.floor(p / 1000); }
+            items.push({
+              headline: tm[1].replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim(),
+              url: lm[1].trim(),
+              datetime: dt,
+              source: "한국경제"
+            });
+          }
+        }
+        return new Response(JSON.stringify({ items, cat, timestamp: new Date().toISOString() }), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { headers: jsonHeaders });
+      }
+    }
+
     return new Response("UMT API Worker is Running", { headers: corsHeaders });
   },
 

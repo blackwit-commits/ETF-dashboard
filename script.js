@@ -550,7 +550,7 @@ function startStockNews(silent) {
 // 뉴스탭 자동 갱신 (보는 동안 5분마다 조용히 새로고침)
 function startNewsAutoRefresh() {
     stopNewsAutoRefresh();
-    _newsAutoTimer = setInterval(function() { startStockNews(true); }, 5 * 60 * 1000);
+    _newsAutoTimer = setInterval(function() { startStockNews(true); startKrNews(true); }, 5 * 60 * 1000);
 }
 function stopNewsAutoRefresh() {
     if (_newsAutoTimer) { clearInterval(_newsAutoTimer); _newsAutoTimer = null; }
@@ -584,8 +584,16 @@ function newsItemHtml(x, opts) {
     var newBadge = opts.isNew ? '<span class="text-[8px] font-black bg-red-500 text-white px-1 py-0.5 rounded mr-1 align-middle">NEW</span>' : '';
     var tickerChip = opts.ticker ? '<span class="text-[9px] font-bold text-sky-300 bg-sky-900/40 px-1.5 py-0.5 rounded mr-1 align-middle">' + escapeHtml(opts.ticker) + '</span>' : '';
     var border = opts.isNew ? 'border-red-500/40' : 'border-slate-700/50';
+    // 본문 요약 (헤드라인과 다를 때만, 번역 대상)
+    var summ = String(x.summary || '').trim();
+    var summaryHtml = '';
+    if (summ && summ.length > 30 && summ.toLowerCase().indexOf((x.headline || '').toLowerCase().substring(0, 30)) === -1) {
+        var summEsc = escapeHtml(summ.substring(0, 180));
+        summaryHtml = '<div class="news-ko text-[11px] text-slate-400 leading-snug mt-1.5 pt-1.5 border-t border-slate-700/40" data-en="' + summEsc + '">' + summEsc + '</div>';
+    }
     var inner = '<div class="text-[13px] text-white font-bold leading-snug">' + newBadge + tickerChip + head + '</div>'
         + '<div class="news-ko text-[11.5px] text-sky-200/75 leading-snug mt-1" data-en="' + head + '"></div>'
+        + summaryHtml
         + '<div class="flex items-center gap-2 mt-2 text-[10px]">'
         +   '<span class="font-bold text-slate-300">' + src + '</span>'
         +   (timeStr ? '<span class="text-slate-500">· ' + timeStr + '</span>' : '')
@@ -732,6 +740,108 @@ function toggleStockNews() {
     if (!list) return;
     var isHidden = list.classList.toggle('hidden');
     if (btn) { btn.innerHTML = '<i class="fa-solid ' + (isHidden ? 'fa-chevron-down' : 'fa-chevron-up') + ' text-xs" id="stockNewsChev"></i>'; }
+}
+
+// ==========================================
+// 🇰🇷 한국 뉴스 (한국경제 RSS, 카테고리)
+// ==========================================
+var KRNEWS_CATS = [['economy','경제'],['finance','증권'],['politics','정치'],['society','사회'],['international','국제'],['it','IT']];
+var KRNEWS_CAT_KEY = 'umt_krnews_cat';
+var KRNEWS_CACHE_KEY = 'umt_krnews_cache';   // {cat: {items, _cachedAt}}
+var _krNewsExpanded = false;
+
+function _krCat() { return localStorage.getItem(KRNEWS_CAT_KEY) || 'economy'; }
+function _krCache() { try { return JSON.parse(localStorage.getItem(KRNEWS_CACHE_KEY) || '{}'); } catch (e) { return {}; } }
+
+function renderKrNewsTabs() {
+    var el = document.getElementById('krNewsTabs');
+    if (!el) return;
+    var cur = _krCat();
+    el.innerHTML = KRNEWS_CATS.map(function(c) {
+        var active = c[0] === cur;
+        return '<button onclick="setKrNewsCat(\'' + c[0] + '\')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap transition ' + (active ? 'bg-rose-600 text-white' : 'bg-slate-800 text-slate-400') + '">' + c[1] + '</button>';
+    }).join('');
+}
+
+function setKrNewsCat(cat) {
+    localStorage.setItem(KRNEWS_CAT_KEY, cat);
+    _krNewsExpanded = false;
+    renderKrNewsTabs();
+    var cache = _krCache();
+    if (cache[cat] && cache[cat]._cachedAt && (Date.now() - cache[cat]._cachedAt) < 15 * 60 * 1000) renderKrNews(cache[cat]);
+    else startKrNews();
+}
+
+function ensureKrNewsLoaded() {
+    renderKrNewsTabs();
+    var cat = _krCat();
+    var cache = _krCache();
+    if (cache[cat] && cache[cat]._cachedAt && (Date.now() - cache[cat]._cachedAt) < 15 * 60 * 1000) renderKrNews(cache[cat]);
+    else startKrNews();
+}
+
+function startKrNews(silent) {
+    var list = document.getElementById('krNewsList');
+    var cat = _krCat();
+    if (!silent && list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>한국 뉴스 불러오는 중...</div>';
+    fetch(API_BASE_URL + '/krnews?cat=' + encodeURIComponent(cat), { signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) throw new Error(data.error);
+        data._cachedAt = Date.now();
+        var cache = _krCache(); cache[cat] = data; localStorage.setItem(KRNEWS_CACHE_KEY, JSON.stringify(cache));
+        renderKrNews(data);
+    })
+    .catch(function(e) {
+        if (!silent && list) list.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs">한국 뉴스 실패: ' + escapeHtml(e.message).substring(0, 60) + '<br><button onclick="startKrNews()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
+    });
+}
+
+function renderKrNews(data) {
+    var list = document.getElementById('krNewsList');
+    if (!list) return;
+    var items = (data && Array.isArray(data.items)) ? data.items : [];
+    if (!items.length) { list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">표시할 뉴스가 없습니다</div>'; return; }
+    var seen = parseFloat(localStorage.getItem('umt_krnews_seen') || '0');
+    var curMax = 0; items.forEach(function(x) { if ((x.datetime || 0) > curMax) curMax = x.datetime; });
+    if (curMax > 0) localStorage.setItem('umt_krnews_seen', String(curMax));
+    var limit = _krNewsExpanded ? items.length : 7;
+    var html = '<div class="glass-panel rounded-xl p-3.5"><div class="space-y-2">';
+    items.slice(0, limit).forEach(function(x) {
+        var isNew = seen > 0 && (x.datetime || 0) > seen;
+        var t = newsRelativeTime(x.datetime);
+        var abs = newsAbsStamp(x.datetime);
+        var timeStr = t ? (t + (abs ? ' · ' + abs : '')) : abs;
+        var nb = isNew ? '<span class="text-[8px] font-black bg-red-500 text-white px-1 py-0.5 rounded mr-1 align-middle">NEW</span>' : '';
+        var link = x.url ? encodeURI(x.url) : '';
+        var inner = '<div class="text-[13px] text-white font-bold leading-snug">' + nb + escapeHtml(x.headline || '') + '</div>'
+            + '<div class="flex items-center gap-2 mt-1.5 text-[10px]"><span class="font-bold text-slate-300">' + escapeHtml(x.source || '한국경제') + '</span>'
+            + (timeStr ? '<span class="text-slate-500">· ' + timeStr + '</span>' : '')
+            + (link ? '<span class="ml-auto text-rose-400 font-bold">원문 <i class="fa-solid fa-arrow-up-right-from-square"></i></span>' : '') + '</div>';
+        html += link ? ('<a href="' + link + '" target="_blank" rel="noopener" class="block bg-slate-800/60 hover:bg-slate-700/70 rounded-lg p-3 transition border ' + (isNew ? 'border-red-500/40' : 'border-slate-700/50') + '">' + inner + '</a>')
+            : ('<div class="bg-slate-800/60 rounded-lg p-3 border border-slate-700/50">' + inner + '</div>');
+    });
+    html += '</div>';
+    if (items.length > limit) html += '<button onclick="expandKrNews()" class="w-full mt-2 py-2 text-[11px] text-rose-300 bg-slate-800/60 rounded-lg font-bold">더보기 (' + (items.length - limit) + '개)</button>';
+    html += '</div>';
+    list.innerHTML = html;
+    if (data._cachedAt) {
+        var mins = Math.round((Date.now() - data._cachedAt) / 60000);
+        var rel = mins < 1 ? '방금' : (mins < 60 ? (mins + '분 전') : (Math.round(mins / 60) + '시간 전'));
+        var te = document.getElementById('krNewsTime'); if (te) te.innerText = rel + ' 업데이트';
+    }
+}
+
+function expandKrNews() { _krNewsExpanded = true; var c = _krCache()[_krCat()]; if (c) renderKrNews(c); }
+
+function toggleKrNews() {
+    var list = document.getElementById('krNewsList');
+    var tabs = document.getElementById('krNewsTabs');
+    var btn = document.getElementById('krNewsToggleBtn');
+    if (!list) return;
+    var isHidden = list.classList.toggle('hidden');
+    if (tabs) tabs.classList.toggle('hidden', isHidden);
+    if (btn) { btn.innerHTML = '<i class="fa-solid ' + (isHidden ? 'fa-chevron-down' : 'fa-chevron-up') + ' text-xs" id="krNewsChev"></i>'; }
 }
 
 function getCurrentQuad() {
@@ -2115,7 +2225,7 @@ function switchTab(id) {
         if (activeTicker) setTimeout(() => loadTickerData(activeTicker), 10);
     }
     stopNewsAutoRefresh();
-    if(id==='news') { setTimeout(() => ensureStockNewsLoaded(), 10); startNewsAutoRefresh(); }
+    if(id==='news') { setTimeout(() => { ensureStockNewsLoaded(); ensureKrNewsLoaded(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') initInputs();
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
