@@ -843,7 +843,7 @@ var CALENDAR_TTL = 12 * 60 * 60 * 1000;
 function ensureCalendarLoaded() {
     try {
         var c = JSON.parse(localStorage.getItem(CALENDAR_CACHE_KEY) || 'null');
-        if (c && c._cachedAt && (Date.now() - c._cachedAt) < CALENDAR_TTL) { renderCalendar(c); return; }
+        if (c && c._cachedAt && (Date.now() - c._cachedAt) < CALENDAR_TTL) { renderEconCalendar(c); return; }
     } catch (e) {}
     startCalendar();
 }
@@ -857,14 +857,14 @@ function startCalendar() {
         if (data.error) throw new Error(data.error);
         data._cachedAt = Date.now();
         localStorage.setItem(CALENDAR_CACHE_KEY, JSON.stringify(data));
-        renderCalendar(data);
+        renderEconCalendar(data);
     })
     .catch(function(e) {
         if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs">경제 일정 실패: ' + escapeHtml(e.message).substring(0, 60) + '<br><button onclick="startCalendar()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
     });
 }
 
-function renderCalendar(data) {
+function renderEconCalendar(data) {
     var list = document.getElementById('econCalendarList');
     if (!list) return;
     var events = (data && Array.isArray(data.events)) ? data.events : [];
@@ -906,7 +906,7 @@ function renderCalendar(data) {
     }
 }
 
-function toggleCalendar() {
+function toggleEconCalendar() {
     var list = document.getElementById('econCalendarList');
     var btn = document.getElementById('econCalendarToggleBtn');
     if (!list) return;
