@@ -1144,6 +1144,7 @@ function initApp() {
         fetchNews();
         fetchMarketDataInBackground();
         fetchMacroIndicatorsLive();
+        fetchLiveFxRate();
 
         // 5. 매크로 데이터: 유효한 캐시 있으면 즉시 표시, 없으면 버튼 대기
         var cachedMacro = loadMacroFromCache();
@@ -1223,6 +1224,18 @@ async function fetchNews() {
         const el = document.getElementById('newsDisplay');
         if(el) el.innerText = "뉴스 서버 접속 실패";
     }
+}
+
+// 실시간 USD/KRW 환율 (환차손익 계산용)
+var _liveUsdKrw = 0;
+function fetchLiveFxRate() {
+    fetchMarketData('KRW=X').then(function(d) {
+        if (d && !d.error && d.price > 0) {
+            _liveUsdKrw = d.price;
+            MARKET_SNAPSHOT['KRW=X'] = d;
+            try { updateGlobalCalc(); } catch (e) {}
+        }
+    });
 }
 
 // 홈 매크로 지표(WTI/GOLD/DXY/US10Y/VIX)를 야후에서 실시간으로 채움 (/macro 분석과 무관하게 항상 표시)
@@ -2388,7 +2401,7 @@ function switchTab(id) {
     stopNewsAutoRefresh();
     if(id==='news') { setTimeout(() => { ensureStockNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
-    if(id==='settings') initInputs();
+    if(id==='settings') { initInputs(); fetchLiveFxRate(); }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }
 
@@ -4297,8 +4310,8 @@ function updateGlobalCalc() {
         let totalUnrealizedPnL = 0; 
         Object.values(portfolios).forEach(p => { if(p.qty > 0) { const currPrice = p.marketData && p.marketData.price > 0 ? p.marketData.price : p.avgPrice; totalUnrealizedPnL += (p.qty * currPrice) - (p.qty * p.avgPrice); } }); 
         const totalPnL = totalRealizedPnL + totalUnrealizedPnL; const pnlEl = document.getElementById('totalProfitDisplay'); if(pnlEl) { pnlEl.innerText = (totalPnL>=0?'+':'') + '$' + totalPnL.toLocaleString(undefined,{maximumFractionDigits:0}); pnlEl.className = `text-lg font-black ${totalPnL>=0?'text-red-400':'text-blue-400'}`; }
-        // 손익 분석(원화) — 주식손익 vs 환차손익 분리 + 환율 게이지 + 입출금 요약
-        renderCapitalAnalysis(totalPrincipalKRW, totalInjectedUSD, avgRate, globalData.rate, totalPnL);
+        // 손익 분석(원화) — 주식손익 vs 환차손익 분리 + 환율 게이지 + 입출금 요약 (현재환율=실시간 우선)
+        renderCapitalAnalysis(totalPrincipalKRW, totalInjectedUSD, avgRate, (_liveUsdKrw || globalData.rate), totalPnL);
         let invested = 0; const labels = [], data = [], colors = [];
         Object.keys(portfolios).forEach(s => { const p = portfolios[s]; const price = p.marketData && p.marketData.price > 0 ? p.marketData.price : p.avgPrice; const val = p.qty * price; if(val > 0) { invested += val; labels.push(s); data.push(val); colors.push(s==='GLD'?'#facc15':'#3b82f6'); } }); 
         const totalEquity = totalInjectedUSD + totalPnL; const cashProxy = totalEquity - invested;
@@ -4356,7 +4369,7 @@ function renderCapitalAnalysis(principalKRW, injectedUSD, avgRate, curRate, pnlU
 
     // 환율 게이지 (평균 대비 현재 위치)
     var ar = document.getElementById('capAvgRate'); if (ar) ar.innerText = Math.round(avgRate).toLocaleString();
-    var cr = document.getElementById('capCurRate'); if (cr) cr.innerText = Math.round(curRate).toLocaleString();
+    var cr = document.getElementById('capCurRate'); if (cr) cr.innerHTML = Math.round(curRate).toLocaleString() + (_liveUsdKrw ? ' <span class="text-[8px] text-emerald-400 font-bold">LIVE</span>' : '');
     var marker = document.getElementById('capRateMarker');
     if (marker) {
         // ±5% 범위를 0~100%로 매핑 (평균=중앙 50%)
