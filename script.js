@@ -106,6 +106,8 @@ let modalWidget = null;
 let currentChartSym = null;
 let SYNC_URL = "";
 let _translateCache = {};
+// mymemory 번역 무료 한도 상향용 이메일 (요청 URL에 노출됨 — 필요시 전용 이메일로 교체)
+const MYMEMORY_EMAIL = 'hansung@hansungtools.co.kr';
 
 // ==========================================
 // Macro API 호출 + localStorage 캐싱 (하루 1~2회)
@@ -590,7 +592,7 @@ function newsItemHtml(x, opts) {
     var summaryHtml = '';
     if (summ && summ.length > 30 && summ.toLowerCase().indexOf((x.headline || '').toLowerCase().substring(0, 30)) === -1) {
         var summEsc = escapeHtml(summ.substring(0, 180));
-        summaryHtml = '<div class="text-[11px] text-slate-400 leading-snug mt-1.5 pt-1.5 border-t border-slate-700/40">' + summEsc + '</div>';
+        summaryHtml = '<div class="news-ko text-[11px] text-slate-400 leading-snug mt-1.5 pt-1.5 border-t border-slate-700/40" data-en="' + summEsc + '">' + summEsc + '</div>';
     }
     var inner = '<div class="text-[13px] text-white font-bold leading-snug">' + newBadge + tickerChip + head + '</div>'
         + '<div class="news-ko text-[11.5px] text-sky-200/75 leading-snug mt-1" data-en="' + head + '"></div>'
@@ -1028,7 +1030,8 @@ async function translateText(enText) {
     if (!key) return null;
     if (_translateCache[key] !== undefined) return _translateCache[key];
     try {
-        const res = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(key) + '&langpair=en|ko');
+        // de(email) 파라미터로 mymemory 일일 무료 한도 상향 (약 1천 → 5만 단어/일)
+        const res = await fetch('https://api.mymemory.translated.net/get?q=' + encodeURIComponent(key) + '&langpair=en|ko&de=' + encodeURIComponent(MYMEMORY_EMAIL));
         const json = await res.json();
         const status = json && json.responseStatus;
         let translated = (json && json.responseData && json.responseData.translatedText) ? json.responseData.translatedText.trim() : '';
