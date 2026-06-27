@@ -4297,6 +4297,8 @@ function updateGlobalCalc() {
         let totalUnrealizedPnL = 0; 
         Object.values(portfolios).forEach(p => { if(p.qty > 0) { const currPrice = p.marketData && p.marketData.price > 0 ? p.marketData.price : p.avgPrice; totalUnrealizedPnL += (p.qty * currPrice) - (p.qty * p.avgPrice); } }); 
         const totalPnL = totalRealizedPnL + totalUnrealizedPnL; const pnlEl = document.getElementById('totalProfitDisplay'); if(pnlEl) { pnlEl.innerText = (totalPnL>=0?'+':'') + '$' + totalPnL.toLocaleString(undefined,{maximumFractionDigits:0}); pnlEl.className = `text-lg font-black ${totalPnL>=0?'text-red-400':'text-blue-400'}`; }
+        // 손익 분석(원화) — 주식손익 vs 환차손익 분리 + 환율 게이지 + 입출금 요약
+        renderCapitalAnalysis(totalPrincipalKRW, totalInjectedUSD, avgRate, globalData.rate, totalPnL);
         let invested = 0; const labels = [], data = [], colors = [];
         Object.keys(portfolios).forEach(s => { const p = portfolios[s]; const price = p.marketData && p.marketData.price > 0 ? p.marketData.price : p.avgPrice; const val = p.qty * price; if(val > 0) { invested += val; labels.push(s); data.push(val); colors.push(s==='GLD'?'#facc15':'#3b82f6'); } }); 
         const totalEquity = totalInjectedUSD + totalPnL; const cashProxy = totalEquity - invested;
@@ -4313,6 +4315,79 @@ function updateGlobalCalc() {
     } catch (e) { console.error("Calc Error", e); } 
 }
     
+// 손익 분석(원화): 주식손익 vs 환차손익 분리 + 자본구성 막대 + 환율 게이지 + 입출금 요약
+function renderCapitalAnalysis(principalKRW, injectedUSD, avgRate, curRate, pnlUSD) {
+    var krw = function(n) { return Math.round(n).toLocaleString() + '원'; };
+    var skrw = function(n) { return (n >= 0 ? '+' : '') + Math.round(n).toLocaleString() + '원'; };
+    var col = function(n) { return n >= 0 ? 'text-red-400' : 'text-blue-400'; };
+
+    // 분해 (원화)
+    var stockPnlKrw = pnlUSD * curRate;                        // 주식 손익(달러손익×현재환율)
+    var fxPnlKrw = injectedUSD * (curRate - avgRate);          // 환차 손익(투입달러×환율차)
+    var totalPnlKrw = stockPnlKrw + fxPnlKrw;
+    var currentValKrw = principalKRW + totalPnlKrw;
+    var retPct = principalKRW > 0 ? (totalPnlKrw / principalKRW * 100) : 0;
+
+    var totEl = document.getElementById('capTotalPnlKrw');
+    if (totEl) { totEl.innerHTML = skrw(totalPnlKrw) + ' <span class="text-xs">(' + (retPct >= 0 ? '+' : '') + retPct.toFixed(1) + '%)</span>'; totEl.className = 'text-base font-black ' + col(totalPnlKrw); }
+
+    // 자본 구성 막대: 원금 / 주식손익(+) / 환차손익(+) 비율 (음수는 막대에서 제외하고 아래 행에 표시)
+    var bar = document.getElementById('capStackBar');
+    if (bar) {
+        var segs = [{ v: principalKRW, c: '#475569', t: '원금' }];
+        if (stockPnlKrw > 0) segs.push({ v: stockPnlKrw, c: '#ef4444', t: '주식' });
+        if (fxPnlKrw > 0) segs.push({ v: fxPnlKrw, c: '#f59e0b', t: '환차' });
+        var tot = segs.reduce(function(a, s) { return a + s.v; }, 0) || 1;
+        bar.innerHTML = segs.map(function(s) {
+            var w = (s.v / tot * 100);
+            return '<div style="width:' + w.toFixed(1) + '%;background:' + s.c + '" class="flex items-center justify-center text-white overflow-hidden whitespace-nowrap">' + (w > 12 ? s.t : '') + '</div>';
+        }).join('');
+    }
+
+    // 분해 행
+    var bd = document.getElementById('capBreakdown');
+    if (bd) {
+        bd.innerHTML =
+            '<div class="flex justify-between text-xs"><span class="text-slate-400"><span class="inline-block w-2 h-2 rounded-sm align-middle mr-1.5" style="background:#475569"></span>원금</span><span class="text-slate-200 font-bold">' + krw(principalKRW) + '</span></div>'
+            + '<div class="flex justify-between text-xs"><span class="text-slate-400"><span class="inline-block w-2 h-2 rounded-sm align-middle mr-1.5" style="background:#ef4444"></span>주식 손익</span><span class="font-bold ' + col(stockPnlKrw) + '">' + skrw(stockPnlKrw) + '</span></div>'
+            + '<div class="flex justify-between text-xs"><span class="text-slate-400"><span class="inline-block w-2 h-2 rounded-sm align-middle mr-1.5" style="background:#f59e0b"></span>환차 손익</span><span class="font-bold ' + col(fxPnlKrw) + '">' + skrw(fxPnlKrw) + '</span></div>'
+            + '<div class="flex justify-between text-xs pt-1.5 mt-1 border-t border-slate-700"><span class="text-white font-bold">현재 평가액</span><span class="text-white font-black">' + krw(currentValKrw) + '</span></div>';
+    }
+
+    // 환율 게이지 (평균 대비 현재 위치)
+    var ar = document.getElementById('capAvgRate'); if (ar) ar.innerText = Math.round(avgRate).toLocaleString();
+    var cr = document.getElementById('capCurRate'); if (cr) cr.innerText = Math.round(curRate).toLocaleString();
+    var marker = document.getElementById('capRateMarker');
+    if (marker) {
+        // ±5% 범위를 0~100%로 매핑 (평균=중앙 50%)
+        var diff = avgRate > 0 ? (curRate - avgRate) / avgRate : 0;
+        var pos = Math.max(0, Math.min(100, 50 + (diff / 0.05) * 50));
+        marker.style.left = 'calc(' + pos.toFixed(0) + '% - 6px)';
+    }
+    var fxr = document.getElementById('capFxResult');
+    if (fxr) {
+        var diffPct = avgRate > 0 ? ((curRate - avgRate) / avgRate * 100) : 0;
+        if (Math.abs(diffPct) < 0.05) { fxr.innerHTML = '<span class="text-slate-400">현재 환율이 평균 매입가와 비슷합니다</span>'; }
+        else if (diffPct > 0) { fxr.innerHTML = '<span class="text-red-400 font-bold">환율 ▲ ' + diffPct.toFixed(1) + '% → 환차익 ' + skrw(fxPnlKrw) + '</span>'; }
+        else { fxr.innerHTML = '<span class="text-blue-400 font-bold">환율 ▼ ' + diffPct.toFixed(1) + '% → 환차손 ' + skrw(fxPnlKrw) + '</span>'; }
+    }
+
+    // 입출금 요약 (최근 내역)
+    var cfs = document.getElementById('cashFlowSummary');
+    if (cfs) {
+        var deps = (globalData.deposits || []).slice().sort(function(a, b) { return (b.date || '').localeCompare(a.date || ''); });
+        if (!deps.length) { cfs.innerHTML = '<div class="text-[10px] text-slate-600 text-center py-1">입출금 내역 없음</div>'; }
+        else {
+            cfs.innerHTML = deps.slice(0, 3).map(function(d) {
+                var isOut = (d.amount < 0) || d.type === 'OUT';
+                return '<div class="flex justify-between items-center bg-slate-800/50 rounded-lg px-3 py-1.5 text-[11px]">'
+                    + '<span class="text-slate-400">' + escapeHtml(d.date || '') + ' <span class="' + (isOut ? 'text-red-400' : 'text-emerald-400') + ' font-bold ml-1">' + (isOut ? '출금' : '입금') + '</span></span>'
+                    + '<span class="text-slate-200 font-bold">' + Math.abs(Math.round(d.amount || 0)).toLocaleString() + '원 <span class="text-[9px] text-slate-500">@' + Math.round(d.rate || 0).toLocaleString() + '</span></span></div>';
+            }).join('') + (deps.length > 3 ? '<div class="text-[9px] text-slate-600 text-center pt-0.5">외 ' + (deps.length - 3) + '건 · 위 버튼에서 전체 관리</div>' : '');
+        }
+    }
+}
+
 function getTotalEquityUSD() {
     const defaultRate = globalData.rate || 1300;
     let equity = (globalData.seedKRW || 0) / defaultRate;
