@@ -3218,8 +3218,9 @@ function renderStrategyProgressCard(sym) {
     }
 }
 
-function loadTickerData(sym) { 
-    if (!portfolios[sym]) return; 
+function loadTickerData(sym) {
+    if (!portfolios[sym]) return;
+    _stratJournalCycleFilter = null; // 종목 전환 시 일지 필터 초기화
     const d = portfolios[sym];
     const meta = ETF_DB.find(e => e.sym === sym) || {name:sym, desc:'일반 종목', lev:'?'};
     // 시세 스냅샷이 아직 없으면 즉시 받아온다 (주로 추가 직후의 일반 종목)
@@ -4479,15 +4480,30 @@ function submitTrade() {
     
 function recalcPortfolio(d) { const sorted = [...d.history].sort((a,b)=>new Date(a.date)-new Date(b.date)); let q = 0; let totalCost = 0; let realizedPnL = 0; let totalDiv = 0; sorted.forEach(h => { if(h.type === 'BUY') { totalCost += h.total; q += h.qty; } else if(h.type === 'SELL') { if(q > 0) { let avgPrice = totalCost / q; let costOfSold = avgPrice * h.qty; totalCost -= costOfSold; let profit = h.total - costOfSold; realizedPnL += profit; q -= h.qty; } } else if(h.type === 'DIV') { totalDiv += h.total; } }); if(q <= 0) { q = 0; totalCost = 0; } d.qty = q; d.avgPrice = q > 0 ? totalCost / q : 0; d.realizedPnL = realizedPnL; d.totalDiv = totalDiv; }
     
-// 🔥 [핵심 패치] 휴지통 삭제 완벽 처리
+// 전략탭 일지 — 사이클 필터 (null=전체, cid 문자열=해당 사이클만)
+var _stratJournalCycleFilter = null;
+function filterStratCycle(cid) {
+    if (cid !== null && _stratJournalCycleFilter === cid) cid = null; // 같은 카드 다시 누르면 해제
+    _stratJournalCycleFilter = cid;
+    renderJournal();
+}
 function renderJournal() {
     const d = portfolios[activeTicker]; const list = document.getElementById('journalList'); if(!list) return;
     if(!d || !Array.isArray(d.history) || !d.history.length) { list.innerHTML = '<div class="text-center text-slate-500 text-xs py-4">매매 기록이 없습니다</div>'; renderStratCycleSummary(); return; }
-    list.innerHTML = [...d.history].sort((a,b)=>{ var dd=new Date(b.date)-new Date(a.date); return dd!==0?dd:(Number(b.id)||0)-(Number(a.id)||0); }).map(h => {
+    var hist = d.history.slice();
+    var banner = '';
+    if (_stratJournalCycleFilter != null) {
+        hist = hist.filter(function(h){ var cid=(h.cycleId!=null&&h.cycleId!=='')?String(h.cycleId):'0'; return cid === _stratJournalCycleFilter; });
+        var _lbl = _stratJournalCycleFilter === '0' ? '기본' : ('사이클 #' + _stratJournalCycleFilter);
+        banner = '<div class="flex items-center justify-between bg-purple-900/20 border border-purple-700/40 rounded-lg px-3 py-2 mb-1"><span class="text-[11px] text-purple-200 font-bold"><i class="fa-solid fa-filter mr-1 text-[9px]"></i>'+_lbl+' 매매만 표시</span><button type="button" onclick="filterStratCycle(null)" class="text-[10px] text-slate-200 bg-slate-700/60 px-2 py-0.5 rounded font-bold">전체 보기</button></div>';
+    }
+    var cardsHtml = hist.sort((a,b)=>{ var dd=new Date(b.date)-new Date(a.date); return dd!==0?dd:(Number(b.id)||0)-(Number(a.id)||0); }).map(h => {
         const isBuy = h.type === 'BUY'; const color = isBuy ? 'border-red-500/50' : (h.type==='DIV'?'border-yellow-500/50':'border-blue-500/50'); const badge = isBuy ? 'bg-red-900 text-red-300' : (h.type==='DIV'?'bg-yellow-900 text-yellow-300':'bg-blue-900 text-blue-300'); const stageTxt = h.stage ? `(${h.stage}차)` : '';
         const tagLabel = getTagLabel(h.tag);
         return `<div class="bg-slate-800/80 p-3 rounded-xl border ${color} shadow-sm"><div class="flex justify-between items-start"><div><span class="text-[10px] text-slate-400 block">${h.date}</span><span class="text-[10px] ${badge} px-2 py-0.5 rounded font-bold inline-block mt-1">${h.type} ${stageTxt}</span><span class="text-[9px] text-slate-500 ml-1">${escapeHtml(tagLabel)}</span></div><div class="flex items-center gap-0.5 shrink-0"><button type="button" onclick="editTrade('${h.id}')" class="text-slate-500 hover:text-blue-400 p-2"><i class="fa-solid fa-pen"></i></button><button type="button" onclick="deleteTrade('${h.id}')" class="text-slate-500 hover:text-red-400 p-2"><i class="fa-solid fa-trash-can"></i></button></div></div><div class="flex justify-between items-end mt-1"><div class="text-sm font-bold text-white">$${Number(h.price).toFixed(2)} × ${h.qty}주</div><div class="text-xs text-slate-400">합계 $${Number(h.total).toFixed(2)}</div></div><div class="mt-2 text-xs text-slate-400 bg-slate-900/50 p-2 rounded leading-snug">${h.memo ? escapeHtml(h.memo) : '<span class="text-slate-600">메모 없음</span>'}</div></div>`;
     }).join('');
+    if (!cardsHtml) cardsHtml = '<div class="text-center text-slate-500 text-xs py-3">해당 사이클 기록 없음</div>';
+    list.innerHTML = banner + cardsHtml;
     renderStratCycleSummary();
 }
 
@@ -4533,11 +4549,12 @@ function renderStratCycleSummary() {
         } else { pnlHtml = '<div class="text-right text-[10px] text-slate-500">미실현</div>'; }
         var line2 = '매수 '+Math.round(c.b.qty)+'주 @ $'+c.avgBuy.toFixed(2) + (c.s.qty?'  →  매도 '+Math.round(c.s.qty)+'주 @ $'+c.avgSell.toFixed(2):'') + (c.openQty>0.0001?'  · 잔여 '+Math.round(c.openQty)+'주':'');
         var period = c.firstDate + (c.lastDate && c.lastDate!==c.firstDate ? ' ~ '+c.lastDate : '');
-        return '<div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50">'
+        var active = (_stratJournalCycleFilter === c.cid);
+        return '<button type="button" onclick="filterStratCycle(\''+c.cid+'\')" class="w-full text-left rounded-xl p-3 border transition '+(active?'bg-purple-900/15 border-purple-500 ring-1 ring-purple-500/40':'bg-slate-800/40 border-slate-700/50 hover:border-slate-500')+'">'
             + '<div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2">'+cidLabel+statusBadge+'</div>'+pnlHtml+'</div>'
             + '<div class="text-[11px] text-slate-300">'+line2+'</div>'
-            + '<div class="text-[10px] text-slate-500 mt-0.5"><i class="fa-regular fa-clock mr-1"></i>'+period+'</div>'
-            + '</div>';
+            + '<div class="flex items-center justify-between mt-0.5"><span class="text-[10px] text-slate-500"><i class="fa-regular fa-clock mr-1"></i>'+period+'</span><span class="text-[9px] '+(active?'text-purple-300':'text-slate-600')+'">'+(active?'필터 해제':'이 사이클만 보기 ›')+'</span></div>'
+            + '</button>';
     }).join('');
 }
 
