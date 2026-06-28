@@ -5176,7 +5176,7 @@ function showTradeDetail(idx) {
         + '<span class="text-white font-bold">📊 ' + escapeHtml(r.sym || '종목') + '</span>'
         + '<span class="text-cyan-400">━ EMA8</span>'
         + '<span class="text-violet-400">━ MA200</span>'
-        + '<span class="text-amber-400">┈ 평단</span>'
+        + '<span class="text-amber-400" id="tradeChartAvgLabel">┈ 평단</span>'
         + '<span class="ml-auto text-slate-500">🔵매수 🔴매도</span></div>'
         + '<div id="tradeChartContainer" style="width:100%;height:200px;" class="rounded-lg overflow-hidden bg-slate-900/50"></div>'
         + '<div id="tradeChartPeriodRet" class="text-[10px] text-slate-400 mt-1.5 px-0.5"></div>'
@@ -5330,8 +5330,11 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
         if (bq > 0) {
             var avgBuy = bc / bq;
             try {
-                stock.createPriceLine({ price: Math.round(avgBuy * 100) / 100, color: '#fbbf24', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '평단 $' + avgBuy.toFixed(2) });
+                // 축 라벨/제목 제거(차트 가림 방지) — 값은 상단 범례에 표시
+                stock.createPriceLine({ price: Math.round(avgBuy * 100) / 100, color: '#fbbf24', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '' });
             } catch (e) {}
+            var avgEl = document.getElementById('tradeChartAvgLabel');
+            if (avgEl) avgEl.innerHTML = '┈ 평단 $' + avgBuy.toFixed(2);
         }
         chart.timeScale().fitContent();
 
