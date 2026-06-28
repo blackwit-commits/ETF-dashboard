@@ -3108,6 +3108,18 @@ function renderStrategyProgressCard(sym) {
         : '';
     const stageLine = boosterText ? ('그리드: ' + baseText + ' · 부스터: ' + boosterText) : ('그리드: ' + baseText);
     set('progressStage', stageLine);
+    // 진행 단계 바 (매매일지 스타일: 단계 N/M + 막대)
+    var stageCur = (stage.baseInProgress && stage.baseInProgress > 0) ? stage.baseInProgress : (stage.baseCompleted || 0);
+    var stageTot = stage.baseTotal || 0;
+    var sbar = document.getElementById('progressStageBar');
+    if ((d.qty || 0) > 0 && stageTot > 0) {
+        var cur = Math.min(stageCur, stageTot);
+        set('progressStageLabel', '단계 ' + cur + '/' + stageTot);
+        if (sbar) sbar.style.width = Math.min(100, (cur / stageTot) * 100) + '%';
+    } else {
+        set('progressStageLabel', stageTot ? ('단계 0/' + stageTot) : '미보유');
+        if (sbar) sbar.style.width = '0%';
+    }
     set('progressExecRate', execRate.toFixed(1) + '%');
     const execBar = document.getElementById('progressExecBar');
     if (execBar) execBar.style.width = Math.min(100, Math.max(0, execRate)) + '%';
