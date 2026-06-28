@@ -4165,21 +4165,53 @@ function openTradeModal(type) {
     if (type === 'BUY') {
         const d = portfolios[activeTicker];
         const stages = parseInt(d.config.stages) || 4;
-        if (d.config.drops) { d.config.drops.forEach((drop, idx) => { s.innerHTML += `<option value="${idx+1}">${idx+1}차 (${drop}%)</option>`; }); }
+        const base = parseFloat(document.getElementById('planBasePrice').value) || d.config.basePrice || 0;
+        const totalUSD = getTotalEquityUSD();
+        const investable = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD > 0)
+            ? d.config.cycleAvailableUSD
+            : totalUSD * ((d.config.alloc || 30) / 100);
+        if (d.config.drops) {
+            d.config.drops.forEach((drop, idx) => {
+                const weight = (d.config.weights && d.config.weights[idx] != null) ? d.config.weights[idx] : (100 / stages);
+                const price = base > 0 ? base * (1 + drop / 100) : 0;
+                const qty = price > 0 ? Math.floor((investable * weight / 100) / price) : 0;
+                const extra = price > 0 ? ` · ${qty}주 · $${Math.round(qty * price).toLocaleString()}` : '';
+                s.innerHTML += `<option value="${idx + 1}">${idx + 1}차 (${drop}%)${extra}</option>`;
+            });
+        }
         if (d.config.boosterOn === true && d.config.boosterStages > 0) {
             const lastDrop = (d.config.drops && d.config.drops[stages-1] != null) ? d.config.drops[stages-1] : -20;
             const baseMdd = parseFloat(d.config.mdd) || 20;
             const boosterExtra = parseFloat(d.config.boosterMdd) || 10;
             const finalEndDrop = -(baseMdd + boosterExtra);
             const boosterStages = parseInt(d.config.boosterStages) || 2;
+            const boosterInvest = totalUSD * ((parseFloat(d.config.boosterAllocPct) || 0) / 100);
             for (let i = 0; i < boosterStages; i++) {
                 const step = (finalEndDrop - lastDrop) / boosterStages;
                 const bDrop = lastDrop + (i + 1) * step;
-                s.innerHTML += `<option value="${stages + i + 1}">${stages + i + 1}차 부스터 (${bDrop.toFixed(2)}%)</option>`;
+                const price = base > 0 ? base * (1 + bDrop / 100) : 0;
+                const qty = price > 0 ? Math.floor((boosterInvest / boosterStages) / price) : 0;
+                const extra = price > 0 ? ` · ${qty}주 · $${Math.round(qty * price).toLocaleString()}` : '';
+                s.innerHTML += `<option value="${stages + i + 1}">${stages + i + 1}차 부스터 (${bDrop.toFixed(2)}%)${extra}</option>`;
             }
         }
     } else if (type === 'SELL') {
-        s.innerHTML += '<option value="1">1차 매도 실행</option><option value="2">2차 매도 실행</option><option value="3">3차 매도 실행</option><option value="ALL">전량 매도 실행 (청산)</option>';
+        const ds = portfolios[activeTicker];
+        const plans = (ds.config && ds.config.sellPlans) || [];
+        const avg = ds.avgPrice || 0;
+        const holding = ds.qty || 0;
+        for (let i = 0; i < 3; i++) {
+            const p = plans[i] || {};
+            const ratio = parseFloat(p.sellRatio) || (i === 2 ? 100 : 50);
+            const tpct = parseFloat(p.targetPct) || (i === 0 ? 5 : (i === 1 ? 10 : 15));
+            const sPrice = calcSellTargetPrice(avg, tpct);
+            const sQty = Math.floor(holding * ratio / 100);
+            const sAmt = sQty * sPrice;
+            s.innerHTML += `<option value="${i + 1}">${i + 1}차 매도 · ${ratio}% · ${sQty}주 · $${Math.round(sAmt).toLocaleString()}</option>`;
+        }
+        const snap = MARKET_SNAPSHOT[activeTicker] || {};
+        const curP = (snap.price > 0) ? snap.price : avg;
+        s.innerHTML += `<option value="ALL">전량 매도 (청산) · ${holding}주 · $${Math.round(holding * curP).toLocaleString()}</option>`;
     }
     document.getElementById('tradePrice').value = '';
     document.getElementById('tradeQty').value = '';
