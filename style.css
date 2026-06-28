@@ -13,6 +13,14 @@ body {
 /* 전략탭 서브탭으로 스크롤 시 고정 헤더에 가리지 않도록 */
 #stratSubTabsWrap { scroll-margin-top: 88px; }
 
+/* 1차 진입 기준가 — 가장 중요한 값이라 크게·강조색 (전역 input !important 덮어쓰기) */
+#planBasePrice {
+    color: #34d399 !important;   /* emerald-400 */
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+
 .glass-panel {
     background: rgba(30, 41, 59, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.08);
