@@ -254,9 +254,9 @@ select:focus {
 }
 
 /* 2×2 매트릭스 현재 국면 칸 강조 */
-#quadMatrix > div { min-height: 58px; }
+#quadMatrix > div { min-height: 62px; }
 .quad-current-cell {
-    box-shadow: 0 0 18px -4px rgba(255, 255, 255, 0.25);
+    /* 색상 글로우는 인라인 box-shadow(쿼드별 색)로 덮어씀 */
     animation: quadCellIn 0.35s ease-out;
 }
 @keyframes quadCellIn {

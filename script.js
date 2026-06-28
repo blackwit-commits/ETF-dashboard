@@ -2006,10 +2006,10 @@ const QUAD_ICONS  = { 1:'fa-sun', 2:'fa-fire', 3:'fa-cloud-bolt', 4:'fa-snowflak
 
 // 2×2 매트릭스 메타 (성장 가로축 · 물가 세로축)
 const QUAD_META = {
-    1: { name:'골디락스',       icon:'fa-sun',        play:'위험자산 선호',   txt:'text-green-400',  bdr:'border-green-500/50',  bg:'bg-green-500/10',  ring:'ring-green-400/70',  dot:'bg-green-400' },
-    2: { name:'과열',           icon:'fa-fire',       play:'에너지·원자재',   txt:'text-yellow-400', bdr:'border-yellow-500/50', bg:'bg-yellow-500/10', ring:'ring-yellow-400/70', dot:'bg-yellow-400' },
-    3: { name:'스태그플레이션', icon:'fa-cloud-bolt', play:'방어·인플레헤지', txt:'text-red-400',    bdr:'border-red-500/50',    bg:'bg-red-500/10',    ring:'ring-red-400/70',    dot:'bg-red-400' },
-    4: { name:'침체',           icon:'fa-snowflake',  play:'현금·안전자산',   txt:'text-blue-400',   bdr:'border-blue-500/50',   bg:'bg-blue-500/10',   ring:'ring-blue-400/70',   dot:'bg-blue-400' }
+    1: { name:'골디락스',       icon:'fa-sun',        play:'위험자산 선호',   txt:'text-green-300',  bdr:'border-green-400',  bg:'bg-green-500/20',  glow:'rgba(34,197,94,.45)',  dot:'bg-green-400' },
+    2: { name:'과열',           icon:'fa-fire',       play:'에너지·원자재',   txt:'text-yellow-300', bdr:'border-yellow-400', bg:'bg-yellow-500/20', glow:'rgba(234,179,8,.45)',  dot:'bg-yellow-400' },
+    3: { name:'스태그플레이션', icon:'fa-cloud-bolt', play:'방어·인플레헤지', txt:'text-red-300',    bdr:'border-red-400',    bg:'bg-red-500/20',    glow:'rgba(239,68,68,.45)',  dot:'bg-red-400' },
+    4: { name:'침체',           icon:'fa-snowflake',  play:'현금·안전자산',   txt:'text-blue-300',   bdr:'border-blue-400',   bg:'bg-blue-500/20',   glow:'rgba(59,130,246,.45)', dot:'bg-blue-400' }
 };
 // 화면 배치 순서: 좌상(성장↓물가↑)=Q3, 우상(성장↑물가↑)=Q2, 좌하(성장↓물가↓)=Q4, 우하(성장↑물가↓)=Q1
 const QUAD_GRID_ORDER = [3, 2, 4, 1];
@@ -2021,15 +2021,16 @@ function renderQuadMatrix(quad) {
     grid.innerHTML = QUAD_GRID_ORDER.map(function(n) {
         var m = QUAD_META[n];
         var isCur = (n === cur);
-        var base = 'relative rounded-lg border p-2 transition-all overflow-hidden ';
+        var base = 'relative rounded-xl p-2.5 transition-all overflow-hidden ';
         var cls = isCur
-            ? base + m.bg + ' ' + m.bdr + ' ring-2 ' + m.ring + ' quad-current-cell'
-            : base + 'border-slate-700/40 bg-slate-800/30 opacity-50';
-        return '<div class="' + cls + '">'
-            + (isCur ? '<span class="absolute top-1.5 right-1.5 flex items-center gap-1 text-[8px] font-black ' + m.txt + '"><span class="w-1.5 h-1.5 rounded-full ' + m.dot + ' animate-pulse"></span>현재</span>' : '')
-            + '<div class="flex items-center gap-1 text-[9px] font-bold ' + (isCur ? m.txt : 'text-slate-500') + '"><i class="fa-solid ' + m.icon + '"></i>Q' + n + '</div>'
-            + '<div class="text-[13px] font-black leading-tight mt-1 ' + (isCur ? 'text-white' : 'text-slate-400') + '">' + m.name + '</div>'
-            + '<div class="text-[8px] mt-0.5 ' + (isCur ? m.txt : 'text-slate-500/80') + '">' + m.play + '</div>'
+            ? base + 'border-2 ' + m.bg + ' ' + m.bdr + ' quad-current-cell'
+            : base + 'border border-slate-700/70 bg-slate-800/60';
+        var style = isCur ? ' style="box-shadow:0 0 18px -3px ' + m.glow + '"' : '';
+        return '<div class="' + cls + '"' + style + '>'
+            + (isCur ? '<span class="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-black ' + m.txt + '"><span class="w-1.5 h-1.5 rounded-full ' + m.dot + ' animate-pulse"></span>현재</span>' : '')
+            + '<div class="flex items-center gap-1.5 text-[10px] font-bold ' + m.txt + '"><i class="fa-solid ' + m.icon + '"></i>Q' + n + '</div>'
+            + '<div class="text-[14px] font-black leading-tight mt-1 ' + (isCur ? 'text-white' : 'text-slate-100') + '">' + m.name + '</div>'
+            + '<div class="text-[9px] mt-0.5 ' + (isCur ? m.txt : 'text-slate-400') + '">' + m.play + '</div>'
             + '</div>';
     }).join('');
 
@@ -2043,7 +2044,7 @@ function renderQuadMatrix(quad) {
         var g = quad.growth === 'accelerating' ? '성장 가속↑' : '성장 둔화↓';
         var i = quad.inflation === 'accelerating' ? '인플레 가속↑' : '인플레 둔화↓';
         var mc = QUAD_META[cur] || {};
-        if (sumText) sumText.innerHTML = '<span class="' + (mc.txt||'text-white') + ' font-black">Q' + cur + ' ' + (quad.name||mc.name||'') + '</span> <span class="text-slate-400">· ' + g + ' · ' + i + '</span>';
+        if (sumText) sumText.innerHTML = '<span class="' + (mc.txt||'text-white') + ' font-black">Q' + cur + ' ' + (quad.name||mc.name||'') + '</span> <span class="text-slate-200">· ' + g + ' · ' + i + '</span>';
         var conf = quad.confidence || 0;
         if (confBar) confBar.style.width = conf + '%';
         if (confVal) confVal.innerText = conf + '%';
@@ -2096,10 +2097,10 @@ function renderQuadHeader() {
             var pct = tr[key] != null ? tr[key] : 0;
             if (n === q.current) pct = 0;
             var isCurrent = n === q.current;
-            return '<div class="text-center' + (isCurrent ? ' opacity-40' : '') + '">'
-                + '<div class="text-[8px] text-slate-500 mb-0.5">' + quadNames[n] + '</div>'
+            return '<div class="text-center' + (isCurrent ? ' opacity-45' : '') + '">'
+                + '<div class="text-[8px] text-slate-300 mb-0.5">' + quadNames[n] + '</div>'
                 + '<div class="h-1.5 rounded-full bg-slate-800 overflow-hidden"><div class="h-full rounded-full ' + barColors[n] + ' transition-all" style="width:'+pct+'%"></div></div>'
-                + '<div class="text-[9px] font-bold mt-0.5 ' + (pct>25?QUAD_COLORS[n]:'text-slate-600') + '">' + (isCurrent?'현재':pct+'%') + '</div>'
+                + '<div class="text-[9px] font-bold mt-0.5 ' + (pct>25?QUAD_COLORS[n]:'text-slate-400') + '">' + (isCurrent?'현재':pct+'%') + '</div>'
                 + '</div>';
         }).join('');
     }
