@@ -944,8 +944,10 @@ function renderMarketFlow() {
     if (!hot || !hot.overview) { sec.classList.add('hidden'); return; }
     sec.classList.remove('hidden');
     var quadNames = { 1: '골디락스', 2: '과열', 3: '스태그플레이션', 4: '침체' };
-    var q = hot.quad, quadHtml = '';
-    if (q && q.current) quadHtml = '<div class="text-[11px] font-bold text-cyan-300 mb-1.5">🧭 현재 국면: Q' + q.current + ' ' + escapeHtml(q.name || quadNames[q.current] || '') + '</div>';
+    // 국면은 홈 대시보드와 동일하게 /macro(MACRO_DATA)를 단일 출처로 사용 (불일치 방지). MACRO 미로딩 시 핫이슈 quad 폴백
+    var cur = (MACRO_DATA && MACRO_DATA.quad && MACRO_DATA.quad.current) ? MACRO_DATA.quad.current : (hot.quad && hot.quad.current);
+    var quadHtml = '';
+    if (cur) quadHtml = '<div class="text-[11px] font-bold text-cyan-300 mb-1.5">🧭 현재 국면: Q' + cur + ' ' + escapeHtml(quadNames[cur] || '') + '</div>';
     body.innerHTML = quadHtml + '<div class="text-[12px] text-slate-300 leading-relaxed">' + escapeHtml(hot.overview) + '</div>';
     var te = document.getElementById('marketFlowTime');
     if (te && hot._cachedAt) { var mins = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = (mins < 60 ? mins + '분 전' : Math.round(mins / 60) + '시간 전') + ' 기준'; }
@@ -2110,6 +2112,7 @@ function updateMacroDashboard() {
     try { renderUpcomingEvents(); } catch(e) { console.error('[Macro] renderUpcomingEvents:', e); }
     try { renderNewsBriefing(); } catch(e) { console.error('[Macro] renderNewsBriefing:', e); }
     try { renderHoldingStatus(); } catch(e) { console.error('[Macro] renderHoldingStatus:', e); }
+    try { renderMarketFlow(); } catch(e) {} // 홈 Quad와 시장흐름 Quad 동기화
     try { maybeRerenderEtfList(); } catch(e) { console.error('[Macro] maybeRerenderEtfList:', e); }
     // 상단 전광판은 Google News RSS (startNewsTicker)가 담당
 }
