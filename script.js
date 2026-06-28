@@ -4152,6 +4152,44 @@ function applyFeePreset(){ const v=document.getElementById('feePreset').value; i
 function renderRescuePlan() { const d = portfolios[activeTicker]; const panel = document.getElementById('rescuePlanPanel'); const tbody = document.getElementById('rescueTableBody'); const badge = document.getElementById('rescueBadge'); const lastDropIdx = d.config.drops.length - 1; const basePrice = parseFloat(document.getElementById('planBasePrice').value) || d.config.basePrice; const lastPlanPrice = basePrice * (1 + d.config.drops[lastDropIdx]/100); const currentPrice = d.marketData && d.marketData.price > 0 ? d.marketData.price : 0; if (d.qty > 0 && currentPrice < lastPlanPrice && currentPrice > 0) { panel.classList.remove('hidden'); tbody.innerHTML = ''; const rescueScenario = [5, 10, 15]; rescueScenario.forEach(pct => { const rescuePrice = currentPrice * (1 - pct/100); const rescueQty = Math.floor(d.qty * 0.5); const cost = rescueQty * rescuePrice; tbody.innerHTML += `<tr class="border-b border-red-800/30"><td class="py-2 font-bold text-red-300">현가 -${pct}%</td><td class="py-2 text-right">$${rescuePrice.toFixed(2)}</td><td class="py-2 text-right text-white">${rescueQty}주</td><td class="py-2 text-right text-yellow-400">$${Math.round(cost).toLocaleString()}</td></tr>`; }); const mddBreach = ((currentPrice - lastPlanPrice) / lastPlanPrice) * 100; badge.innerText = `계획이탈 ${mddBreach.toFixed(1)}%`; } else { panel.classList.add('hidden'); } }
     
 // --- Trading Modals ---
+// 계획 선택 커스텀 드롭다운 (네이티브 select 대체 — 다크 테마)
+var _tradeStageOpts = [];
+function renderTradeStageList() {
+    var list = document.getElementById('tradeStageList');
+    if (!list) return;
+    var cur = (document.getElementById('tradeStageSelect') || {}).value || '';
+    list.innerHTML = _tradeStageOpts.map(function (o) {
+        var sel = (String(o.value) === String(cur));
+        var safe = escapeHtml(o.label).replace(/"/g, '&quot;');
+        return '<button type="button" data-v="' + o.value + '" data-l="' + safe + '" onclick="setTradeStage(this.getAttribute(\'data-v\'), this.getAttribute(\'data-l\'))" '
+            + 'class="w-full text-left px-3 py-2.5 text-xs font-bold flex items-center justify-between gap-2 border-b border-slate-700/40 last:border-0 '
+            + (sel ? 'bg-blue-600/25 text-blue-200' : 'text-slate-200 hover:bg-slate-700/60 active:bg-slate-700') + '">'
+            + '<span>' + escapeHtml(o.label) + '</span>'
+            + (sel ? '<i class="fa-solid fa-check text-blue-300 text-[10px] shrink-0"></i>' : '')
+            + '</button>';
+    }).join('');
+}
+function toggleTradeStageList(ev) {
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    var list = document.getElementById('tradeStageList');
+    var chev = document.getElementById('tradeStageChev');
+    if (!list) return;
+    var willShow = list.classList.contains('hidden');
+    list.classList.toggle('hidden');
+    if (chev) chev.style.transform = willShow ? 'rotate(180deg)' : '';
+}
+function setTradeStage(value, label, doFill) {
+    var hid = document.getElementById('tradeStageSelect');
+    if (hid) hid.value = value;
+    var btn = document.getElementById('tradeStageBtnText');
+    if (btn) btn.innerText = label;
+    var list = document.getElementById('tradeStageList');
+    if (list) list.classList.add('hidden');
+    var chev = document.getElementById('tradeStageChev');
+    if (chev) chev.style.transform = '';
+    if (doFill !== false) autoFillTrade();
+}
+
 function openTradeModal(type) {
     if (!activeTicker || !portfolios[activeTicker]) { return alert("먼저 종목을 선택해주세요."); }
     document.getElementById('tradeModal').classList.remove('hidden');
@@ -4160,8 +4198,7 @@ function openTradeModal(type) {
     document.getElementById('tradeDate').valueAsDate = new Date();
     const title = document.getElementById('tradeModalTitle');
     title.innerText = type === 'BUY' ? '매수 기록' : (type === 'SELL' ? '매도 기록' : '배당금 기록');
-    const s = document.getElementById('tradeStageSelect');
-    s.innerHTML = '<option value="">직접 입력</option>';
+    _tradeStageOpts = [{ value: '', label: '직접 입력' }];
     if (type === 'BUY') {
         const d = portfolios[activeTicker];
         const stages = parseInt(d.config.stages) || 4;
@@ -4176,7 +4213,7 @@ function openTradeModal(type) {
                 const price = base > 0 ? base * (1 + drop / 100) : 0;
                 const qty = price > 0 ? Math.floor((investable * weight / 100) / price) : 0;
                 const extra = price > 0 ? ` · ${qty}주 · $${Math.round(qty * price).toLocaleString()}` : '';
-                s.innerHTML += `<option value="${idx + 1}">${idx + 1}차 (${drop}%)${extra}</option>`;
+                _tradeStageOpts.push({ value: String(idx + 1), label: `${idx + 1}차 (${drop}%)${extra}` });
             });
         }
         if (d.config.boosterOn === true && d.config.boosterStages > 0) {
@@ -4192,27 +4229,31 @@ function openTradeModal(type) {
                 const price = base > 0 ? base * (1 + bDrop / 100) : 0;
                 const qty = price > 0 ? Math.floor((boosterInvest / boosterStages) / price) : 0;
                 const extra = price > 0 ? ` · ${qty}주 · $${Math.round(qty * price).toLocaleString()}` : '';
-                s.innerHTML += `<option value="${stages + i + 1}">${stages + i + 1}차 부스터 (${bDrop.toFixed(2)}%)${extra}</option>`;
+                _tradeStageOpts.push({ value: String(stages + i + 1), label: `${stages + i + 1}차 부스터 (${bDrop.toFixed(2)}%)${extra}` });
             }
         }
     } else if (type === 'SELL') {
         const ds = portfolios[activeTicker];
         const plans = (ds.config && ds.config.sellPlans) || [];
         const avg = ds.avgPrice || 0;
-        const holding = ds.qty || 0;
+        let remaining = ds.qty || 0; // 순차(보유 차감) 계산
         for (let i = 0; i < 3; i++) {
             const p = plans[i] || {};
             const ratio = parseFloat(p.sellRatio) || (i === 2 ? 100 : 50);
             const tpct = parseFloat(p.targetPct) || (i === 0 ? 5 : (i === 1 ? 10 : 15));
             const sPrice = calcSellTargetPrice(avg, tpct);
-            const sQty = Math.floor(holding * ratio / 100);
+            const sQty = Math.floor(remaining * ratio / 100);
+            remaining -= sQty;
             const sAmt = sQty * sPrice;
-            s.innerHTML += `<option value="${i + 1}">${i + 1}차 매도 · ${ratio}% · ${sQty}주 · $${Math.round(sAmt).toLocaleString()}</option>`;
+            _tradeStageOpts.push({ value: String(i + 1), label: `${i + 1}차 매도 · ${ratio}% · ${sQty}주 · $${Math.round(sAmt).toLocaleString()}` });
         }
         const snap = MARKET_SNAPSHOT[activeTicker] || {};
         const curP = (snap.price > 0) ? snap.price : avg;
-        s.innerHTML += `<option value="ALL">전량 매도 (청산) · ${holding}주 · $${Math.round(holding * curP).toLocaleString()}</option>`;
+        const allQty = ds.qty || 0;
+        _tradeStageOpts.push({ value: 'ALL', label: `전량 매도 (청산) · ${allQty}주 · $${Math.round(allQty * curP).toLocaleString()}` });
     }
+    renderTradeStageList();
+    setTradeStage('', '직접 입력', false);
     document.getElementById('tradePrice').value = '';
     document.getElementById('tradeQty').value = '';
     var plannedPriceEl = document.getElementById('tradePlannedPrice');
@@ -4228,7 +4269,16 @@ function openTradeModal(type) {
     if (tagEl) tagEl.value = 'QUANT';
     calcTradeTotal();
 }
-function closeTradeModal() { document.getElementById('tradeModal').classList.add('hidden'); document.getElementById('tradeModal').classList.remove('flex'); }
+function closeTradeModal() { var l = document.getElementById('tradeStageList'); if (l) l.classList.add('hidden'); document.getElementById('tradeModal').classList.add('hidden'); document.getElementById('tradeModal').classList.remove('flex'); }
+// 드롭다운 외부 클릭 시 닫기
+document.addEventListener('click', function (e) {
+    var list = document.getElementById('tradeStageList');
+    if (!list || list.classList.contains('hidden')) return;
+    var btn = document.getElementById('tradeStageBtn');
+    if ((btn && btn.contains(e.target)) || list.contains(e.target)) return;
+    list.classList.add('hidden');
+    var chev = document.getElementById('tradeStageChev'); if (chev) chev.style.transform = '';
+});
 function autoFillTrade() {
     const stageStr = document.getElementById('tradeStageSelect').value;
     var pp = document.getElementById('tradePlannedPrice');
@@ -4257,11 +4307,16 @@ function autoFillTrade() {
         const plans = d.config.sellPlans || [];
         const p = plans[idx] || { targetPct: 5, sellRatio: 50 };
         const targetPct = parseFloat(p.targetPct) || 5;
-        const sellRatio = parseFloat(p.sellRatio) || 50;
         const avg = d.avgPrice || 0;
-        const holding = d.qty || 0;
         const price = calcSellTargetPrice(avg, targetPct);
-        const qty = Math.floor(holding * sellRatio / 100);
+        // 순차(보유 차감) 수량 — N차는 (N-1차까지 매도 후 남은 보유) × 비중
+        let rem = d.qty || 0, qty = 0;
+        for (let k = 0; k <= idx; k++) {
+            const pk = plans[k] || {};
+            const rk = parseFloat(pk.sellRatio) || (k === 2 ? 100 : 50);
+            qty = Math.floor(rem * rk / 100);
+            rem -= qty;
+        }
         document.getElementById('tradePrice').value = price.toFixed(2);
         document.getElementById('tradeQty').value = qty;
         if (pp) pp.value = price.toFixed(2);
