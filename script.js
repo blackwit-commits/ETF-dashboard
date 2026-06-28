@@ -4643,6 +4643,7 @@ function enrichTradesWithReturn(trades) {
                 var profit = (h.total != null ? h.total : (h.price * h.qty)) - costOfSold;
                 var returnPct = costOfSold ? (profit / costOfSold) * 100 : 0;
                 h.returnPct = returnPct;
+                h.realizedUSD = profit;
                 totalCost -= costOfSold;
                 q -= (h.qty || 0);
             }
@@ -4724,6 +4725,60 @@ function truncateStr(s, len) {
     if (!s) return '—';
     const t = String(s).trim();
     return t.length <= len ? t : t.slice(0, len) + '…';
+}
+
+// 빠른 기간 칩
+function setTradelogPeriod(p) {
+    var pad = function(n){ return String(n).padStart(2,'0'); };
+    var fmt = function(dt){ return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate()); };
+    var now = new Date();
+    var from = '', to = fmt(now);
+    if (p === 'today') { from = fmt(now); }
+    else if (p === 'thisMonth') { from = fmt(new Date(now.getFullYear(), now.getMonth(), 1)); }
+    else if (p === 'lastMonth') { from = fmt(new Date(now.getFullYear(), now.getMonth()-1, 1)); to = fmt(new Date(now.getFullYear(), now.getMonth(), 0)); }
+    else if (p === 'thisYear') { from = fmt(new Date(now.getFullYear(), 0, 1)); }
+    else if (p === '7d') { var d7=new Date(now); d7.setDate(d7.getDate()-6); from = fmt(d7); }
+    else if (p === '30d') { var d30=new Date(now); d30.setDate(d30.getDate()-29); from = fmt(d30); }
+    else if (p === '90d') { var d90=new Date(now); d90.setDate(d90.getDate()-89); from = fmt(d90); }
+    else if (p === 'all') { from = ''; to = ''; }
+    var fEl = document.getElementById('tradelogDateFrom'); if (fEl) fEl.value = from;
+    var tEl = document.getElementById('tradelogDateTo'); if (tEl) tEl.value = to;
+    var chips = document.querySelectorAll('#tradelogPeriodChips button');
+    Array.prototype.forEach.call(chips, function(b){ var on = b.getAttribute('data-p') === p; b.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold ' + (on ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'); });
+    renderTradeLog();
+}
+
+var _tlDailyChart = null, _tlReasonChart = null;
+function renderTradelogDailyPnl(trades) {
+    var canvas = document.getElementById('tradelogDailyPnlChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    var byDate = {};
+    (trades||[]).forEach(function(t){ if (t.type==='SELL' && t.realizedUSD!=null && !isNaN(t.realizedUSD)) byDate[t.date] = (byDate[t.date]||0) + t.realizedUSD; });
+    var dates = Object.keys(byDate).sort();
+    if (_tlDailyChart) { try{_tlDailyChart.destroy();}catch(e){} _tlDailyChart=null; }
+    if (!dates.length) return;
+    var data = dates.map(function(d){ return Math.round(byDate[d]); });
+    var colors = data.map(function(v){ return v>=0 ? '#ef4444' : '#3b82f6'; });
+    _tlDailyChart = new Chart(canvas.getContext('2d'), {
+        type:'bar',
+        data:{ labels: dates.map(function(d){ return d.slice(5); }), datasets:[{ data:data, backgroundColor:colors, borderWidth:0, borderRadius:2 }] },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:function(c){ var v=c.parsed.y; return (v>=0?'+$':'-$')+Math.abs(v).toLocaleString(); } } } }, scales:{ x:{ ticks:{color:'#94a3b8',font:{size:9},maxRotation:0}, grid:{display:false} }, y:{ ticks:{color:'#94a3b8',font:{size:9}}, grid:{color:'rgba(51,65,85,0.3)'} } } }
+    });
+}
+function renderTradelogReasonDonut(trades) {
+    var canvas = document.getElementById('tradelogReasonChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    var counts = {};
+    (trades||[]).forEach(function(t){ if (t.type==='SELL') { var tag=t.tag||'—'; counts[tag]=(counts[tag]||0)+1; } });
+    var keys = Object.keys(counts);
+    if (_tlReasonChart) { try{_tlReasonChart.destroy();}catch(e){} _tlReasonChart=null; }
+    if (!keys.length) return;
+    var palette = { QUANT:'#3b82f6', FOMO:'#ef4444', RESCUE:'#f59e0b', DIV:'#eab308', '—':'#64748b' };
+    _tlReasonChart = new Chart(canvas.getContext('2d'), {
+        type:'doughnut',
+        data:{ labels: keys.map(function(k){ return getTagLabel(k); }), datasets:[{ data: keys.map(function(k){ return counts[k]; }), backgroundColor: keys.map(function(k){ return palette[k]||'#8b5cf6'; }), borderWidth:0 }] },
+        options:{ responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{ legend:{ position:'bottom', labels:{ color:'#cbd5e1', font:{size:9}, boxWidth:10, padding:6 } } } }
+    });
 }
 
 function renderTradeLog() {
@@ -4841,6 +4896,15 @@ function renderTradeLog() {
 
     // 사이클(매수→매도) 요약 렌더
     renderCycleSummary(filtered);
+
+    // 기간 분석 (일별 실현손익 + 매도 사유 분포)
+    try {
+        var _hasSell = filtered.some(function(t){ return t.type === 'SELL'; });
+        var _ce = document.getElementById('tradelogAnalysisCharts'); if (_ce) _ce.classList.toggle('hidden', !_hasSell);
+        var _ee = document.getElementById('tradelogAnalysisEmpty'); if (_ee) _ee.classList.toggle('hidden', _hasSell);
+        renderTradelogDailyPnl(filtered);
+        renderTradelogReasonDonut(filtered);
+    } catch (e) {}
 
     var cardList = document.getElementById('tradelogCardList');
     if (!cardList) return;
@@ -5163,6 +5227,16 @@ function showTradeDetail(idx) {
     setTimeout(function() { renderTradeJournalChart(r.sym, r.cycleId, r.date); }, 30);
 }
 
+// 종목 → 관련 섹터/벤치마크 (매매 상세 '그날 시장' 맥락용)
+var SECTOR_OF = {
+    TQQQ:{t:'^IXIC',n:'기술'}, SQQQ:{t:'^IXIC',n:'기술'}, SOXL:{t:'SOXX',n:'반도체'},
+    TNA:{t:'IWM',n:'소형주'}, SPXL:{t:'^GSPC',n:'S&P500'}, UDOW:{t:'^DJI',n:'다우'},
+    FAS:{t:'XLF',n:'금융'}, NRGU:{t:'XLE',n:'에너지'}, GUSH:{t:'XLE',n:'에너지'},
+    NUGT:{t:'GDX',n:'금광'}, GDXU:{t:'GDX',n:'금광'}, GLD:{t:'GLD',n:'금'}, UGL:{t:'GLD',n:'금'},
+    DRN:{t:'XLRE',n:'부동산'}, CURE:{t:'XLV',n:'헬스케어'}, LABU:{t:'XBI',n:'바이오'},
+    TMF:{t:'TLT',n:'장기채'}, UUP:{t:'DX-Y.NYB',n:'달러'}, BITX:{t:'BTC-USD',n:'비트코인'}
+};
+
 // 매매일지 상세 차트: 종목·나스닥·다우를 % 리베이스 라인 + 매수/매도 마커
 var _tradeChartObj = null;
 function _fetchOhlc(ticker) {
@@ -5187,7 +5261,11 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
     var todayS = new Date().toISOString().slice(0, 10);
     var winStart = pad(startD, -21), winEnd = pad(endD, 21); if (winEnd > todayS) winEnd = todayS;
 
-    Promise.all([_fetchOhlc(sym), _fetchOhlc('^IXIC'), _fetchOhlc('^DJI'), _fetchOhlc('^GSPC')]).then(function(res) {
+    var _sec = SECTOR_OF[sym];
+    var _secT = (_sec && ['^IXIC','^DJI','^GSPC'].indexOf(_sec.t) === -1) ? _sec.t : null;
+    var _fetchList = [_fetchOhlc(sym), _fetchOhlc('^IXIC'), _fetchOhlc('^DJI'), _fetchOhlc('^GSPC'), _fetchOhlc('^VIX')];
+    if (_secT) _fetchList.push(_fetchOhlc(_secT));
+    Promise.all(_fetchList).then(function(res) {
         var inWin = function(arr) { return (arr || []).filter(function(p) { return p.time >= winStart && p.time <= winEnd; }); };
         // 종목은 실제 가격으로 표시 (매수/매도가와 일치)
         var stockData = inWin(res[0]).map(function(p) { return { time: p.time, value: Math.round(p.close * 100) / 100 }; });
@@ -5238,7 +5316,17 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
             return '<span class="text-slate-400">' + label + ' <span class="text-slate-200 font-bold">' + Math.round(m.level).toLocaleString() + '</span> <span class="' + col + '">' + (m.chg >= 0 ? '+' : '') + m.chg.toFixed(2) + '%</span></span>';
         };
         var d = focusDate || (stockData[stockData.length - 1] && stockData[stockData.length - 1].time);
-        var parts = [fmtIdx(dayMetric(res[1], d), '나스닥'), fmtIdx(dayMetric(res[3], d), 'S&P500'), fmtIdx(dayMetric(res[2], d), '다우')].filter(Boolean);
+        var parts = [fmtIdx(dayMetric(res[1], d), '나스닥'), fmtIdx(dayMetric(res[3], d), 'S&P500'), fmtIdx(dayMetric(res[2], d), '다우')];
+        if (_secT) parts.push(fmtIdx(dayMetric(res[5], d), _sec.n));
+        // VIX(공포지수) 국면
+        var vm = dayMetric(res[4], d);
+        if (vm) {
+            var lvl = vm.level;
+            var reg = lvl < 15 ? '안정' : (lvl >= 30 ? '공포' : (lvl >= 20 ? '주의' : '보통'));
+            var vcol = lvl >= 30 ? 'text-red-400' : (lvl >= 20 ? 'text-amber-400' : 'text-emerald-400');
+            parts.push('<span class="text-slate-400">VIX <span class="text-slate-200 font-bold">' + lvl.toFixed(1) + '</span> <span class="' + vcol + '">' + reg + '</span></span>');
+        }
+        parts = parts.filter(Boolean);
         var pe = document.getElementById('tradeChartPeriodRet');
         if (pe) pe.innerHTML = parts.length ? ('<span class="text-slate-500">📅 ' + escapeHtml(d) + ' 시장</span><br>' + parts.join('  ·  ')) : '';
     });
