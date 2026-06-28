@@ -1533,6 +1533,8 @@ async function syncToCloud() {
         });
         const sText = document.getElementById('syncStatusText');
         if(sText) sText.innerText = "최근 동기화: " + new Date().toLocaleTimeString();
+        try { localStorage.setItem('umt_last_cloud_sync', Date.now().toString()); } catch(e){}
+        try { renderBackupStatus(); } catch(e){}
     } catch(e) {
         console.error('[Sync] 동기화 실패:', e);
         const sText = document.getElementById('syncStatusText');
@@ -1543,6 +1545,14 @@ async function syncToCloud() {
             if(syncIcon) syncIcon.classList.replace('text-white', 'text-slate-500');
         }, 1000);
     }
+}
+
+// 자동 클라우드 백업 (변경 시 디바운스 3초 후 구글 시트로 저장)
+var _cloudSyncTimer = null;
+function autoCloudBackup() {
+    if (!SYNC_URL) return;            // 시트 미연결 시 자동 저장 불가 → 백업 배지로 안내
+    if (_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
+    _cloudSyncTimer = setTimeout(function(){ syncToCloud(); }, 3000);
 }
 
 function showToast(message) {
@@ -4195,15 +4205,22 @@ function switchStratView(view) {
 function deleteActiveTicker() { if(!activeTicker) return; if(confirm(`'${activeTicker}' 종목을 삭제하시겠습니까?\n전략 설정은 삭제되지만 매매 기록은 보존됩니다.`)) { const d = portfolios[activeTicker]; if (d && Array.isArray(d.history) && d.history.length > 0) { try { const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); archived[activeTicker] = (archived[activeTicker] || []).concat(d.history); localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } catch(e) { console.error('History archive failed:', e); } } delete portfolios[activeTicker]; saveAll(); activeTicker = null; localStorage.removeItem('umt_last_ticker'); const keys = Object.keys(portfolios); if (keys.length > 0) { selectTicker(keys[0]); } else { switchTab('home'); renderTickerBar(); } } }
 function exportData(){ const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({global:globalData, ports:portfolios})); const node = document.createElement('a'); node.setAttribute("href", dataStr); node.setAttribute("download", "UMT_Backup.json"); document.body.appendChild(node); node.click(); node.remove(); try { localStorage.setItem('umt_last_backup', Date.now().toString()); } catch(e){} renderBackupStatus(); }
 
-// 백업 경과일 표시 (7일 초과 또는 미백업 시 경고)
+// 백업 상태 표시 — 시트 연결 시 '자동 저장 켜짐', 미연결 시 안내+수동 백업 경과
 function renderBackupStatus(){
     const el = document.getElementById('backupStatus'); if(!el) return;
+    const ago = (ts) => { const m = Math.floor((Date.now()-ts)/60000); if(m<1)return'방금'; if(m<60)return m+'분 전'; const h=Math.floor(m/60); if(h<24)return h+'시간 전'; return Math.floor(h/24)+'일 전'; };
+    // 1) 구글 시트 연결됨 → 변경 시 자동 저장
+    if(SYNC_URL){
+        const cloudTs = parseInt(localStorage.getItem('umt_last_cloud_sync') || '0', 10);
+        if(cloudTs) el.innerHTML = '<span class="text-emerald-400"><i class="fa-solid fa-cloud-arrow-up mr-1"></i>자동 저장 켜짐 · 최근 ' + ago(cloudTs) + '</span>';
+        else el.innerHTML = '<span class="text-emerald-400"><i class="fa-solid fa-cloud mr-1"></i>자동 저장 켜짐 — 변경 시 구글 시트에 자동 백업됩니다</span>';
+        return;
+    }
+    // 2) 미연결 → 자동 저장 불가 안내 + 수동 백업 경과
     const ts = parseInt(localStorage.getItem('umt_last_backup') || '0', 10);
-    if(!ts){ el.innerHTML = '<span class="text-red-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>아직 백업한 적 없어요 — 지금 백업을 권장합니다</span>'; return; }
-    const days = Math.floor((Date.now() - ts) / 86400000);
-    const dateStr = new Date(ts).toLocaleDateString('ko-KR');
-    if(days >= 7) el.innerHTML = '<span class="text-amber-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>마지막 백업 ' + days + '일 전 (' + dateStr + ') — 백업을 권장합니다</span>';
-    else el.innerHTML = '<span class="text-slate-500"><i class="fa-solid fa-circle-check mr-1 text-emerald-500"></i>마지막 백업 ' + (days===0?'오늘':days+'일 전') + ' (' + dateStr + ')</span>';
+    let manual = '';
+    if(ts){ const days = Math.floor((Date.now()-ts)/86400000); manual = ' · 마지막 수동 백업 ' + (days===0?'오늘':days+'일 전'); }
+    el.innerHTML = '<span class="text-amber-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>자동 저장 꺼짐 — 위 구글 시트 연결 시 변경분이 자동 백업됩니다' + manual + '</span>';
 }
 
 // 세금 · 실수령 추정 (해외주식 양도세 + 배당 원천징수 안내)
@@ -6015,7 +6032,7 @@ function saveAll() {
     localStorage.setItem('umt_v172_global', JSON.stringify(globalData));
     localStorage.setItem('umt_v172_ports', JSON.stringify(portfolios));
 
-    syncToCloud();
+    autoCloudBackup();
     syncPositionsToWorker();
 }
 
