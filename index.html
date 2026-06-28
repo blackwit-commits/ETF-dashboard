@@ -142,6 +142,17 @@
         </div>
 
         <div id="tab-news" class="space-y-4 hidden">
+            <!-- 섹션 바로가기 칩 (sticky) -->
+            <div class="sticky top-[88px] z-30 -mx-4 px-4 py-2 bg-slate-950/92 backdrop-blur border-b border-slate-800/60 flex gap-1.5 overflow-x-auto no-scrollbar">
+                <button onclick="scrollToNewsSection('marketFlowSection')" class="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 whitespace-nowrap transition">🌐 흐름</button>
+                <button onclick="scrollToNewsSection('stockNewsSection')" class="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 whitespace-nowrap transition">📈 종목·시장</button>
+                <button onclick="scrollToNewsSection('usNewsSection')" class="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 whitespace-nowrap transition">🌎 글로벌</button>
+                <button onclick="scrollToNewsSection('krNewsSection')" class="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 whitespace-nowrap transition">🇰🇷 한국</button>
+                <button onclick="scrollToNewsSection('econCalendarSection')" class="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 whitespace-nowrap transition">📅 일정</button>
+                <button onclick="scrollToNewsSection('hotIssuesSection')" class="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 whitespace-nowrap transition">🔥 핫이슈</button>
+                <button onclick="scrollToNewsSection('newsBriefingSection')" class="shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-300 hover:bg-slate-700 whitespace-nowrap transition">📰 브리핑</button>
+            </div>
+
             <!-- ■ 4.55 시장 흐름 (Gemini overview) -->
             <div id="marketFlowSection" class="hidden">
                 <div class="flex justify-between items-center px-1 mb-2">
