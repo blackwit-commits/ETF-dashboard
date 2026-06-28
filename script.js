@@ -904,13 +904,12 @@ function toggleUsNews() {
     if (btn) btn.innerHTML = '<i class="fa-solid ' + (isHidden ? 'fa-chevron-down' : 'fa-chevron-up') + ' text-xs" id="usNewsChev"></i>';
 }
 
-// 뉴스탭 섹션 바로가기 (고정 헤더+칩바 높이만큼 오프셋)
+// 뉴스탭 섹션 바로가기 (scroll-margin-top으로 헤더 가림 방지)
 function scrollToNewsSection(id) {
     var el = document.getElementById(id);
-    if (!el || el.classList.contains('hidden') || el.offsetParent === null) return;
-    var offset = 140; // 고정 헤더(~96) + 칩 바(~44)
-    var y = el.getBoundingClientRect().top + window.pageYOffset - offset;
-    window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+    if (!el || el.classList.contains('hidden')) return;
+    try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    catch (e) { el.scrollIntoView(); }
 }
 
 // 🌐 시장 흐름 (핫이슈 Gemini overview 재활용)

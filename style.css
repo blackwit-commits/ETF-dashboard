@@ -7,6 +7,9 @@ body {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* 뉴스탭 섹션 바로가기 시 고정 헤더+칩바에 가리지 않도록 여백 */
+#tab-news div[id$="Section"] { scroll-margin-top: 140px; }
+
 .glass-panel {
     background: rgba(30, 41, 59, 0.95);
     border: 1px solid rgba(255, 255, 255, 0.08);
