@@ -2877,10 +2877,24 @@ function loadTradingViewChart(sym) {
 }
 
 function updateStrategyDataUI(sym) {
-    if (!portfolios[sym]) return; 
-    const d = portfolios[sym]; 
-    const md = MARKET_SNAPSHOT[sym] || {price:0, error:true}; 
-    
+    if (!portfolios[sym]) return;
+    const d = portfolios[sym];
+    const md = MARKET_SNAPSHOT[sym] || {price:0, error:true};
+
+    // 고정 서브탭 영역에 현재 선택 종목 표시 (스크롤해도 보이도록)
+    if (sym === activeTicker) {
+        var _meta = ETF_DB.find(function (e) { return e.sym === sym; }) || {};
+        var _symEl = document.getElementById('stratActiveSym'); if (_symEl) _symEl.innerText = sym;
+        var _nmEl = document.getElementById('stratActiveName'); if (_nmEl) _nmEl.innerText = _meta.name || _meta.desc || '';
+        var _spEl = document.getElementById('stratActivePrice'); if (_spEl) _spEl.innerText = (md.price > 0) ? ('$' + md.price.toFixed(2)) : '--';
+        var _scEl = document.getElementById('stratActiveChg');
+        if (_scEl) {
+            var _chg = (md.change != null && !isNaN(md.change)) ? md.change : null;
+            _scEl.innerText = (_chg != null && !md.error) ? ((_chg > 0 ? '+' : '') + _chg.toFixed(1) + '%') : '';
+            _scEl.className = 'text-[11px] font-bold ml-1 ' + chgClass(_chg);
+        }
+    }
+
     const pEl = document.getElementById('dispPrice');
     const cEl = document.getElementById('dispChange');
     
