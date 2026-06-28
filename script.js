@@ -3686,6 +3686,12 @@ function renderStageInputs() {
         for(let i=0; i<(100 % stages); i++) d.config.weights[i]++;
     }
     
+    c.innerHTML += `
+        <div class="grid grid-cols-12 gap-1.5 items-center mb-1.5 px-1">
+            <div class="col-span-2"></div>
+            <div class="col-span-5 text-center text-[9px] font-bold text-red-400/80">하락폭 (%)</div>
+            <div class="col-span-5 text-center text-[9px] font-bold text-blue-400/80">비중 (%)</div>
+        </div>`;
     for(let i=0; i<stages; i++) {
         c.innerHTML += `
         <div class="grid grid-cols-12 gap-1.5 items-center mb-1">
@@ -3705,13 +3711,13 @@ function renderStageInputs() {
         </div>`;
     }
     c.innerHTML += `
-        <div class="mt-2 pt-2 border-t border-slate-700">
-            <div class="text-xs text-slate-400 mb-1">현재 합계: <span id="weightSumText" class="font-bold text-white">0</span>%</div>
-            <div id="weightSumWarning" class="hidden text-xs text-red-400 mb-2"></div>
-            <div class="flex items-center gap-2">
-                <button type="button" onclick="applyBuyStrategyUpdate()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg font-bold text-xs">매수 전략 업데이트</button>
+        <div class="mt-3 pt-3 border-t border-slate-700">
+            <div class="flex items-center justify-between mb-2">
+                <div class="text-xs text-slate-400">현재 합계: <span id="weightSumText" class="font-bold text-white">0</span>%</div>
                 <span id="buyStrategySaveMessage" class="text-emerald-400 text-xs font-bold"></span>
             </div>
+            <div id="weightSumWarning" class="hidden text-xs text-red-400 mb-2"></div>
+            <button type="button" onclick="applyBuyStrategyUpdate()" class="w-full h-[40px] bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-xs shadow-lg transition">매수 전략 업데이트</button>
         </div>`;
     updateWeightSumDisplay();
     calculatePlan();
