@@ -5730,6 +5730,36 @@ function getTotalEquityUSD() {
     return equity;
 }
 
+// ===== PWA 앱 설치 =====
+var _deferredInstallPrompt = null;
+function isStandaloneApp(){ try { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; } catch(e){ return false; } }
+function isIOSDevice(){ return /iphone|ipad|ipod/i.test(navigator.userAgent || ''); }
+function showInstallUI(){
+    if(isStandaloneApp()) { hideInstallUI(); return; }
+    if(sessionStorage.getItem('umt_install_dismissed') !== '1'){ var b=document.getElementById('installBanner'); if(b) b.classList.remove('hidden'); }
+    var sb=document.getElementById('installBtnSettings'); if(sb) sb.classList.remove('hidden');
+}
+function hideInstallUI(){ var b=document.getElementById('installBanner'); if(b) b.classList.add('hidden'); var sb=document.getElementById('installBtnSettings'); if(sb && isStandaloneApp()) sb.classList.add('hidden'); }
+function dismissInstall(){ try{ sessionStorage.setItem('umt_install_dismissed','1'); }catch(e){} var b=document.getElementById('installBanner'); if(b) b.classList.add('hidden'); }
+function triggerInstall(){
+    if(_deferredInstallPrompt){
+        _deferredInstallPrompt.prompt();
+        var p = _deferredInstallPrompt.userChoice;
+        if(p && p.finally) p.finally(function(){ _deferredInstallPrompt=null; hideInstallUI(); });
+    } else if(isIOSDevice()){
+        openIosInstallGuide();
+    } else if(isStandaloneApp()){
+        showToast('이미 설치되어 있어요 ✅');
+    } else {
+        showToast('브라우저 메뉴에서 "앱 설치 / 홈 화면에 추가"를 눌러주세요');
+    }
+}
+function openIosInstallGuide(){ var m=document.getElementById('iosInstallModal'); if(m){ m.classList.remove('hidden'); m.classList.add('flex'); } }
+function closeIosInstallGuide(){ var m=document.getElementById('iosInstallModal'); if(m){ m.classList.add('hidden'); m.classList.remove('flex'); } }
+window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); _deferredInstallPrompt = e; showInstallUI(); });
+window.addEventListener('appinstalled', function(){ _deferredInstallPrompt = null; hideInstallUI(); showToast('앱이 설치되었습니다 🎉'); });
+window.addEventListener('load', function(){ if(isStandaloneApp()){ hideInstallUI(); } else if(isIOSDevice()){ showInstallUI(); } });
+
 // ===== 벤치마크 비교 (내 수익률 vs SPY/QQQ) =====
 var _benchInFlight = false;
 function computeMyReturn() {

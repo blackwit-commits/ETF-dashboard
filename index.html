@@ -19,7 +19,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260629p">
+    <link rel="stylesheet" href="style.css?v=20260629q">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -51,6 +51,17 @@
     <div class="max-w-lg mx-auto px-4 space-y-5 mt-2 pt-24" id="mainContent">
 
         <div id="tab-home" class="space-y-4">
+            <!-- 앱 설치 배너 (설치 가능 시 자동 표시) -->
+            <div id="installBanner" class="hidden glass-panel rounded-2xl p-3 border border-blue-500/40 bg-blue-900/20 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2 min-w-0">
+                    <i class="fa-solid fa-mobile-screen-button text-blue-400 text-lg shrink-0"></i>
+                    <div class="min-w-0"><div class="text-xs font-bold text-white">홈 화면에 앱 설치</div><div class="text-[10px] text-slate-400 truncate">주소창 없이 앱처럼 빠르게 실행</div></div>
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
+                    <button onclick="triggerInstall()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg">설치</button>
+                    <button onclick="dismissInstall()" class="text-slate-500 hover:text-white px-2 py-1.5"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
             <!-- ■ 1. Quad 대시보드 -->
             <div class="glass-panel rounded-2xl p-4 relative overflow-hidden" id="quadDashboardCard">
                 <!-- 헤더 -->
@@ -587,6 +598,7 @@
         </div>
 
         <div id="tab-settings" class="space-y-4 hidden">
+            <button id="installBtnSettings" onclick="triggerInstall()" class="w-full py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-white font-bold text-sm shadow-lg transition"><i class="fa-solid fa-mobile-screen-button mr-1"></i> 홈 화면에 앱 설치</button>
             <div class="glass-panel rounded-2xl p-5 border-t-4 border-gray-500">
                 <h2 class="text-sm font-bold text-white mb-4">자본금 & 환경 설정</h2>
                 
@@ -868,7 +880,19 @@
         </div>
     </div>
     <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-sm font-bold shadow-xl opacity-0 transition-opacity duration-300 pointer-events-none" aria-live="polite"></div>
-<script src="script.js?v=20260629p"></script>
+<div id="iosInstallModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm" onclick="closeIosInstallGuide()">
+        <div class="bg-slate-900 rounded-2xl w-full max-w-xs p-5 border border-slate-600 shadow-2xl" onclick="event.stopPropagation()">
+            <h3 class="font-bold text-white text-base mb-3 flex items-center gap-2"><i class="fa-solid fa-mobile-screen-button text-blue-400"></i> 아이폰에 설치하기</h3>
+            <ol class="text-sm text-slate-300 space-y-2 list-decimal list-inside">
+                <li>사파리 하단 <b class="text-white">공유 버튼</b> <i class="fa-solid fa-arrow-up-from-bracket text-blue-400"></i> 탭</li>
+                <li>메뉴에서 <b class="text-white">"홈 화면에 추가"</b> 선택</li>
+                <li><b class="text-white">"추가"</b> 탭 → 완료!</li>
+            </ol>
+            <p class="text-[10px] text-slate-500 mt-3">※ 반드시 사파리에서 진행하세요 (크롬 등 타 브라우저는 미지원)</p>
+            <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
+        </div>
+    </div>
+    <script src="script.js?v=20260629q"></script>
     <script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
 </body>
 </html>
