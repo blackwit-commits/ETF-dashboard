@@ -42,6 +42,21 @@ export default {
       });
     }
 
+    // 보유 목표가 저장 (/positions, POST) — 텔레그램 목표 도달 알림용
+    if (path === "/positions") {
+      if (request.method === "POST") {
+        try {
+          const body = await request.json();
+          if (env.UMT_KV) await env.UMT_KV.put("positions", JSON.stringify(body || {}));
+          return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } catch (e) {
+          return new Response(JSON.stringify({ error: e.message }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+      }
+      const cur = env.UMT_KV ? await env.UMT_KV.get("positions", "json") : null;
+      return new Response(JSON.stringify(cur || { positions: [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
     // 1. 주가 데이터 요청 (/price?ticker=TQQQ)
     if (path === "/price") {
       const ticker = url.searchParams.get("ticker");
@@ -560,19 +575,26 @@ export default {
 
   // Cron 트리거: 마켓 브리핑을 텔레그램으로 푸시 (wrangler.toml [triggers] crons)
   async scheduled(event, env, ctx) {
+    const cron = event.cron;
     // 미장 마감 후(21:00 UTC = 06:00 KST) 1회: 웹 Quad 대시보드용 매크로 분석을 미리 계산해 KV에 저장
-    if (event.cron === "0 21 * * 1-5" && env.GEMINI_API_KEY) {
+    if (cron === "0 21 * * 1-5" && env.GEMINI_API_KEY) {
       ctx.waitUntil((async () => {
         try { await refreshMacroToKV(env, "scheduled"); } catch (e) { /* 다음 트리거에 재시도 */ }
       })());
     }
-    // 텔레그램 브리핑 (설정된 경우)
-    if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+    // 텔레그램 정기 브리핑 (개장 전 13:00 / 마감 후 21:00 UTC 에만)
+    if ((cron === "0 13 * * 1-5" || cron === "0 21 * * 1-5") && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
       ctx.waitUntil((async () => {
         try {
           const symbols = parseBriefSymbols(env.WATCH_TICKERS);
           await pushBriefing(env, symbols);
         } catch (e) { /* 실패는 조용히 무시 — 다음 트리거에 재시도 */ }
+      })());
+    }
+    // 장중 목표가 도달 / MA200 이탈 체크 (20분마다)
+    if (cron === "*/20 13-21 * * 1-5") {
+      ctx.waitUntil((async () => {
+        try { await checkTargetsAndAlert(env); } catch (e) { /* 무시 */ }
       })());
     }
   },
@@ -886,6 +908,47 @@ function buildSnapshotChartUrl(snap, holdings) {
 // 텔레그램 HTML 모드 이스케이프 (& < > 만)
 function tgEscape(s) {
   return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// 보유 종목 목표가 도달 / MA200 이탈 체크 후 텔레그램 푸시 (장중 크론)
+async function checkTargetsAndAlert(env) {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID || !env.UMT_KV) return;
+  const stored = await env.UMT_KV.get("positions", "json");
+  const positions = (stored && Array.isArray(stored.positions)) ? stored.positions : [];
+  if (!positions.length) return;
+  const alerted = (await env.UMT_KV.get("target_alerts", "json")) || {};
+  const next = { ...alerted };
+  const msgs = [];
+  for (const pos of positions) {
+    if (!pos || !pos.sym) continue;
+    const q = await fetchQuoteSimple(pos.sym);
+    if (!q || q.price == null) continue;
+    const cur = q.price;
+    // 익절 목표 도달
+    (pos.targets || []).forEach((t) => {
+      if (t && t.price > 0 && cur >= t.price) {
+        const key = pos.sym + ":T" + t.n + ":" + Number(t.price).toFixed(2);
+        if (!alerted[key]) {
+          msgs.push(`🎯 <b>${pos.sym}</b> ${t.n}차 목표가 도달!\n목표 $${Number(t.price).toFixed(2)} (순익 +${t.pct}%) · 현재 $${cur.toFixed(2)}\n→ 매도 비중 ${t.ratio}% 검토`);
+          next[key] = Date.now();
+        }
+      }
+    });
+    // MA200 이탈 (회복 시 리셋)
+    if (pos.ma200 > 0) {
+      const tKey = pos.sym + ":TREND";
+      if (cur < pos.ma200) {
+        if (!alerted[tKey]) {
+          msgs.push(`⚠️ <b>${pos.sym}</b> MA200 이탈!\nMA200 $${Number(pos.ma200).toFixed(2)} · 현재 $${cur.toFixed(2)}\n→ 부분 매도(추세 이탈) 검토`);
+          next[tKey] = Date.now();
+        }
+      } else {
+        delete next[tKey];
+      }
+    }
+  }
+  await env.UMT_KV.put("target_alerts", JSON.stringify(next));
+  if (msgs.length) await sendTelegram(env, "📢 <b>매매 알림</b>\n\n" + msgs.join("\n\n"));
 }
 
 async function sendTelegram(env, text) {

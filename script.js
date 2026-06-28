@@ -1267,6 +1267,7 @@ function initApp() {
         fetchNews();
         startPriceTicker();
         startSectorRotation();
+        syncPositionsToWorker();
         fetchMarketDataInBackground();
         fetchMacroIndicatorsLive();
         fetchLiveFxRate();
@@ -1490,6 +1491,7 @@ function fetchMarketDataInBackground() {
             updateSingleCard(sym, data);
             updateRecommendationsUI();
             try { renderPositionOverview(); } catch(e) {}
+            try { syncPositionsToWorker(); } catch(e) {}
 
             if (activeTicker === sym) {
                 updateStrategyDataUI(sym);
@@ -5455,17 +5457,50 @@ function saveSettings() {
     alert('설정이 저장되었습니다.');
 }
     
-function saveAll() { 
-    globalData.seedKRW = parseFloat(document.getElementById('globalSeedKRW').value)||0; 
+// ── 텔레그램 목표 도달 알림용: 보유 종목 목표가를 워커 KV에 동기화 (디바운스) ──
+var _posSyncTimer = null;
+function syncPositionsToWorker() {
+    if (_posSyncTimer) clearTimeout(_posSyncTimer);
+    _posSyncTimer = setTimeout(doSyncPositions, 1500);
+}
+async function doSyncPositions() {
+    try {
+        var positions = [];
+        Object.keys(portfolios || {}).forEach(function (sym) {
+            var d = portfolios[sym];
+            if (!d || (d.qty || 0) <= 0 || !(d.avgPrice > 0)) return;
+            var plans = (d.config && d.config.sellPlans) || [];
+            var targets = [];
+            for (var i = 0; i < 3; i++) {
+                var p = plans[i] || {};
+                var pct = parseFloat(p.targetPct);
+                if (!pct || pct <= 0) continue;
+                targets.push({ n: i + 1, price: calcSellTargetPrice(d.avgPrice, pct), pct: pct, ratio: (p.sellRatio != null ? p.sellRatio : 50) });
+            }
+            var mdp = MARKET_SNAPSHOT[sym] || {};
+            var ma200 = (mdp.ma200 > 0) ? mdp.ma200 : ((d.marketData && d.marketData.ma200) || 0);
+            positions.push({ sym: sym, avgPrice: d.avgPrice, qty: d.qty, ma200: ma200, targets: targets });
+        });
+        await fetch(API_BASE_URL + '/positions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ positions: positions, updatedAt: Date.now() })
+        });
+    } catch (e) { /* 무시 */ }
+}
+
+function saveAll() {
+    globalData.seedKRW = parseFloat(document.getElementById('globalSeedKRW').value)||0;
     globalData.rate = parseFloat(document.getElementById('globalRate').value)||1300; 
     globalData.feeRate = parseFloat(document.getElementById('globalFeeRate').value)||0; 
     var _sipEl2 = document.getElementById('globalSipKRW'); if (_sipEl2) globalData.sipKRW = parseFloat(_sipEl2.value)||0; 
     globalData.useSec = document.getElementById('useSecFee').checked; 
     globalData.mddLimit = parseFloat(document.getElementById('globalMDD').value)||25; 
     
-    localStorage.setItem('umt_v172_global', JSON.stringify(globalData)); 
-    localStorage.setItem('umt_v172_ports', JSON.stringify(portfolios)); 
-    
-    syncToCloud(); 
+    localStorage.setItem('umt_v172_global', JSON.stringify(globalData));
+    localStorage.setItem('umt_v172_ports', JSON.stringify(portfolios));
+
+    syncToCloud();
+    syncPositionsToWorker();
 }
 
