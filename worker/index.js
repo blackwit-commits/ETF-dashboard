@@ -206,12 +206,34 @@ export default {
         });
       }
 
+      const force = url.searchParams.get("force") === "1";
       try {
-        const macroResult = await callGeminiMacroAnalysis(env.GEMINI_API_KEY);
+        // KV 캐시 우선 (크론이 평일 1회 미리 계산해 저장 → 즉시 응답, Gemini 호출 없음)
+        if (!force && env.UMT_KV) {
+          const cached = await env.UMT_KV.get(MACRO_KV_KEY, "json");
+          if (cached && cached._cachedAt && (Date.now() - cached._cachedAt) < MACRO_KV_TTL_MS) {
+            return new Response(JSON.stringify(cached), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" }
+            });
+          }
+        }
+        // 캐시 없음/만료/강제새로고침 → 새로 분석하고 KV 저장
+        const macroResult = await refreshMacroToKV(env, force ? "force" : "ondemand");
         return new Response(JSON.stringify(macroResult), {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       } catch (e) {
+        // 분석 실패 시 만료된 KV라도 폴백 반환
+        if (env.UMT_KV) {
+          try {
+            const stale = await env.UMT_KV.get(MACRO_KV_KEY, "json");
+            if (stale && stale.quad) {
+              return new Response(JSON.stringify(stale), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" }
+              });
+            }
+          } catch (_) { /* 무시 */ }
+        }
         return new Response(JSON.stringify({ error: e.message }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
@@ -510,13 +532,21 @@ export default {
 
   // Cron 트리거: 마켓 브리핑을 텔레그램으로 푸시 (wrangler.toml [triggers] crons)
   async scheduled(event, env, ctx) {
-    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
-    ctx.waitUntil((async () => {
-      try {
-        const symbols = parseBriefSymbols(env.WATCH_TICKERS);
-        await pushBriefing(env, symbols);
-      } catch (e) { /* 실패는 조용히 무시 — 다음 트리거에 재시도 */ }
-    })());
+    // 미장 마감 후(21:00 UTC = 06:00 KST) 1회: 웹 Quad 대시보드용 매크로 분석을 미리 계산해 KV에 저장
+    if (event.cron === "0 21 * * 1-5" && env.GEMINI_API_KEY) {
+      ctx.waitUntil((async () => {
+        try { await refreshMacroToKV(env, "scheduled"); } catch (e) { /* 다음 트리거에 재시도 */ }
+      })());
+    }
+    // 텔레그램 브리핑 (설정된 경우)
+    if (env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+      ctx.waitUntil((async () => {
+        try {
+          const symbols = parseBriefSymbols(env.WATCH_TICKERS);
+          await pushBriefing(env, symbols);
+        } catch (e) { /* 실패는 조용히 무시 — 다음 트리거에 재시도 */ }
+      })());
+    }
   },
 };
 
@@ -901,6 +931,21 @@ async function callGeminiWithFallback(apiKey, body) {
     }
   }
   throw new Error(lastError);
+}
+
+// 웹 Quad 대시보드용 매크로 분석: KV 캐시 유효시간 (크론이 평일 1회 미리 계산)
+const MACRO_KV_TTL_MS = 24 * 60 * 60 * 1000; // 24시간
+const MACRO_KV_KEY = "macro_latest";
+
+// Quad 매크로 분석을 실행해 KV에 저장하고 결과 반환 (크론/온디맨드 공용)
+async function refreshMacroToKV(env, source) {
+  const result = await callGeminiMacroAnalysis(env.GEMINI_API_KEY);
+  result._cachedAt = Date.now();
+  result._source = source || "ondemand";
+  if (env.UMT_KV) {
+    try { await env.UMT_KV.put(MACRO_KV_KEY, JSON.stringify(result)); } catch (e) { /* KV 실패 무시 */ }
+  }
+  return result;
 }
 
 async function callGeminiMacroAnalysis(apiKey) {

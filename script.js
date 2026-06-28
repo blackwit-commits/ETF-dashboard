@@ -138,8 +138,35 @@ function loadMacroFromCache() {
 }
 
 function saveMacroToCache(data) {
-    data._cachedAt = Date.now();
+    // 서버(KV)가 보낸 분석 시각(_cachedAt)이 있으면 보존 — "X시간 전 갱신"이 실제 분석 시점을 가리키도록
+    if (!data._cachedAt) data._cachedAt = Date.now();
     localStorage.setItem(MACRO_CACHE_KEY, JSON.stringify(data));
+}
+
+// 만료 무시하고 마지막 저장본 그대로 반환 (즉시 렌더 → 백그라운드 동기화용)
+function loadMacroRaw() {
+    try {
+        var c = JSON.parse(localStorage.getItem(MACRO_CACHE_KEY));
+        return (c && c.quad && c.market_data) ? c : null;
+    } catch (e) { return null; }
+}
+
+// 백그라운드에서 서버(KV) 최신 Quad 분석을 조용히 동기화 (Gemini 호출 없이 KV 즉답)
+async function syncMacroFromServer() {
+    try {
+        var resp = await fetch(API_BASE_URL + '/macro');
+        if (!resp.ok) return;
+        var data = await resp.json();
+        if (!data || data.error || !data.quad) return;
+        var localAt  = (MACRO_DATA && MACRO_DATA._cachedAt) || 0;
+        var serverAt = data._cachedAt || Date.now();
+        // 서버가 같거나 더 최신일 때만 교체
+        if (!MACRO_DATA || serverAt >= localAt) {
+            MACRO_DATA = data;
+            saveMacroToCache(data);
+            updateMacroDashboard();
+        }
+    } catch (e) { /* 네트워크 실패는 조용히 무시 */ }
 }
 
 async function fetchMacroData(forceRefresh) {
@@ -158,7 +185,7 @@ async function fetchMacroData(forceRefresh) {
     try {
         var controller = new AbortController();
         var timeoutId = setTimeout(function() { controller.abort(); }, 120000);
-        const resp = await fetch(API_BASE_URL + '/macro', { signal: controller.signal });
+        const resp = await fetch(API_BASE_URL + '/macro' + (forceRefresh ? '?force=1' : ''), { signal: controller.signal });
         clearTimeout(timeoutId);
         if (!resp.ok) {
             const errBody = await resp.text();
@@ -203,11 +230,8 @@ function renderMacroStartButton() {
             + '<div class="text-slate-500 text-[10px] mt-2">Gemini AI가 실시간 경제 데이터를 분석합니다 (약 60초)</div>'
             + '</div>';
     }
-    // Quad 대시보드에도 안내
-    var lbl = document.getElementById('fgLabel');
-    if (lbl) lbl.innerText = 'Quad 판정 대기';
-    var dEl = document.getElementById('fgDesc');
-    if (dEl) dEl.innerText = '아래 "매크로 분석 시작" 버튼을 눌러주세요';
+    // Quad 매트릭스 대기 상태 표시
+    renderQuadMatrix(null);
 }
 
 function startMacroAnalysis() {
@@ -1245,14 +1269,16 @@ function initApp() {
         fetchMacroIndicatorsLive();
         fetchLiveFxRate();
 
-        // 5. 매크로 데이터: 유효한 캐시 있으면 즉시 표시, 없으면 버튼 대기
-        var cachedMacro = loadMacroFromCache();
-        if (cachedMacro && cachedMacro.quad && cachedMacro.news && cachedMacro.market_data) {
+        // 5. 매크로 데이터: 마지막 캐시를 즉시 렌더 → 백그라운드에서 서버(KV) 최신본 동기화
+        //    (서버 크론이 매일 미장 마감 후 자동 분석해 KV에 저장하므로, 앱을 열면 항상 최신이 채워짐)
+        var cachedMacro = loadMacroRaw();
+        if (cachedMacro) {
             MACRO_DATA = cachedMacro;
             updateMacroDashboard();
         } else {
             renderMacroStartButton();
         }
+        syncMacroFromServer();
 
         // 6. 주간 리포트 캐시 로드
         var cachedWeekly = loadWeeklyFromCache();
@@ -1966,30 +1992,8 @@ function updateFearGreed() {
         return;
     }
 
-    // 폴백: 기존 VIX 기반 공포/탐욕
-    if(!vixData || vixData.error || vixData.price === 0) {
-        const el = document.getElementById('vixValue');
-        const lbl = document.getElementById('fgLabel');
-        if(el) el.innerText = "오류";
-        if(lbl) lbl.innerText = "연결안됨";
-        return;
-    }
-
-    let vixPrice = vixData.price;
-    const el = document.getElementById('vixValue');
-    if(el) el.innerText = vixPrice.toFixed(2);
-
-    let label="중립", desc="방향성 탐색", color="text-slate-200", score=50;
-    if(vixPrice>28){ label="극도공포"; desc="과매도 구간"; score=20; color="text-red-500"; }
-    else if(vixPrice>20){ label="공포"; desc="변동성 주의"; score=40; color="text-orange-500"; }
-    else if(vixPrice<15){ label="탐욕"; desc="매수세 강세"; score=80; color="text-green-500"; }
-
-    const needle = document.getElementById('fgNeedle');
-    if(needle) needle.style.transform = `rotate(${(score/100)*180-90}deg)`;
-    const lbl = document.getElementById('fgLabel');
-    if(lbl) { lbl.innerText=label; lbl.className=`text-lg font-black ${color}`; }
-    const dEl = document.getElementById('fgDesc');
-    if(dEl) dEl.innerText=desc;
+    // 폴백: 매크로(AI Quad) 데이터 없음 → 빈 매트릭스 + 판정 대기 표시
+    renderQuadMatrix(null);
 }
 
 // ==========================================
@@ -1999,6 +2003,56 @@ const QUAD_COLORS = { 1:'text-green-400', 2:'text-yellow-400', 3:'text-red-400',
 const QUAD_BG     = { 1:'border-green-500/30', 2:'border-yellow-500/30', 3:'border-red-500/30', 4:'border-blue-500/30' };
 const QUAD_SCORES = { 1:80, 2:60, 3:20, 4:40 };
 const QUAD_ICONS  = { 1:'fa-sun', 2:'fa-fire', 3:'fa-cloud-bolt', 4:'fa-snowflake' };
+
+// 2×2 매트릭스 메타 (성장 가로축 · 물가 세로축)
+const QUAD_META = {
+    1: { name:'골디락스',       icon:'fa-sun',        play:'위험자산 선호',   txt:'text-green-400',  bdr:'border-green-500/50',  bg:'bg-green-500/10',  ring:'ring-green-400/70',  dot:'bg-green-400' },
+    2: { name:'과열',           icon:'fa-fire',       play:'에너지·원자재',   txt:'text-yellow-400', bdr:'border-yellow-500/50', bg:'bg-yellow-500/10', ring:'ring-yellow-400/70', dot:'bg-yellow-400' },
+    3: { name:'스태그플레이션', icon:'fa-cloud-bolt', play:'방어·인플레헤지', txt:'text-red-400',    bdr:'border-red-500/50',    bg:'bg-red-500/10',    ring:'ring-red-400/70',    dot:'bg-red-400' },
+    4: { name:'침체',           icon:'fa-snowflake',  play:'현금·안전자산',   txt:'text-blue-400',   bdr:'border-blue-500/50',   bg:'bg-blue-500/10',   ring:'ring-blue-400/70',   dot:'bg-blue-400' }
+};
+// 화면 배치 순서: 좌상(성장↓물가↑)=Q3, 우상(성장↑물가↑)=Q2, 좌하(성장↓물가↓)=Q4, 우하(성장↑물가↓)=Q1
+const QUAD_GRID_ORDER = [3, 2, 4, 1];
+
+function renderQuadMatrix(quad) {
+    var grid = document.getElementById('quadMatrix');
+    if (!grid) return;
+    var cur = quad ? quad.current : 0;
+    grid.innerHTML = QUAD_GRID_ORDER.map(function(n) {
+        var m = QUAD_META[n];
+        var isCur = (n === cur);
+        var base = 'relative rounded-lg border p-2 transition-all overflow-hidden ';
+        var cls = isCur
+            ? base + m.bg + ' ' + m.bdr + ' ring-2 ' + m.ring + ' quad-current-cell'
+            : base + 'border-slate-700/40 bg-slate-800/30 opacity-50';
+        return '<div class="' + cls + '">'
+            + (isCur ? '<span class="absolute top-1.5 right-1.5 flex items-center gap-1 text-[8px] font-black ' + m.txt + '"><span class="w-1.5 h-1.5 rounded-full ' + m.dot + ' animate-pulse"></span>현재</span>' : '')
+            + '<div class="flex items-center gap-1 text-[9px] font-bold ' + (isCur ? m.txt : 'text-slate-500') + '"><i class="fa-solid ' + m.icon + '"></i>Q' + n + '</div>'
+            + '<div class="text-[13px] font-black leading-tight mt-1 ' + (isCur ? 'text-white' : 'text-slate-400') + '">' + m.name + '</div>'
+            + '<div class="text-[8px] mt-0.5 ' + (isCur ? m.txt : 'text-slate-500/80') + '">' + m.play + '</div>'
+            + '</div>';
+    }).join('');
+
+    // 요약 + 확신도
+    var sumRow  = document.getElementById('quadSummaryRow');
+    var sumText = document.getElementById('quadSummaryText');
+    var confBar = document.getElementById('quadConfBar');
+    var confVal = document.getElementById('quadConfVal');
+    if (sumRow) sumRow.classList.remove('hidden');
+    if (quad) {
+        var g = quad.growth === 'accelerating' ? '성장 가속↑' : '성장 둔화↓';
+        var i = quad.inflation === 'accelerating' ? '인플레 가속↑' : '인플레 둔화↓';
+        var mc = QUAD_META[cur] || {};
+        if (sumText) sumText.innerHTML = '<span class="' + (mc.txt||'text-white') + ' font-black">Q' + cur + ' ' + (quad.name||mc.name||'') + '</span> <span class="text-slate-400">· ' + g + ' · ' + i + '</span>';
+        var conf = quad.confidence || 0;
+        if (confBar) confBar.style.width = conf + '%';
+        if (confVal) confVal.innerText = conf + '%';
+    } else {
+        if (sumText) sumText.innerHTML = '<span class="text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1 text-[9px]"></i>AI 판정 대기 중…</span>';
+        if (confBar) confBar.style.width = '0%';
+        if (confVal) confVal.innerText = '--';
+    }
+}
 
 function updateMacroDashboard() {
     if (!MACRO_DATA) return;
@@ -2015,28 +2069,8 @@ function renderQuadHeader() {
     const q = MACRO_DATA.quad;
     if (!q) return;
 
-    const lbl = document.getElementById('fgLabel');
-    if (lbl) {
-        lbl.innerHTML = '<i class="fa-solid ' + (QUAD_ICONS[q.current]||'fa-circle-question') + ' mr-2"></i>Quad ' + q.current + ' — ' + (q.name||'');
-        lbl.className = 'text-2xl font-black leading-none ' + (QUAD_COLORS[q.current] || 'text-slate-200');
-    }
-
-    const dEl = document.getElementById('fgDesc');
-    if (dEl) {
-        var g = q.growth === 'accelerating' ? '성장↑' : '성장↓';
-        var i = q.inflation === 'accelerating' ? '인플레↑' : '인플레↓';
-        var conf = q.confidence ? (' · 확신도 ' + q.confidence + '%') : '';
-        dEl.innerText = g + ' · ' + i + conf;
-    }
-
-    var needle = document.getElementById('fgNeedle');
-    if (needle) needle.style.transform = 'rotate(' + ((QUAD_SCORES[q.current]||50)/100*180-90) + 'deg)';
-
-    // VIX
-    if (MACRO_DATA.market_data && MACRO_DATA.market_data.vix) {
-        var vEl = document.getElementById('vixValue');
-        if (vEl) vEl.innerText = MACRO_DATA.market_data.vix.value.toFixed(1);
-    }
+    // 2×2 매트릭스 + 요약/확신도
+    renderQuadMatrix(q);
 
     // 갱신 시간
     var tEl = document.getElementById('quadUpdateTime');
