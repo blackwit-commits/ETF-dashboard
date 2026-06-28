@@ -3717,7 +3717,7 @@ function renderStageInputs() {
                 <span id="buyStrategySaveMessage" class="text-emerald-400 text-xs font-bold"></span>
             </div>
             <div id="weightSumWarning" class="hidden text-xs text-red-400 mb-2"></div>
-            <button type="button" onclick="applyBuyStrategyUpdate()" class="w-full h-[40px] bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-xs shadow-lg transition">매수 전략 업데이트</button>
+            <button type="button" onclick="applyBuyStrategyUpdate()" class="w-full h-[40px] bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-xs shadow-lg transition"><i class="fa-solid fa-floppy-disk mr-1.5"></i>전략 저장 · 적용</button>
         </div>`;
     updateWeightSumDisplay();
     calculatePlan();
