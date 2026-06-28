@@ -411,6 +411,11 @@ export default {
         return new Response(JSON.stringify({ error: "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID not configured" }), { status: 500, headers: jsonHeaders });
       }
       try {
+        // 가벼운 알림 형식 테스트 (?type=alert) — Gemini 호출 없이 즉시 발송
+        if (url.searchParams.get("type") === "alert") {
+          const tg = await sendTelegram(env, "📢 <b>매매 알림 테스트</b>\n\n🎯 <b>SOXL</b> 1차 목표가 도달! (예시)\n목표 $242.50 (순익 +6.2%) · 현재 $243.10\n→ 매도 비중 50% 검토\n\n⚠️ <b>UGL</b> MA200 이탈! (예시)\n→ 부분 매도 검토\n\n<i>알림 연결 테스트입니다. 실제 도달 시 이렇게 전송됩니다.</i>");
+          return new Response(JSON.stringify({ ok: tg.ok, desc: tg.description || "" }), { headers: jsonHeaders });
+        }
         const symbols = parseBriefSymbols(url.searchParams.get("symbols") || env.WATCH_TICKERS);
         const tg = await pushBriefing(env, symbols);
         return new Response(JSON.stringify({ ok: tg.ok, desc: tg.description || "" }), { headers: jsonHeaders });
