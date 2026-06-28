@@ -437,13 +437,14 @@ export default {
         const r = data.chart && data.chart.result && data.chart.result[0];
         if (!r) throw new Error("No data");
         const ts = r.timestamp || [];
-        const cl = (r.indicators && r.indicators.quote && r.indicators.quote[0] && r.indicators.quote[0].close) || [];
+        const q0 = (r.indicators && r.indicators.quote && r.indicators.quote[0]) || {};
+        const cl = q0.close || [], op = q0.open || [], hi = q0.high || [], lo = q0.low || [];
         const out = [];
         for (let i = 0; i < ts.length; i++) {
           if (cl[i] == null) continue;
           const d = new Date(ts[i] * 1000);
           const time = d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
-          out.push({ time, close: cl[i] });
+          out.push({ time, open: (op[i] != null ? op[i] : cl[i]), high: (hi[i] != null ? hi[i] : cl[i]), low: (lo[i] != null ? lo[i] : cl[i]), close: cl[i] });
         }
         return new Response(JSON.stringify({ ticker, series: out }), { headers: jsonHeaders });
       } catch (e) {

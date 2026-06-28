@@ -4744,7 +4744,7 @@ function setTradelogPeriod(p) {
     var fEl = document.getElementById('tradelogDateFrom'); if (fEl) fEl.value = from;
     var tEl = document.getElementById('tradelogDateTo'); if (tEl) tEl.value = to;
     var chips = document.querySelectorAll('#tradelogPeriodChips button');
-    Array.prototype.forEach.call(chips, function(b){ var on = b.getAttribute('data-p') === p; b.className = 'px-2.5 py-1 rounded-lg text-[11px] font-bold ' + (on ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'); });
+    Array.prototype.forEach.call(chips, function(b){ var on = b.getAttribute('data-p') === p; b.className = 'shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg text-[11px] font-bold ' + (on ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300'); });
     renderTradeLog();
 }
 
@@ -4966,11 +4966,11 @@ function renderTradeLog() {
             + '<span class="text-xs font-bold text-white">' + monthLabel + '</span>'
             + (isCurrentMonth ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-bold">이번 달</span>' : '')
             + '</div>'
-            + '<div class="flex items-center gap-2">'
-            + '<span class="text-[10px] text-slate-400">' + summary.join(' · ') + '</span>'
+            + '<div class="flex items-center gap-2 shrink-0">'
             + '<span class="text-[10px] text-slate-500 font-bold">' + items.length + '건</span>'
             + '<i class="fa-solid fa-chevron-down text-[10px] text-slate-500 transition-transform" id="' + monthId + 'Chev" style="' + (isOpen ? '' : 'transform:rotate(-90deg)') + '"></i>'
             + '</div></button>'
+            + '<div class="text-[10px] text-slate-400 px-1 mt-1">' + summary.join(' · ') + '</div>'
             + monthReviewHtml
             + '<div class="space-y-2 mt-2 ' + (isOpen ? '' : 'hidden') + '" id="' + monthId + '">';
 
@@ -5173,7 +5173,7 @@ function showTradeDetail(idx) {
     // 차트 (해당 종목 단독, 매수/매도 지점 표시) + 당일 시장 상황(수치)
     h += '<div class="mt-1 mb-2">'
         + '<div class="flex items-center gap-3 text-[9px] mb-1 px-0.5">'
-        + '<span class="text-white font-bold">━ ' + escapeHtml(r.sym || '종목') + '</span>'
+        + '<span class="text-white font-bold">📊 ' + escapeHtml(r.sym || '종목') + '</span>'
         + '<span class="text-amber-400">┈ 평단</span>'
         + '<span class="ml-auto text-slate-500">🔵 매수  🔴 매도</span></div>'
         + '<div id="tradeChartContainer" style="width:100%;height:200px;" class="rounded-lg overflow-hidden bg-slate-900/50"></div>'
@@ -5240,7 +5240,7 @@ var SECTOR_OF = {
 // 매매일지 상세 차트: 종목·나스닥·다우를 % 리베이스 라인 + 매수/매도 마커
 var _tradeChartObj = null;
 function _fetchOhlc(ticker) {
-    return fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(ticker) + '&range=1y', { signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined })
+    return fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(ticker) + '&range=2y&v=2', { signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined })
         .then(function(r) { return r.json(); })
         .then(function(d) { return (d && Array.isArray(d.series)) ? d.series : []; })
         .catch(function() { return []; });
@@ -5256,19 +5256,22 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
     });
     var tdates = cycleTrades.map(function(t) { return t.date; }).filter(Boolean).sort();
     var startD = tdates[0] || focusDate, endD = tdates[tdates.length - 1] || focusDate;
-    // 윈도우: 시작 -21일 ~ 종료 +21일 (오늘 한도)
+    // 윈도우: 거래 종료 +7일까지(오늘 한도), 거기서 약 3개월 전까지 — 거래 마커는 항상 보이게
     var pad = function(ds, days) { var d = new Date(ds); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
     var todayS = new Date().toISOString().slice(0, 10);
-    var winStart = pad(startD, -21), winEnd = pad(endD, 21); if (winEnd > todayS) winEnd = todayS;
+    var winEnd = pad(endD, 7); if (winEnd > todayS) winEnd = todayS;
+    var winStart = pad(winEnd, -90);
+    if (winStart > startD) winStart = pad(startD, -5);
 
     var _sec = SECTOR_OF[sym];
     var _secT = (_sec && ['^IXIC','^DJI','^GSPC'].indexOf(_sec.t) === -1) ? _sec.t : null;
     var _fetchList = [_fetchOhlc(sym), _fetchOhlc('^IXIC'), _fetchOhlc('^DJI'), _fetchOhlc('^GSPC'), _fetchOhlc('^VIX')];
     if (_secT) _fetchList.push(_fetchOhlc(_secT));
     Promise.all(_fetchList).then(function(res) {
+        var r2 = function(v) { return Math.round((v != null ? v : 0) * 100) / 100; };
         var inWin = function(arr) { return (arr || []).filter(function(p) { return p.time >= winStart && p.time <= winEnd; }); };
-        // 종목은 실제 가격으로 표시 (매수/매도가와 일치)
-        var stockData = inWin(res[0]).map(function(p) { return { time: p.time, value: Math.round(p.close * 100) / 100 }; });
+        // 종목 봉차트 (OHLC) — 매수/매도가와 일치
+        var stockData = inWin(res[0]).map(function(p) { return { time: p.time, open: r2(p.open != null ? p.open : p.close), high: r2(p.high != null ? p.high : p.close), low: r2(p.low != null ? p.low : p.close), close: r2(p.close) }; });
         if (!stockData.length) { cont.parentElement.style.display = 'none'; return; }
 
         try { if (_tradeChartObj) { _tradeChartObj.remove(); _tradeChartObj = null; } } catch (e) {}
@@ -5281,7 +5284,8 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
             crosshair: { mode: 0 }, handleScroll: false, handleScale: false
         });
         _tradeChartObj = chart;
-        var stock = chart.addAreaSeries({ lineColor: '#38bdf8', topColor: 'rgba(56,189,248,0.25)', bottomColor: 'rgba(56,189,248,0.02)', lineWidth: 2, priceLineVisible: false });
+        // 국내 표기: 상승 빨강 / 하락 파랑
+        var stock = chart.addCandlestickSeries({ upColor: '#ef4444', downColor: '#3b82f6', borderUpColor: '#ef4444', borderDownColor: '#3b82f6', wickUpColor: '#ef4444', wickDownColor: '#3b82f6', priceLineVisible: false });
         stock.setData(stockData);
 
         // 매수/매도 마커
@@ -5316,19 +5320,23 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
             return '<span class="text-slate-400">' + label + ' <span class="text-slate-200 font-bold">' + Math.round(m.level).toLocaleString() + '</span> <span class="' + col + '">' + (m.chg >= 0 ? '+' : '') + m.chg.toFixed(2) + '%</span></span>';
         };
         var d = focusDate || (stockData[stockData.length - 1] && stockData[stockData.length - 1].time);
-        var parts = [fmtIdx(dayMetric(res[1], d), '나스닥'), fmtIdx(dayMetric(res[3], d), 'S&P500'), fmtIdx(dayMetric(res[2], d), '다우')];
-        if (_secT) parts.push(fmtIdx(dayMetric(res[5], d), _sec.n));
-        // VIX(공포지수) 국면
-        var vm = dayMetric(res[4], d);
-        if (vm) {
-            var lvl = vm.level;
-            var reg = lvl < 15 ? '안정' : (lvl >= 30 ? '공포' : (lvl >= 20 ? '주의' : '보통'));
-            var vcol = lvl >= 30 ? 'text-red-400' : (lvl >= 20 ? 'text-amber-400' : 'text-emerald-400');
-            parts.push('<span class="text-slate-400">VIX <span class="text-slate-200 font-bold">' + lvl.toFixed(1) + '</span> <span class="' + vcol + '">' + reg + '</span></span>');
-        }
-        parts = parts.filter(Boolean);
+        var chip = function(label, m, isVix) {
+            if (!m) return '';
+            if (isVix) {
+                var lvl = m.level;
+                var reg = lvl < 15 ? '안정' : (lvl >= 30 ? '공포' : (lvl >= 20 ? '주의' : '보통'));
+                var vcol = lvl >= 30 ? 'text-red-400' : (lvl >= 20 ? 'text-amber-400' : 'text-emerald-400');
+                return '<div class="bg-slate-800/60 rounded-lg px-2 py-1.5"><div class="text-[8px] text-slate-400 leading-none">VIX</div><div class="text-[12px] font-black text-white leading-tight mt-0.5">' + lvl.toFixed(1) + '</div><div class="text-[9px] font-bold ' + vcol + ' leading-none">' + reg + '</div></div>';
+            }
+            var col = m.chg >= 0 ? 'text-red-400' : 'text-blue-400';
+            return '<div class="bg-slate-800/60 rounded-lg px-2 py-1.5"><div class="text-[8px] text-slate-400 leading-none">' + label + '</div><div class="text-[12px] font-black text-white leading-tight mt-0.5">' + Math.round(m.level).toLocaleString() + '</div><div class="text-[9px] font-bold ' + col + ' leading-none">' + (m.chg >= 0 ? '+' : '') + m.chg.toFixed(2) + '%</div></div>';
+        };
+        var chips = [chip('나스닥', dayMetric(res[1], d)), chip('S&P500', dayMetric(res[3], d)), chip('다우', dayMetric(res[2], d))];
+        if (_secT) chips.push(chip(_sec.n, dayMetric(res[5], d)));
+        chips.push(chip('VIX', dayMetric(res[4], d), true));
+        chips = chips.filter(Boolean);
         var pe = document.getElementById('tradeChartPeriodRet');
-        if (pe) pe.innerHTML = parts.length ? ('<span class="text-slate-500">📅 ' + escapeHtml(d) + ' 시장</span><br>' + parts.join('  ·  ')) : '';
+        if (pe) pe.innerHTML = chips.length ? ('<div class="text-slate-500 text-[10px] mb-1.5">📅 ' + escapeHtml(d) + ' 시장 상황</div><div class="grid grid-cols-3 gap-1.5">' + chips.join('') + '</div>') : '';
     });
 }
 
