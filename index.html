@@ -9,7 +9,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260628h">
+    <link rel="stylesheet" href="style.css?v=20260628i">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -275,8 +275,20 @@
         </div>
 
         <div id="tab-strategy" class="space-y-4 hidden">
-            <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1" id="tickerBar"></div>
-            
+            <div id="tickerBar" class="hidden"></div>
+
+            <!-- 포지션 개요 (마스터) -->
+            <div id="positionOverview" class="space-y-2"></div>
+
+            <!-- 상세 서브탭 -->
+            <div class="flex gap-1 bg-slate-800/60 rounded-xl p-1" id="stratSubTabs">
+                <button id="stView_status" type="button" onclick="switchStratView('status')" class="flex-1 py-2 rounded-lg text-xs font-bold bg-slate-700 text-white transition">현황</button>
+                <button id="stView_config" type="button" onclick="switchStratView('config')" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-400 transition">전략 설정</button>
+                <button id="stView_journal" type="button" onclick="switchStratView('journal')" class="flex-1 py-2 rounded-lg text-xs font-bold text-slate-400 transition">일지</button>
+            </div>
+
+            <!-- ===== 현황 뷰 ===== -->
+            <div id="stratView-status" class="space-y-4">
             <div id="strategyProgressCard" class="glass-panel rounded-2xl p-3 border border-slate-700 hidden">
                 <h3 class="text-sm font-bold text-white mb-1.5">투자 진행 요약</h3>
                 <div class="grid grid-cols-2 gap-1.5 text-xs">
@@ -345,6 +357,9 @@
                 </div>
             </div>
 
+            </div>
+            <!-- ===== 전략 설정 뷰 ===== -->
+            <div id="stratView-config" class="hidden space-y-4">
             <div class="glass-panel rounded-2xl p-4">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-chess-board text-emerald-500"></i> MDD 매수 시나리오</h2>
@@ -451,19 +466,18 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-3 gap-3">
-                <button onclick="openTradeModal('BUY')" class="py-3.5 bg-blue-600 rounded-xl text-white font-black text-sm shadow-lg shadow-blue-900/30 active:scale-95 transition">매수</button>
-                <button onclick="openTradeModal('SELL')" class="py-3.5 bg-red-600 rounded-xl text-white font-black text-sm shadow-lg shadow-red-900/30 active:scale-95 transition">매도</button>
-                <button onclick="openTradeModal('DIV')" class="py-3.5 bg-yellow-600 rounded-xl text-white font-black text-sm shadow-lg shadow-yellow-900/30 active:scale-95 transition">배당</button>
             </div>
-            
+            <!-- ===== 일지 뷰 ===== -->
+            <div id="stratView-journal" class="hidden">
             <div class="glass-panel rounded-2xl p-4">
                 <div class="flex justify-between items-center mb-3"><h2 class="text-sm font-bold text-white">📝 매매 일지</h2><button onclick="toggleCalendar()" class="text-[10px] bg-slate-700 px-2 py-1 rounded text-slate-300 hover:text-white transition">📅 캘린더 보기</button></div>
                 <div id="calendarView" class="hidden mb-3 bg-slate-900 p-2 rounded-xl border border-slate-700"><div class="text-center text-xs text-slate-400 mb-2">수익 현황</div><div id="calendarGrid" class="grid grid-cols-7 gap-1 text-[10px] text-center text-slate-500"></div></div>
                 <div class="max-h-[300px] overflow-y-auto space-y-2 pr-1" id="journalList"></div>
             </div>
+            </div>
             
             <div id="rescuePlanPanel" class="hidden glass-panel rounded-2xl p-4 border-2 border-red-600 bg-red-900/10 mt-4"><div class="flex justify-between mb-2"><h2 class="text-sm font-black text-red-500"><i class="fa-solid fa-life-ring animate-bounce"></i> 구조대 출동</h2><span class="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded font-bold" id="rescueBadge">-MDD 돌파</span></div><table class="w-full text-xs text-left text-red-200"><tbody id="rescueTableBody"></tbody></table></div>
+            <div class="h-20"></div>
         </div>
 
         <div id="tab-tradelog" class="space-y-4 hidden">
@@ -665,6 +679,15 @@
         </div>
     </div>
 
+    <!-- 전략 탭 체결 스티키 바 (전략 탭에서만 표시) -->
+    <div id="strategyActionBar" class="hidden fixed bottom-[70px] left-0 w-full z-40 bg-[#0f172a]/95 backdrop-blur border-t border-slate-800 px-4 py-2">
+        <div class="max-w-lg mx-auto grid grid-cols-3 gap-2">
+            <button onclick="openTradeModal('BUY')" class="py-2.5 bg-blue-600 rounded-xl text-white font-black text-sm active:scale-95 transition shadow-lg shadow-blue-900/30">매수</button>
+            <button onclick="openTradeModal('SELL')" class="py-2.5 bg-red-600 rounded-xl text-white font-black text-sm active:scale-95 transition shadow-lg shadow-red-900/30">매도</button>
+            <button onclick="openTradeModal('DIV')" class="py-2.5 bg-yellow-600 rounded-xl text-white font-black text-sm active:scale-95 transition shadow-lg shadow-yellow-900/30">배당</button>
+        </div>
+    </div>
+
     <div class="fixed bottom-0 left-0 w-full bg-[#0f172a]/95 backdrop-blur border-t border-slate-800 h-[70px] flex justify-around items-center z-50 shadow-2xl nav-container px-1">
         <button onclick="switchTab('home')" class="nav-btn active flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-home"><i class="fa-solid fa-house text-lg"></i><span class="text-[9px] font-bold">홈</span></button>
         <button onclick="switchTab('news')" class="nav-btn flex flex-col items-center gap-1 flex-1 h-14 justify-center max-w-[80px]" id="nav-news"><i class="fa-solid fa-fire text-lg"></i><span class="text-[9px] font-bold">뉴스</span></button>
@@ -758,6 +781,6 @@
         </div>
     </div>
     <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-sm font-bold shadow-xl opacity-0 transition-opacity duration-300 pointer-events-none" aria-live="polite"></div>
-<script src="script.js?v=20260628h"></script>
+<script src="script.js?v=20260628i"></script>
 </body>
 </html>

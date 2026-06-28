@@ -1489,6 +1489,7 @@ function fetchMarketDataInBackground() {
             updateStatus(successCount > 0);
             updateSingleCard(sym, data);
             updateRecommendationsUI();
+            try { renderPositionOverview(); } catch(e) {}
 
             if (activeTicker === sym) {
                 updateStrategyDataUI(sym);
@@ -2832,12 +2833,17 @@ function switchTab(id) {
     if(aBtn) aBtn.classList.add('active');
 
     localStorage.setItem('umt_last_tab', id);
+    // 전략 탭 체결 스티키 바는 전략 탭에서만
+    var _sab = document.getElementById('strategyActionBar');
+    if (_sab) _sab.classList.toggle('hidden', id !== 'strategy');
     if(id==='strategy') {
         if (!activeTicker) {
             const lastTicker = localStorage.getItem('umt_last_ticker');
             if (lastTicker && portfolios[lastTicker]) activeTicker = lastTicker;
             else { const keys = Object.keys(portfolios); if (keys.length > 0) activeTicker = keys[0]; }
         }
+        try { renderPositionOverview(); } catch(e) {}
+        try { switchStratView(_stratView || 'status'); } catch(e) {}
         if (activeTicker) setTimeout(() => loadTickerData(activeTicker), 10);
     }
     stopNewsAutoRefresh();
@@ -3942,7 +3948,93 @@ function renderTickerSuggestions(list, q) {
     } else { return; }
     g.appendChild(wrap);
 }
-function renderTickerBar() { const bar = document.getElementById('tickerBar'); bar.innerHTML = ''; Object.keys(portfolios).forEach(t => { const btn = document.createElement('button'); const active = t === activeTicker; btn.className = `ticker-tab px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition ${active?'active':''}`; btn.innerText = t; btn.onclick = () => selectTicker(t); bar.appendChild(btn); }); const addBtn = document.createElement('button'); addBtn.className = "px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 whitespace-nowrap"; addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>'; addBtn.onclick = openEtfSearchModal; bar.appendChild(addBtn); }
+function renderTickerBar() { const bar = document.getElementById('tickerBar'); bar.innerHTML = ''; Object.keys(portfolios).forEach(t => { const btn = document.createElement('button'); const active = t === activeTicker; btn.className = `ticker-tab px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition ${active?'active':''}`; btn.innerText = t; btn.onclick = () => selectTicker(t); bar.appendChild(btn); }); const addBtn = document.createElement('button'); addBtn.className = "px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 whitespace-nowrap"; addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>'; addBtn.onclick = openEtfSearchModal; bar.appendChild(addBtn); try{renderPositionOverview();}catch(e){} }
+
+// 매수 단계 진행 (DOM 비의존 — 저장된 config/history 기반, 모든 종목 정확)
+function buyStageProgress(p) {
+    var total = (p && p.config && p.config.stages) ? parseInt(p.config.stages, 10) : 0;
+    if (!total) return { done: 0, total: 0 };
+    var cycleId = (p.currentCycleId != null) ? p.currentCycleId : 0;
+    var seen = {};
+    (p.history || []).forEach(function (h) {
+        if (!h || h.type !== 'BUY') return;
+        if (cycleId > 0 && h.cycleId != null && h.cycleId !== cycleId) return;
+        var s = parseInt(h.stage, 10);
+        if (!isNaN(s) && s > 0 && s <= total) seen[s] = true;
+    });
+    var done = Object.keys(seen).length;
+    if (done === 0 && (p.qty || 0) > 0) done = 1; // 단계 미기록이나 보유 중이면 최소 1
+    return { done: Math.min(done, total), total: total };
+}
+
+// ── 포지션 개요 (마스터 리스트) ──
+function renderPositionOverview() {
+    var box = document.getElementById('positionOverview');
+    if (!box) return;
+    var syms = Object.keys(portfolios || {});
+    if (!syms.length) {
+        box.innerHTML = '<div class="glass-panel rounded-xl p-4 text-center text-slate-500 text-xs">종목을 추가해 전략을 시작하세요. <button type="button" onclick="openEtfSearchModal()" class="ml-1 text-blue-400 underline">종목 추가</button></div>';
+        return;
+    }
+    var quadNow = getCurrentQuad();
+    box.innerHTML = syms.map(function (sym) {
+        var p = portfolios[sym];
+        var md = MARKET_SNAPSHOT[sym] || {};
+        var meta = ETF_DB.find(function (e) { return e.sym === sym; }) || {};
+        var price = md.price || p.avgPrice || 0;
+        var chg = (md.change != null && !isNaN(md.change)) ? md.change : null;
+        var hasQty = (p.qty || 0) > 0;
+        var pnlPct = (hasQty && p.avgPrice > 0) ? ((price - p.avgPrice) / p.avgPrice * 100) : null;
+        var prog = buyStageProgress(p);
+        var stTotal = prog.total;
+        var stDone = prog.done;
+        var status = hasQty ? getHoldingStatus(sym, meta, md, quadNow) : { status: '', reason: '' };
+        var dotMap = { HOLD: 'bg-green-400', WATCH: 'bg-yellow-400', EXIT: 'bg-red-400' };
+        var dot = dotMap[status.status] || '';
+        var active = (sym === activeTicker);
+        var chgTxt = chg != null ? ((chg > 0 ? '+' : '') + chg.toFixed(1) + '%') : '';
+        var pnlTxt = pnlPct != null ? ((pnlPct > 0 ? '+' : '') + pnlPct.toFixed(1) + '%') : '미보유';
+        var stageHtml = stTotal > 0
+            ? '<div class="text-center"><div class="text-[8px] text-slate-500 leading-none">매수</div><div class="text-[11px] font-bold text-slate-200 leading-tight">' + stDone + '/' + stTotal + '</div></div>'
+            : '';
+        return '<button type="button" onclick="selectPosition(\'' + sym + '\')" class="w-full glass-panel rounded-xl p-3 flex items-center justify-between gap-2 border ' + (active ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700/60') + ' transition text-left active:opacity-80">'
+            + '<div class="min-w-0">'
+            +   '<div class="flex items-center gap-1.5">'
+            +     (dot ? '<span class="w-1.5 h-1.5 rounded-full ' + dot + ' shrink-0"></span>' : '')
+            +     '<span class="font-black text-white text-sm">' + sym + '</span>'
+            +     (active ? '<span class="text-[8px] bg-blue-500/20 text-blue-300 px-1 py-0.5 rounded font-bold">선택</span>' : '')
+            +   '</div>'
+            +   '<div class="text-[10px] text-slate-500 mt-0.5 truncate">' + escapeHtml(meta.name || meta.desc || '') + '</div>'
+            + '</div>'
+            + '<div class="flex items-center gap-3 shrink-0">'
+            +   stageHtml
+            +   '<div class="text-right">'
+            +     '<div class="text-sm font-bold text-white">' + (price > 0 ? ('$' + price.toFixed(2)) : '--') + ' <span class="text-[10px] ' + chgClass(chg) + '">' + chgTxt + '</span></div>'
+            +     '<div class="text-[11px] font-bold ' + (pnlPct == null ? 'text-slate-500' : chgClass(pnlPct)) + '">' + pnlTxt + '</div>'
+            +   '</div>'
+            + '</div>'
+            + '</button>';
+    }).join('');
+}
+
+function selectPosition(sym) {
+    selectTicker(sym);
+    switchStratView('status');
+    var anchor = document.getElementById('stratSubTabs');
+    try { if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+}
+
+// ── 전략 상세 서브탭 (현황/전략설정/일지) ──
+var _stratView = 'status';
+function switchStratView(view) {
+    _stratView = view;
+    ['status', 'config', 'journal'].forEach(function (v) {
+        var el = document.getElementById('stratView-' + v);
+        if (el) el.classList.toggle('hidden', v !== view);
+        var btn = document.getElementById('stView_' + v);
+        if (btn) btn.className = 'flex-1 py-2 rounded-lg text-xs font-bold transition ' + (v === view ? 'bg-slate-700 text-white' : 'text-slate-400');
+    });
+}
 function deleteActiveTicker() { if(!activeTicker) return; if(confirm(`'${activeTicker}' 종목을 삭제하시겠습니까?\n전략 설정은 삭제되지만 매매 기록은 보존됩니다.`)) { const d = portfolios[activeTicker]; if (d && Array.isArray(d.history) && d.history.length > 0) { try { const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); archived[activeTicker] = (archived[activeTicker] || []).concat(d.history); localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } catch(e) { console.error('History archive failed:', e); } } delete portfolios[activeTicker]; saveAll(); activeTicker = null; localStorage.removeItem('umt_last_ticker'); const keys = Object.keys(portfolios); if (keys.length > 0) { selectTicker(keys[0]); } else { switchTab('home'); renderTickerBar(); } } }
 function exportData(){ const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({global:globalData, ports:portfolios})); const node = document.createElement('a'); node.setAttribute("href", dataStr); node.setAttribute("download", "UMT_Backup.json"); document.body.appendChild(node); node.click(); node.remove(); }
 function importData(input){ const file = input.files[0]; if(!file)return; const reader = new FileReader(); reader.onload = function(e){ try { const json = JSON.parse(e.target.result); if(json.global && json.ports) { localStorage.setItem('umt_v172_global', JSON.stringify(json.global)); localStorage.setItem('umt_v172_ports', JSON.stringify(json.ports)); alert("복구 완료!"); location.reload(); } } catch(err) { alert("파일 오류"); } }; reader.readAsText(file); }
