@@ -4480,12 +4480,104 @@ function submitTrade() {
 function recalcPortfolio(d) { const sorted = [...d.history].sort((a,b)=>new Date(a.date)-new Date(b.date)); let q = 0; let totalCost = 0; let realizedPnL = 0; let totalDiv = 0; sorted.forEach(h => { if(h.type === 'BUY') { totalCost += h.total; q += h.qty; } else if(h.type === 'SELL') { if(q > 0) { let avgPrice = totalCost / q; let costOfSold = avgPrice * h.qty; totalCost -= costOfSold; let profit = h.total - costOfSold; realizedPnL += profit; q -= h.qty; } } else if(h.type === 'DIV') { totalDiv += h.total; } }); if(q <= 0) { q = 0; totalCost = 0; } d.qty = q; d.avgPrice = q > 0 ? totalCost / q : 0; d.realizedPnL = realizedPnL; d.totalDiv = totalDiv; }
     
 // 🔥 [핵심 패치] 휴지통 삭제 완벽 처리
-function renderJournal() { 
-    const d = portfolios[activeTicker]; const list = document.getElementById('journalList'); if(!list) return; list.innerHTML = ''; if(!d || !d.history) return;
-    [...d.history].sort((a,b)=>new Date(b.date)-new Date(a.date)).forEach(h => { 
-        const isBuy = h.type === 'BUY'; const color = isBuy ? 'border-red-500/50' : (h.type==='DIV'?'border-yellow-500/50':'border-blue-500/50'); const badge = isBuy ? 'bg-red-900 text-red-300' : (h.type==='DIV'?'bg-yellow-900 text-yellow-300':'bg-blue-900 text-blue-300'); const stageTxt = h.stage ? `(${h.stage}차)` : ''; 
-        list.innerHTML += `<div class="bg-slate-800/80 p-3 rounded-xl border ${color} mb-2 relative shadow-sm"><div class="flex justify-between items-start mb-1"><div><span class="text-[10px] text-slate-400 block">${h.date}</span><span class="text-[10px] ${badge} px-2 py-0.5 rounded font-bold inline-block mt-1">${h.type} ${stageTxt}</span></div><button type="button" onclick="deleteTrade('${h.id}')" class="text-slate-500 hover:text-red-400 p-2 cursor-pointer relative z-20"><i class="fa-solid fa-trash-can fa-lg"></i></button></div><div class="flex justify-between items-end mt-2"><div class="text-sm font-bold text-white">$${h.price.toFixed(2)} x ${h.qty}</div><div class="text-xs text-slate-400">합계: $${h.total.toFixed(2)}</div></div><div class="mt-2 text-xs text-slate-500 bg-slate-900/50 p-2 rounded">${h.memo || '메모 없음'}</div></div>`; 
-    }); 
+function renderJournal() {
+    const d = portfolios[activeTicker]; const list = document.getElementById('journalList'); if(!list) return;
+    if(!d || !Array.isArray(d.history) || !d.history.length) { list.innerHTML = '<div class="text-center text-slate-500 text-xs py-4">매매 기록이 없습니다</div>'; renderStratCycleSummary(); return; }
+    list.innerHTML = [...d.history].sort((a,b)=>{ var dd=new Date(b.date)-new Date(a.date); return dd!==0?dd:(Number(b.id)||0)-(Number(a.id)||0); }).map(h => {
+        const isBuy = h.type === 'BUY'; const color = isBuy ? 'border-red-500/50' : (h.type==='DIV'?'border-yellow-500/50':'border-blue-500/50'); const badge = isBuy ? 'bg-red-900 text-red-300' : (h.type==='DIV'?'bg-yellow-900 text-yellow-300':'bg-blue-900 text-blue-300'); const stageTxt = h.stage ? `(${h.stage}차)` : '';
+        const tagLabel = getTagLabel(h.tag);
+        return `<div class="bg-slate-800/80 p-3 rounded-xl border ${color} shadow-sm"><div class="flex justify-between items-start"><div><span class="text-[10px] text-slate-400 block">${h.date}</span><span class="text-[10px] ${badge} px-2 py-0.5 rounded font-bold inline-block mt-1">${h.type} ${stageTxt}</span><span class="text-[9px] text-slate-500 ml-1">${escapeHtml(tagLabel)}</span></div><div class="flex items-center gap-0.5 shrink-0"><button type="button" onclick="editTrade('${h.id}')" class="text-slate-500 hover:text-blue-400 p-2"><i class="fa-solid fa-pen"></i></button><button type="button" onclick="deleteTrade('${h.id}')" class="text-slate-500 hover:text-red-400 p-2"><i class="fa-solid fa-trash-can"></i></button></div></div><div class="flex justify-between items-end mt-1"><div class="text-sm font-bold text-white">$${Number(h.price).toFixed(2)} × ${h.qty}주</div><div class="text-xs text-slate-400">합계 $${Number(h.total).toFixed(2)}</div></div><div class="mt-2 text-xs text-slate-400 bg-slate-900/50 p-2 rounded leading-snug">${h.memo ? escapeHtml(h.memo) : '<span class="text-slate-600">메모 없음</span>'}</div></div>`;
+    }).join('');
+    renderStratCycleSummary();
+}
+
+// 전략탭 일지 — 현재 종목의 사이클 요약 (매매일지 탭 형식)
+function renderStratCycleSummary() {
+    var box = document.getElementById('stratCycleSummary');
+    if (!box) return;
+    var d = portfolios[activeTicker];
+    if (!d || !Array.isArray(d.history) || !d.history.length) { box.innerHTML = '<div class="text-center text-slate-500 text-xs py-2">기록 없음</div>'; return; }
+    var groups = {};
+    d.history.forEach(function(t){
+        if (t.type !== 'BUY' && t.type !== 'SELL') return;
+        var cid = (t.cycleId != null && t.cycleId !== '') ? String(t.cycleId) : '0';
+        if (!groups[cid]) groups[cid] = { cycleId: cid, buys: [], sells: [], dates: [] };
+        if (t.type === 'BUY') groups[cid].buys.push(t); else groups[cid].sells.push(t);
+        if (t.date) groups[cid].dates.push(t.date);
+    });
+    var keys = Object.keys(groups);
+    if (!keys.length) { box.innerHTML = '<div class="text-center text-slate-500 text-xs py-2">매수/매도 기록 없음</div>'; return; }
+    var latestCid = keys.reduce(function(m,k){ var n=Number(k)||0; return n>m?n:m; }, 0);
+    var realHeld = d.qty || 0;
+    var sumQC = function(arr){ var q=0,c=0; arr.forEach(function(t){ var qty=Number(t.qty)||0; var tot=(t.total!=null&&!isNaN(t.total))?Math.abs(Number(t.total)):(Number(t.price)||0)*qty; q+=qty; c+=tot; }); return {qty:q,cost:c}; };
+    var cards = keys.map(function(cid){
+        var g = groups[cid];
+        var b = sumQC(g.buys), s = sumQC(g.sells);
+        var avgBuy = b.qty ? b.cost/b.qty : 0, avgSell = s.qty ? s.cost/s.qty : 0;
+        var isOpen = ((Number(cid)||0) === latestCid) && realHeld > 0.0001;
+        var dates = g.dates.slice().sort();
+        var firstDate = dates[0]||'', lastDate = dates[dates.length-1]||'';
+        var realized = (s.qty && avgBuy) ? (s.cost - avgBuy*s.qty) : null;
+        var realizedPct = (avgBuy && s.qty) ? ((avgSell-avgBuy)/avgBuy)*100 : null;
+        return { cid:cid, b:b, s:s, avgBuy:avgBuy, avgSell:avgSell, openQty:isOpen?realHeld:0, closed:!isOpen, firstDate:firstDate, lastDate:lastDate, realized:realized, realizedPct:realizedPct };
+    });
+    cards.sort(function(a,b){ if(a.closed!==b.closed) return a.closed?1:-1; return (b.lastDate||'').localeCompare(a.lastDate||''); });
+    box.innerHTML = cards.map(function(c){
+        var statusBadge = c.closed ? '<span class="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-bold">종료</span>' : '<span class="text-[9px] bg-emerald-900/50 text-emerald-300 px-1.5 py-0.5 rounded font-bold">보유중</span>';
+        var cidLabel = c.cid==='0' ? '' : '<span class="text-[10px] text-purple-300 font-bold">사이클 #'+escapeHtml(c.cid)+'</span>';
+        var pnlHtml;
+        if (c.realizedPct!=null && c.s.qty) {
+            var col = c.realizedPct>=0?'text-red-400':'text-blue-400';
+            var amt = c.realized!=null ? ((c.realized>=0?'+$':'-$')+Math.abs(Math.round(c.realized)).toLocaleString()) : '';
+            pnlHtml = '<div class="text-right"><div class="font-black '+col+'">'+(c.realizedPct>=0?'+':'')+c.realizedPct.toFixed(2)+'%</div><div class="text-[10px] '+col+'">'+amt+(c.openQty>0.0001?' (일부)':'')+'</div></div>';
+        } else { pnlHtml = '<div class="text-right text-[10px] text-slate-500">미실현</div>'; }
+        var line2 = '매수 '+Math.round(c.b.qty)+'주 @ $'+c.avgBuy.toFixed(2) + (c.s.qty?'  →  매도 '+Math.round(c.s.qty)+'주 @ $'+c.avgSell.toFixed(2):'') + (c.openQty>0.0001?'  · 잔여 '+Math.round(c.openQty)+'주':'');
+        var period = c.firstDate + (c.lastDate && c.lastDate!==c.firstDate ? ' ~ '+c.lastDate : '');
+        return '<div class="bg-slate-800/40 rounded-xl p-3 border border-slate-700/50">'
+            + '<div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2">'+cidLabel+statusBadge+'</div>'+pnlHtml+'</div>'
+            + '<div class="text-[11px] text-slate-300">'+line2+'</div>'
+            + '<div class="text-[10px] text-slate-500 mt-0.5"><i class="fa-regular fa-clock mr-1"></i>'+period+'</div>'
+            + '</div>';
+    }).join('');
+}
+
+// 매매 기록 수정
+function editTrade(id) {
+    var d = portfolios[activeTicker]; if (!d) return;
+    var h = (d.history||[]).find(function(x){ return String(x.id) === String(id); });
+    if (!h) return;
+    document.getElementById('editTradeId').value = h.id;
+    document.getElementById('editTradeTypeLabel').innerText = (h.type==='BUY'?'매수':(h.type==='SELL'?'매도':'배당')) + (h.stage?(' '+h.stage+'차'):'');
+    document.getElementById('editTradeDate').value = h.date || '';
+    document.getElementById('editTradePrice').value = h.price != null ? h.price : '';
+    document.getElementById('editTradeQty').value = h.qty != null ? h.qty : '';
+    var tagSel = document.getElementById('editTradeTag'); if (tagSel) tagSel.value = h.tag || 'QUANT';
+    document.getElementById('editTradeMemo').value = h.memo || '';
+    var m = document.getElementById('tradeEditModal'); m.classList.remove('hidden'); m.classList.add('flex');
+}
+function closeTradeEditModal() { var m = document.getElementById('tradeEditModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
+function saveTradeEdit() {
+    var d = portfolios[activeTicker]; if (!d) return;
+    var id = document.getElementById('editTradeId').value;
+    var h = (d.history||[]).find(function(x){ return String(x.id) === String(id); });
+    if (!h) return;
+    var price = parseFloat(document.getElementById('editTradePrice').value);
+    var qty = parseFloat(document.getElementById('editTradeQty').value);
+    var date = document.getElementById('editTradeDate').value;
+    if (!price || !qty) { showToast('체결가와 수량을 확인하세요'); return; }
+    h.price = price; h.qty = qty; h.date = date;
+    h.tag = document.getElementById('editTradeTag').value;
+    h.memo = document.getElementById('editTradeMemo').value;
+    // 수수료/총액 재계산 (생성 시와 동일 공식)
+    var rate = (globalData.feeRate || 0) / 100;
+    if (h.type === 'SELL' && globalData.useSec) rate += 0.0000229;
+    h.fee = price * qty * rate;
+    h.total = (h.type === 'BUY') ? (price * qty + h.fee) : (price * qty - h.fee);
+    recalcPortfolio(d);
+    saveAll();
+    closeTradeEditModal();
+    loadTickerData(activeTicker);
+    showToast('매매 기록 수정 완료');
 }
 
 function deleteTrade(id) {
