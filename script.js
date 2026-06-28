@@ -5174,8 +5174,10 @@ function showTradeDetail(idx) {
     h += '<div class="mt-1 mb-2">'
         + '<div class="flex items-center gap-3 text-[9px] mb-1 px-0.5">'
         + '<span class="text-white font-bold">📊 ' + escapeHtml(r.sym || '종목') + '</span>'
+        + '<span class="text-cyan-400">━ EMA8</span>'
+        + '<span class="text-violet-400">━ MA200</span>'
         + '<span class="text-amber-400">┈ 평단</span>'
-        + '<span class="ml-auto text-slate-500">🔵 매수  🔴 매도</span></div>'
+        + '<span class="ml-auto text-slate-500">🔵매수 🔴매도</span></div>'
         + '<div id="tradeChartContainer" style="width:100%;height:200px;" class="rounded-lg overflow-hidden bg-slate-900/50"></div>'
         + '<div id="tradeChartPeriodRet" class="text-[10px] text-slate-400 mt-1.5 px-0.5"></div>'
         + '</div>';
@@ -5245,6 +5247,25 @@ function _fetchOhlc(ticker) {
         .then(function(d) { return (d && Array.isArray(d.series)) ? d.series : []; })
         .catch(function() { return []; });
 }
+// 이동평균 (full 종가 시리즈 → {time,value})
+function _smaSeries(data, period) {
+    var out = [], sum = 0;
+    for (var i = 0; i < data.length; i++) {
+        sum += data[i].close;
+        if (i >= period) sum -= data[i - period].close;
+        if (i >= period - 1) out.push({ time: data[i].time, value: Math.round((sum / period) * 100) / 100 });
+    }
+    return out;
+}
+function _emaSeries(data, period) {
+    var out = [], k = 2 / (period + 1), ema = null;
+    for (var i = 0; i < data.length; i++) {
+        var c = data[i].close;
+        ema = (ema == null) ? c : (c * k + ema * (1 - k));
+        out.push({ time: data[i].time, value: Math.round(ema * 100) / 100 });
+    }
+    return out;
+}
 function renderTradeJournalChart(sym, cycleId, focusDate) {
     var cont = document.getElementById('tradeChartContainer');
     if (!cont) return;
@@ -5288,10 +5309,18 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
         var stock = chart.addCandlestickSeries({ upColor: '#ef4444', downColor: '#3b82f6', borderUpColor: '#ef4444', borderDownColor: '#3b82f6', wickUpColor: '#ef4444', wickDownColor: '#3b82f6', priceLineVisible: false });
         stock.setData(stockData);
 
+        // 이동평균선 (전체 2년 데이터로 계산 후 창 구간만 표시)
+        var fullStock = (res[0] || []).filter(function (p) { return p.close != null; });
+        var inWinLine = function (arr) { return arr.filter(function (p) { return p.time >= winStart && p.time <= winEnd; }); };
+        var ema8 = inWinLine(_emaSeries(fullStock, 8));
+        var ma200 = inWinLine(_smaSeries(fullStock, 200));
+        if (ema8.length) { var eL = chart.addLineSeries({ color: '#22d3ee', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }); eL.setData(ema8); }
+        if (ma200.length) { var mL = chart.addLineSeries({ color: '#a78bfa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }); mL.setData(ma200); }
+
         // 매수/매도 마커
         var markers = cycleTrades.map(function(t) {
             var buy = t.type === 'BUY';
-            return { time: t.date, position: buy ? 'belowBar' : 'aboveBar', color: buy ? '#3b82f6' : '#f43f5e', shape: buy ? 'arrowUp' : 'arrowDown', text: (buy ? '매수' : '매도') + (t.price ? ' $' + Number(t.price).toFixed(2) : '') };
+            return { time: t.date, position: buy ? 'belowBar' : 'aboveBar', color: buy ? '#3b82f6' : '#f43f5e', shape: buy ? 'arrowUp' : 'arrowDown' };
         }).sort(function(a, b) { return a.time < b.time ? -1 : 1; });
         try { stock.setMarkers(markers); } catch (e) {}
 
