@@ -3774,6 +3774,18 @@ function updateBasePriceAndSave() {
     renderStrategyProgressCard(activeTicker);
 }
     
+// 실제매수가 셀 — 가격 + 계획가 대비(저렴/계획대로/비싸) 표시 (매수는 쌀수록 유리=초록)
+function actualPriceCell(actual, plan) {
+    if (actual == null) return '<span class="text-slate-600">—</span>';
+    var diff = (plan > 0) ? ((actual - plan) / plan * 100) : 0;
+    var color, sub;
+    if (diff <= -0.3) { color = 'text-emerald-400'; sub = '저렴 ' + diff.toFixed(1) + '%'; }
+    else if (diff >= 0.3) { color = 'text-orange-400'; sub = '비싸 +' + diff.toFixed(1) + '%'; }
+    else { color = 'text-slate-400'; sub = '계획대로'; }
+    return '<div class="font-bold text-yellow-400">$' + Number(actual).toFixed(2) + '</div>'
+        + '<div class="text-[9px] font-bold ' + color + '">' + sub + '</div>';
+}
+
 function calculatePlan() {
     const d = portfolios[activeTicker];
     const activeCycleId = (function() {
@@ -3806,9 +3818,20 @@ function calculatePlan() {
     tbody.innerHTML = '';
     
     if (basePrice === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center p-4 text-xs text-slate-500">1차 기준가를 입력하세요.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center p-4 text-xs text-slate-500">1차 기준가를 입력하세요.</td></tr>';
         return;
     }
+
+    // 활성 사이클에서 매수된 가장 높은 단계 — 그보다 낮은 단계는 '완료'(지나간 단계)로 표시
+    // (DCA: 2차를 매수했다면 1차는 이미 지나간 단계이므로 완료)
+    var maxBoughtStage = 0;
+    (d.history || []).forEach(function(h) {
+        if (!h || h.type !== 'BUY' || (h.qty || 0) <= 0) return;
+        var inCycle = (activeCycleId != null) ? (h.cycleId === activeCycleId) : ((d.qty || 0) > 0);
+        if (!inCycle) return;
+        var st = parseInt(h.stage, 10);
+        if (!isNaN(st) && st > maxBoughtStage) maxBoughtStage = st;
+    });
 
     for(let i=0; i<stages; i++) {
         if(i >= drops.length) break;
@@ -3836,25 +3859,18 @@ function calculatePlan() {
         let statusBadge = '<span class="text-slate-500 font-bold text-[10px]">대기</span>';
         if ((d.qty || 0) <= 0) {
             statusBadge = '<span class="text-slate-500 font-bold text-[10px]">대기</span>';
+        } else if ((i + 1) < maxBoughtStage) {
+            statusBadge = '<span class="text-emerald-500 font-bold text-[10px]">완료</span>'; // 지나간 단계
         } else if (boughtQty >= qty && qty > 0) statusBadge = '<span class="text-emerald-500 font-bold text-[10px]">완료</span>';
         else if(boughtQty > 0) statusBadge = '<span class="text-yellow-500 font-bold text-[10px]">진행</span>';
-        
+
         tbody.innerHTML += `
         <tr class="border-b border-slate-800/50 hover:bg-slate-800/30 transition">
             <td class="p-2 text-center text-slate-400 font-medium">${i+1}차 <span class="text-[9px] text-slate-600 block">(${drop.toFixed(2)}%)</span></td>
-            <td class="p-2 align-middle">
-                <div class="plan-actual-cell">
-                    <div class="plan-actual-wrap">
-                        <span class="plan-price">$${targetPrice.toFixed(2)}</span>
-                        <span class="plan-slash">/</span>
-                        <span class="actual-price${actualBuyPrice != null ? '' : ' empty'}">
-                            ${actualBuyPrice != null ? ('$' + actualBuyPrice.toFixed(2)) : '—'}
-                        </span>
-                    </div>
-                </div>
-            </td>
-            <td class="p-2 align-middle text-center text-white font-bold">${qty}주</td>
-            <td class="p-2 text-center">${statusBadge}</td>
+            <td class="p-2 text-center text-blue-300 font-bold align-middle">$${targetPrice.toFixed(2)}</td>
+            <td class="p-2 text-center align-middle">${actualPriceCell(actualBuyPrice, targetPrice)}</td>
+            <td class="p-2 text-center text-white font-bold align-middle">${qty}주</td>
+            <td class="p-2 text-center align-middle">${statusBadge}</td>
         </tr>`;
     }
     if (boosterOn && boosterStages > 0 && drops.length > 0) {
@@ -3885,24 +3901,17 @@ function calculatePlan() {
             let statusBadge = '<span class="text-slate-500 font-bold text-[10px]">대기</span>';
             if ((d.qty || 0) <= 0) {
                 statusBadge = '<span class="text-slate-500 font-bold text-[10px]">대기</span>';
+            } else if (stageNum < maxBoughtStage) {
+                statusBadge = '<span class="text-emerald-500 font-bold text-[10px]">완료</span>';
             } else if (qty > 0 && boughtQty >= qty) statusBadge = '<span class="text-emerald-500 font-bold text-[10px]">완료</span>';
             else if (boughtQty > 0) statusBadge = '<span class="text-yellow-500 font-bold text-[10px]">진행</span>';
             tbody.innerHTML += `
         <tr class="border-b border-slate-800/50 hover:bg-slate-800/30 transition bg-slate-800/20">
             <td class="p-2 text-center text-slate-500 font-medium">${stageNum}차 <span class="text-[9px] text-red-400/80 block">부스터 (${bDrop.toFixed(2)}%)</span></td>
-            <td class="p-2 align-middle">
-                <div class="plan-actual-cell">
-                    <div class="plan-actual-wrap">
-                        <span class="plan-price">$${targetPrice.toFixed(2)}</span>
-                        <span class="plan-slash">/</span>
-                        <span class="actual-price${actualBuyPrice != null ? '' : ' empty'}">
-                            ${actualBuyPrice != null ? ('$' + actualBuyPrice.toFixed(2)) : '—'}
-                        </span>
-                    </div>
-                </div>
-            </td>
-            <td class="p-2 align-middle text-center text-white font-bold">${qty}주</td>
-            <td class="p-2 text-center">${statusBadge}</td>
+            <td class="p-2 text-center text-blue-300 font-bold align-middle">$${targetPrice.toFixed(2)}</td>
+            <td class="p-2 text-center align-middle">${actualPriceCell(actualBuyPrice, targetPrice)}</td>
+            <td class="p-2 text-center text-white font-bold align-middle">${qty}주</td>
+            <td class="p-2 text-center align-middle">${statusBadge}</td>
         </tr>`;
         }
     }
