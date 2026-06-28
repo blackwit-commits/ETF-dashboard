@@ -2021,16 +2021,15 @@ function renderQuadMatrix(quad) {
     grid.innerHTML = QUAD_GRID_ORDER.map(function(n) {
         var m = QUAD_META[n];
         var isCur = (n === cur);
-        var base = 'relative rounded-xl p-2.5 transition-all overflow-hidden ';
+        var base = 'relative rounded-xl p-2.5 border transition-all ';
         var cls = isCur
-            ? base + 'border-2 ' + m.bg + ' ' + m.bdr + ' quad-current-cell'
-            : base + 'border border-slate-700/70 bg-slate-800/60';
-        var style = isCur ? ' style="box-shadow:0 0 18px -3px ' + m.glow + '"' : '';
-        return '<div class="' + cls + '"' + style + '>'
+            ? base + 'bg-slate-700/60 border-slate-500 ring-1 ring-slate-400/30 quad-current-cell'
+            : base + 'bg-slate-800/40 border-slate-700/50';
+        return '<div class="' + cls + '">'
             + (isCur ? '<span class="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-black ' + m.txt + '"><span class="w-1.5 h-1.5 rounded-full ' + m.dot + ' animate-pulse"></span>현재</span>' : '')
             + '<div class="flex items-center gap-1.5 text-[10px] font-bold ' + m.txt + '"><i class="fa-solid ' + m.icon + '"></i>Q' + n + '</div>'
-            + '<div class="text-[14px] font-black leading-tight mt-1 ' + (isCur ? 'text-white' : 'text-slate-100') + '">' + m.name + '</div>'
-            + '<div class="text-[9px] mt-0.5 ' + (isCur ? m.txt : 'text-slate-400') + '">' + m.play + '</div>'
+            + '<div class="text-[14px] font-black leading-tight mt-1 ' + (isCur ? 'text-white' : 'text-slate-200') + '">' + m.name + '</div>'
+            + '<div class="text-[9px] mt-0.5 ' + (isCur ? 'text-slate-300' : 'text-slate-400') + '">' + m.play + '</div>'
             + '</div>';
     }).join('');
 
@@ -2091,16 +2090,19 @@ function renderQuadHeader() {
         trBar.classList.remove('hidden');
         var tr = q.transition_risk;
         var quadNames = {1:'Q1 골디락스',2:'Q2 과열',3:'Q3 스태그',4:'Q4 침체'};
-        var barColors = {1:'bg-green-500',2:'bg-yellow-500',3:'bg-red-500',4:'bg-blue-500'};
-        trGrid.innerHTML = [1,2,3,4].map(function(n) {
-            var key = 'to_quad'+n;
-            var pct = tr[key] != null ? tr[key] : 0;
-            if (n === q.current) pct = 0;
-            var isCurrent = n === q.current;
-            return '<div class="text-center' + (isCurrent ? ' opacity-45' : '') + '">'
-                + '<div class="text-[8px] text-slate-300 mb-0.5">' + quadNames[n] + '</div>'
-                + '<div class="h-1.5 rounded-full bg-slate-800 overflow-hidden"><div class="h-full rounded-full ' + barColors[n] + ' transition-all" style="width:'+pct+'%"></div></div>'
-                + '<div class="text-[9px] font-bold mt-0.5 ' + (pct>25?QUAD_COLORS[n]:'text-slate-400') + '">' + (isCurrent?'현재':pct+'%') + '</div>'
+        var barColors = {1:'bg-green-400',2:'bg-yellow-400',3:'bg-red-400',4:'bg-blue-400'};
+        // 현재 국면 제외 + 위험도 내림차순 정렬
+        var rows = [1,2,3,4].filter(function(n){ return n !== q.current; })
+            .map(function(n){ return { n:n, pct: (tr['to_quad'+n] != null ? tr['to_quad'+n] : 0) }; })
+            .sort(function(a,b){ return b.pct - a.pct; });
+        trGrid.innerHTML = rows.map(function(r, idx) {
+            var top = (idx === 0 && r.pct >= 30); // 가장 높고 유의미하면 강조
+            var lblColor = top ? QUAD_COLORS[r.n] : 'text-slate-300';
+            var pctColor = top ? QUAD_COLORS[r.n] : 'text-slate-200';
+            return '<div class="flex items-center gap-2">'
+                + '<span class="text-[10px] font-bold w-[70px] shrink-0 ' + lblColor + '">' + quadNames[r.n] + '</span>'
+                + '<div class="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden"><div class="h-full rounded-full ' + barColors[r.n] + ' transition-all" style="width:'+r.pct+'%"></div></div>'
+                + '<span class="text-[11px] font-black w-9 text-right ' + pctColor + '">' + r.pct + '%</span>'
                 + '</div>';
         }).join('');
     }
@@ -2110,10 +2112,13 @@ function renderQuadHeader() {
     var evBadges = document.getElementById('eventOverlayBadges');
     if (evArea && evBadges && MACRO_DATA.events && MACRO_DATA.events.overlay && MACRO_DATA.events.overlay.length > 0) {
         evArea.classList.remove('hidden');
-        var sevColors = {high:'bg-red-900/60 border-red-700 text-red-300', medium:'bg-yellow-900/40 border-yellow-700 text-yellow-300', low:'bg-slate-800 border-slate-600 text-slate-300'};
+        var sevIcon = {high:'text-red-400', medium:'text-yellow-400', low:'text-slate-400'};
         evBadges.innerHTML = MACRO_DATA.events.overlay.map(function(ev) {
-            var c = sevColors[ev.severity] || sevColors.low;
-            return '<span class="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-lg border ' + c + '"><i class="fa-solid fa-triangle-exclamation text-[8px]"></i>' + escapeHtml(ev.title) + '</span>';
+            var ic = sevIcon[ev.severity] || sevIcon.low;
+            return '<div class="flex items-start gap-2 text-[11px]">'
+                + '<i class="fa-solid fa-triangle-exclamation ' + ic + ' mt-[3px] text-[9px] shrink-0"></i>'
+                + '<span class="text-slate-200 font-medium leading-snug">' + escapeHtml(ev.title) + '</span>'
+                + '</div>';
         }).join('');
     }
 }
