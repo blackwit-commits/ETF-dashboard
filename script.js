@@ -3780,7 +3780,7 @@ function actualPriceCell(actual, plan) {
     var diff = (plan > 0) ? ((actual - plan) / plan * 100) : 0;
     var color, sub;
     if (diff <= -0.3) { color = 'text-emerald-400'; sub = '저렴 ' + diff.toFixed(1) + '%'; }
-    else if (diff >= 0.3) { color = 'text-orange-400'; sub = '비싸 +' + diff.toFixed(1) + '%'; }
+    else if (diff >= 0.3) { color = 'text-orange-400'; sub = '고가 +' + diff.toFixed(1) + '%'; }
     else { color = 'text-slate-400'; sub = '계획대로'; }
     return '<div class="font-bold text-yellow-400">$' + Number(actual).toFixed(2) + '</div>'
         + '<div class="text-[9px] font-bold ' + color + '">' + sub + '</div>';
