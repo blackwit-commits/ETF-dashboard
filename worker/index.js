@@ -28,6 +28,20 @@ export default {
       });
     }
 
+    // 섹터 로테이션 (/sectors?symbols=XLK,XLF,...) — 1일/1주/1개월 등락률
+    if (path === "/sectors") {
+      const raw = (url.searchParams.get("symbols") || "").trim();
+      const syms = raw.split(",").map(s => s.trim()).filter(Boolean).slice(0, 20);
+      if (!syms.length) return new Response("[]", { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const results = await Promise.all(syms.map(async (s) => {
+        const q = await fetchSectorChanges(s);
+        return { symbol: s, price: q ? q.price : null, chg1d: q ? q.chg1d : null, chg1w: q ? q.chg1w : null, chg1m: q ? q.chg1m : null };
+      }));
+      return new Response(JSON.stringify(results), {
+        headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=120" }
+      });
+    }
+
     // 1. 주가 데이터 요청 (/price?ticker=TQQQ)
     if (path === "/price") {
       const ticker = url.searchParams.get("ticker");
@@ -615,6 +629,25 @@ async function fetchQuoteSimple(symbol) {
     if (prev == null) prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
     const chg = (prev && price) ? ((price - prev) / prev) * 100 : 0;
     return { price, chg };
+  } catch (e) { return null; }
+}
+
+// 섹터 로테이션용 — 1일/1주(5거래일)/1개월(21거래일) 등락률 (종가배열 기반)
+async function fetchSectorChanges(symbol) {
+  try {
+    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=3mo`, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const d = await r.json();
+    const res = d.chart.result[0];
+    const meta = res.meta;
+    const closes = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []).filter(v => v != null);
+    const price = meta.regularMarketPrice != null ? meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
+    const pct = (nBack) => {
+      const idx = closes.length - 1 - nBack;
+      if (idx < 0 || price == null) return null;
+      const base = closes[idx];
+      return base ? ((price - base) / base) * 100 : null;
+    };
+    return { price, chg1d: pct(1), chg1w: pct(5), chg1m: pct(21) };
   } catch (e) { return null; }
 }
 async function fetchMarketSnapshot() {

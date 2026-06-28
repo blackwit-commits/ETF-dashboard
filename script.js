@@ -1266,6 +1266,7 @@ function initApp() {
 
         fetchNews();
         startPriceTicker();
+        startSectorRotation();
         fetchMarketDataInBackground();
         fetchMacroIndicatorsLive();
         fetchLiveFxRate();
@@ -2695,6 +2696,106 @@ function renderGlobalMarkets(map) {
     }).join('');
     var te = document.getElementById('globalMarketsTime');
     if (te) { var d = new Date(); te.innerText = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ' 기준'; }
+}
+
+// ==========================================
+// 섹터 로테이션 (SPDR 11개 섹터 · 1일/1주/1개월 · 강세순)
+// ==========================================
+var SECTOR_LIST = [
+    { sym: 'XLK',  name: '기술',        icon: 'fa-microchip',       color: 'text-blue-400' },
+    { sym: 'XLF',  name: '금융',        icon: 'fa-building-columns', color: 'text-emerald-400' },
+    { sym: 'XLE',  name: '에너지',      icon: 'fa-oil-well',        color: 'text-amber-400' },
+    { sym: 'XLV',  name: '헬스케어',    icon: 'fa-heart-pulse',     color: 'text-rose-400' },
+    { sym: 'XLY',  name: '임의소비',    icon: 'fa-cart-shopping',   color: 'text-orange-400' },
+    { sym: 'XLP',  name: '필수소비',    icon: 'fa-basket-shopping', color: 'text-lime-400' },
+    { sym: 'XLI',  name: '산업재',      icon: 'fa-industry',        color: 'text-slate-300' },
+    { sym: 'XLB',  name: '소재',        icon: 'fa-cubes',           color: 'text-yellow-500' },
+    { sym: 'XLU',  name: '유틸리티',    icon: 'fa-bolt',            color: 'text-teal-400' },
+    { sym: 'XLRE', name: '부동산',      icon: 'fa-building',        color: 'text-indigo-400' },
+    { sym: 'XLC',  name: '커뮤니케이션', icon: 'fa-tower-cell',      color: 'text-fuchsia-400' }
+];
+var _sectorData = null;       // {sym: {price, chg1d, chg1w, chg1m}}
+var _sectorPeriod = 'chg1d';
+
+function startSectorRotation() {
+    loadSectorRotation();
+    if (window._sectorTimer) clearInterval(window._sectorTimer);
+    window._sectorTimer = setInterval(function () { if (!document.hidden) loadSectorRotation(); }, 5 * 60 * 1000);
+}
+async function loadSectorRotation() {
+    var box = document.getElementById('sectorRotationList');
+    if (!box) return;
+    if (!_sectorData) box.innerHTML = '<div class="text-slate-500 text-xs py-3 text-center"><i class="fa-solid fa-spinner fa-spin mr-1"></i>섹터 데이터 불러오는 중…</div>';
+    try {
+        var syms = SECTOR_LIST.map(function (s) { return s.sym; }).join(',');
+        var res = await fetch(API_BASE_URL + '/sectors?symbols=' + encodeURIComponent(syms));
+        var data = await res.json();
+        var map = {};
+        (data || []).forEach(function (q) { map[q.symbol] = q; });
+        _sectorData = map;
+        renderSectors();
+    } catch (e) {
+        if (!_sectorData && box) box.innerHTML = '<div class="text-center text-slate-500 text-xs py-3">섹터 데이터를 불러오지 못했습니다</div>';
+    }
+}
+function setSectorPeriod(p) {
+    _sectorPeriod = p;
+    [['1d', 'chg1d'], ['1w', 'chg1w'], ['1m', 'chg1m']].forEach(function (pair) {
+        var btn = document.getElementById('secP_' + pair[0]);
+        if (btn) btn.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (pair[1] === p ? 'bg-cyan-600 text-white' : 'text-slate-400');
+    });
+    renderSectors();
+}
+function renderSectors() {
+    var box = document.getElementById('sectorRotationList');
+    if (!box || !_sectorData) return;
+    var key = _sectorPeriod;
+    var rows = SECTOR_LIST.map(function (s) {
+        var q = _sectorData[s.sym] || {};
+        return { s: s, val: (q[key] != null ? q[key] : null) };
+    });
+    rows.sort(function (a, b) {
+        if (a.val == null) return 1;
+        if (b.val == null) return -1;
+        return b.val - a.val;
+    });
+    var maxAbs = Math.max.apply(null, rows.map(function (r) { return r.val != null ? Math.abs(r.val) : 0; }).concat([1]));
+    box.innerHTML = rows.map(function (r) {
+        var v = r.val;
+        var w = v != null ? Math.max(4, Math.abs(v) / maxAbs * 100) : 0;
+        var barColor = v == null ? 'bg-slate-700' : (v > 0 ? 'bg-red-400' : (v < 0 ? 'bg-blue-400' : 'bg-slate-500'));
+        var valTxt = v == null ? '--' : ((v > 0 ? '+' : '') + v.toFixed(2) + '%');
+        return '<button type="button" onclick="openSectorChart(\'' + r.s.sym + '\',\'' + r.s.name + '\')" class="w-full flex items-center gap-2 py-1 active:opacity-70 transition">'
+            + '<span class="text-[11px] font-bold text-slate-200 w-[72px] text-left shrink-0 truncate" title="' + r.s.name + ' (' + r.s.sym + ')"><i class="fa-solid ' + r.s.icon + ' ' + r.s.color + ' mr-1 text-[10px]"></i>' + r.s.name + '</span>'
+            + '<div class="flex-1 h-3 rounded-full bg-slate-800/70 overflow-hidden"><div class="h-full rounded-full ' + barColor + ' transition-all" style="width:' + w + '%"></div></div>'
+            + '<span class="text-[11px] font-black w-[54px] text-right shrink-0 ' + chgClass(v) + '">' + valTxt + '</span>'
+            + '</button>';
+    }).join('');
+}
+// 섹터 ETF 차트 (기존 매크로 차트 모달 재사용)
+function openSectorChart(sym, name) {
+    var modal = document.getElementById('macroChartModal');
+    var titleEl = document.getElementById('macroChartTitle');
+    var cont = document.getElementById('macroChartContainer');
+    var detail = document.getElementById('macroChartDetail');
+    if (!modal || !cont) return;
+    if (titleEl) titleEl.innerText = name + ' 섹터 (' + sym + ')';
+    if (detail) detail.innerHTML = '';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    cont.innerHTML = '';
+    setTimeout(function () {
+        try {
+            _macroChartWidget = new TradingView.widget({
+                "autosize": true, "symbol": "AMEX:" + sym, "interval": "D", "timezone": "Etc/UTC", "theme": "dark",
+                "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false,
+                "hide_top_toolbar": false, "hide_side_toolbar": true, "allow_symbol_change": false,
+                "container_id": "macroChartContainer", "studies": ["MASimple@tv-basicstudies"]
+            });
+        } catch (e) {
+            if (cont) cont.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">차트를 불러올 수 없습니다.</div>';
+        }
+    }, 50);
 }
 
 // ==========================================
