@@ -3051,6 +3051,28 @@ function getCurrentStage(sym) {
     };
 }
 
+var _stratExecChart = null;
+// 투자진행요약 집행 도넛 (투자완료 vs 남은 할당, 중앙=집행률)
+function renderExecChart(invested, remain, execRate, alloc) {
+    var set = function (id, v) { var el = document.getElementById(id); if (el) el.innerText = v; };
+    set('stratExecCenterPct', Math.round(execRate || 0) + '%');
+    set('stratExecInvested', '$' + Math.round(invested || 0).toLocaleString());
+    set('stratExecRemain', '$' + Math.round(remain || 0).toLocaleString());
+    set('stratExecAlloc', '$' + Math.round(alloc || 0).toLocaleString());
+    var canvas = document.getElementById('stratExecChart');
+    if (!canvas || typeof Chart === 'undefined') return;
+    var inv = Math.max(0, invested || 0), rem = Math.max(0, remain || 0);
+    if (inv + rem <= 0) { inv = 0; rem = 1; }
+    try {
+        if (_stratExecChart && typeof _stratExecChart.destroy === 'function') _stratExecChart.destroy();
+        _stratExecChart = new Chart(canvas.getContext('2d'), {
+            type: 'doughnut',
+            data: { labels: ['투자완료', '남은할당'], datasets: [{ data: [inv, rem], backgroundColor: ['#3b82f6', '#1e293b'], borderWidth: 0 }] },
+            options: { responsive: true, maintainAspectRatio: false, cutout: '72%', plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+        });
+    } catch (e) {}
+}
+
 function renderStrategyProgressCard(sym) {
     const card = document.getElementById('strategyProgressCard');
     if (!card || !sym || !portfolios[sym]) { if (card) card.classList.add('hidden'); return; }
@@ -3072,12 +3094,13 @@ function renderStrategyProgressCard(sym) {
     set('progressQtyAvg', (d.qty || 0) + ' / $' + (d.avgPrice || 0).toFixed(2));
     const makeStageText = function(label, completed, inProgress, total) {
         if ((d.qty || 0) <= 0) return '미보유 (대기)';
-        if (inProgress && inProgress > 0) return inProgress + '단계 진입 (진행중)';
+        const t = (total && total > 0) ? total : '?';
+        if (inProgress && inProgress > 0) return '총 ' + t + '단계 중 ' + inProgress + '단계 진입 (진행중)';
         if (completed && completed > 0) {
             const cap = (total && total > 0) ? Math.min(completed, total) : completed;
-            return cap + '단계까지 완료';
+            return '총 ' + t + '단계 중 ' + cap + '단계 완료';
         }
-        return '1단계 대기';
+        return '총 ' + t + '단계 중 1단계 대기';
     };
     const baseText = makeStageText('그리드', stage.baseCompleted, stage.baseInProgress, stage.baseTotal);
     const boosterText = (stage.boosterTotal > 0)
@@ -3090,6 +3113,7 @@ function renderStrategyProgressCard(sym) {
     if (execBar) execBar.style.width = Math.min(100, Math.max(0, execRate)) + '%';
     set('progressRemainUsd', '$' + Math.round(remainUsd).toLocaleString());
     set('progressRemainKrw', formatKrw(remainUsd));
+    renderExecChart(investedUsd, remainUsd, execRate, allocUsd);
 
     var currentPrice = (MARKET_SNAPSHOT[sym] && MARKET_SNAPSHOT[sym].price > 0) ? MARKET_SNAPSHOT[sym].price : ((d.marketData && d.marketData.price > 0) ? d.marketData.price : (d.avgPrice || 0));
 
@@ -3994,27 +4018,33 @@ function renderPositionOverview() {
         var active = (sym === activeTicker);
         var chgTxt = chg != null ? ((chg > 0 ? '+' : '') + chg.toFixed(1) + '%') : '';
         var pnlTxt = pnlPct != null ? ((pnlPct > 0 ? '+' : '') + pnlPct.toFixed(1) + '%') : '미보유';
-        var stageHtml = stTotal > 0
-            ? '<div class="text-center"><div class="text-[8px] text-slate-500 leading-none">매수</div><div class="text-[11px] font-bold text-slate-200 leading-tight">' + stDone + '/' + stTotal + '</div></div>'
-            : '';
-        return '<button type="button" onclick="selectPosition(\'' + sym + '\')" class="w-full glass-panel rounded-xl p-3 flex items-center justify-between gap-2 border ' + (active ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700/60') + ' transition text-left active:opacity-80">'
-            + '<div class="min-w-0">'
-            +   '<div class="flex items-center gap-1.5">'
-            +     (dot ? '<span class="w-1.5 h-1.5 rounded-full ' + dot + ' shrink-0"></span>' : '')
-            +     '<span class="font-black text-white text-sm">' + sym + '</span>'
-            +     (active ? '<span class="text-[8px] bg-blue-500/20 text-blue-300 px-1 py-0.5 rounded font-bold">선택</span>' : '')
+        var stageMini = '';
+        if (stTotal > 0) {
+            var pctFill = Math.round((stDone / stTotal) * 100);
+            stageMini = '<div class="flex items-center gap-1.5">'
+                + '<span class="text-[10px] text-slate-400 font-bold whitespace-nowrap">매수 ' + stDone + '/' + stTotal + '</span>'
+                + '<div class="w-10 h-1.5 rounded-full bg-slate-700 overflow-hidden"><div class="h-full rounded-full bg-emerald-400" style="width:' + pctFill + '%"></div></div>'
+                + '</div>';
+        }
+        var pnlPill = (pnlPct == null)
+            ? '<span class="text-[10px] text-slate-500 font-bold">미보유</span>'
+            : '<span class="text-sm font-black ' + chgClass(pnlPct) + '">' + (pnlPct > 0 ? '+' : '') + pnlPct.toFixed(1) + '%</span>';
+        return '<button type="button" onclick="selectPosition(\'' + sym + '\')" class="w-full glass-panel rounded-xl p-3 border ' + (active ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700/60') + ' transition text-left active:opacity-80">'
+            + '<div class="flex items-center justify-between gap-2">'
+            +   '<div class="flex items-center gap-1.5 min-w-0">'
+            +     (dot ? '<span class="w-2 h-2 rounded-full ' + dot + ' shrink-0"></span>' : '')
+            +     '<span class="font-black text-white text-base">' + sym + '</span>'
+            +     (active ? '<span class="text-[8px] bg-blue-500/20 text-blue-300 px-1 py-0.5 rounded font-bold shrink-0">선택</span>' : '')
             +   '</div>'
-            +   '<div class="text-[10px] text-slate-500 mt-0.5 truncate">' + escapeHtml(meta.name || meta.desc || '') + '</div>'
+            +   '<div class="text-sm font-black text-white shrink-0 whitespace-nowrap">' + (price > 0 ? ('$' + price.toFixed(2)) : '--') + ' <span class="text-[11px] font-bold ' + chgClass(chg) + '">' + chgTxt + '</span></div>'
             + '</div>'
-            + '<div class="flex items-center gap-3 shrink-0">'
-            +   stageHtml
-            +   '<div class="text-right">'
-            +     '<div class="text-sm font-bold text-white">' + (price > 0 ? ('$' + price.toFixed(2)) : '--') + ' <span class="text-[10px] ' + chgClass(chg) + '">' + chgTxt + '</span></div>'
-            +     '<div class="text-[11px] font-bold ' + (pnlPct == null ? 'text-slate-500' : chgClass(pnlPct)) + '">' + pnlTxt + '</div>'
-            +   '</div>'
+            + '<div class="flex items-center justify-between gap-2 mt-2">'
+            +   '<span class="text-[10px] text-slate-500 truncate">' + escapeHtml(meta.name || meta.desc || '') + '</span>'
+            +   '<div class="flex items-center gap-3 shrink-0">' + stageMini + pnlPill + '</div>'
             + '</div>'
             + '</button>';
-    }).join('');
+    }).join('')
+    + '<button type="button" onclick="openEtfSearchModal()" class="w-full rounded-xl p-3 border border-dashed border-slate-600 text-slate-400 text-xs font-bold hover:bg-slate-800/50 active:opacity-80 transition"><i class="fa-solid fa-plus mr-1.5"></i>종목 추가</button>';
 }
 
 function selectPosition(sym) {
@@ -4034,6 +4064,10 @@ function switchStratView(view) {
         var btn = document.getElementById('stView_' + v);
         if (btn) btn.className = 'flex-1 py-2 rounded-lg text-xs font-bold transition ' + (v === view ? 'bg-slate-700 text-white' : 'text-slate-400');
     });
+    // 현황으로 올 때 도넛/차트가 보이는 상태에서 재계산되도록 갱신
+    if (view === 'status' && activeTicker) {
+        try { renderStrategyProgressCard(activeTicker); } catch (e) {}
+    }
 }
 function deleteActiveTicker() { if(!activeTicker) return; if(confirm(`'${activeTicker}' 종목을 삭제하시겠습니까?\n전략 설정은 삭제되지만 매매 기록은 보존됩니다.`)) { const d = portfolios[activeTicker]; if (d && Array.isArray(d.history) && d.history.length > 0) { try { const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); archived[activeTicker] = (archived[activeTicker] || []).concat(d.history); localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } catch(e) { console.error('History archive failed:', e); } } delete portfolios[activeTicker]; saveAll(); activeTicker = null; localStorage.removeItem('umt_last_ticker'); const keys = Object.keys(portfolios); if (keys.length > 0) { selectTicker(keys[0]); } else { switchTab('home'); renderTickerBar(); } } }
 function exportData(){ const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({global:globalData, ports:portfolios})); const node = document.createElement('a'); node.setAttribute("href", dataStr); node.setAttribute("download", "UMT_Backup.json"); document.body.appendChild(node); node.click(); node.remove(); }
