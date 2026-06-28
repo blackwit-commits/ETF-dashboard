@@ -2895,6 +2895,7 @@ function switchTab(id) {
     if(id==='news') { setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); var _ao=document.getElementById('alertOwnerToggle'); if(_ao) _ao.checked = localStorage.getItem('umt_alert_owner')==='1'; }
+    if(id==='home') { try { renderBenchmark(); } catch(e) {} }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }
 
@@ -5631,6 +5632,7 @@ function updateGlobalCalc() {
         const totalPnL = totalRealizedPnL + totalUnrealizedPnL; const pnlEl = document.getElementById('totalProfitDisplay'); if(pnlEl) { pnlEl.innerText = (totalPnL>=0?'+':'') + '$' + totalPnL.toLocaleString(undefined,{maximumFractionDigits:0}); pnlEl.className = `text-lg font-black ${totalPnL>=0?'text-red-400':'text-blue-400'}`; }
         // 손익 분석(원화) — 주식손익 vs 환차손익 분리 + 환율 게이지 + 입출금 요약 (현재환율=실시간 우선)
         renderCapitalAnalysis(totalPrincipalKRW, totalInjectedUSD, avgRate, (_liveUsdKrw || globalData.rate), totalPnL);
+        try { renderBenchmark(); } catch(e) {}
         let invested = 0; const labels = [], data = [], colors = [];
         Object.keys(portfolios).forEach(s => { const p = portfolios[s]; const price = p.marketData && p.marketData.price > 0 ? p.marketData.price : p.avgPrice; const val = p.qty * price; if(val > 0) { invested += val; labels.push(s); data.push(val); colors.push(s==='GLD'?'#facc15':'#3b82f6'); } }); 
         const totalEquity = totalInjectedUSD + totalPnL; const cashProxy = totalEquity - invested;
@@ -5726,6 +5728,72 @@ function getTotalEquityUSD() {
     (globalData.deposits || []).forEach(d => { equity += (d.amount || 0) / (d.rate || defaultRate); });
     Object.values(portfolios || {}).forEach(p => { if(p.realizedPnL) equity += p.realizedPnL; if(p.totalDiv) equity += p.totalDiv; });
     return equity;
+}
+
+// ===== 벤치마크 비교 (내 수익률 vs SPY/QQQ) =====
+var _benchInFlight = false;
+function computeMyReturn() {
+    const rate = getUsdToKrwRate();
+    let injected = (globalData.seedKRW || 0) / rate;
+    (globalData.deposits || []).forEach(function(d){ injected += (d.amount || 0) / (d.rate || rate); });
+    let pnl = 0; let first = null;
+    Object.keys(portfolios || {}).forEach(function(sym){
+        const p = portfolios[sym]; if (!p) return;
+        if (p.realizedPnL) pnl += p.realizedPnL;
+        if (p.totalDiv) pnl += p.totalDiv;
+        if ((p.qty || 0) > 0) { const md = MARKET_SNAPSHOT[sym] || {}; const cur = (md.price > 0 ? md.price : p.avgPrice); pnl += (p.qty * cur) - (p.qty * p.avgPrice); }
+        (p.history || []).forEach(function(h){ if (h && h.date && (!first || h.date < first)) first = h.date; });
+    });
+    return { retPct: injected > 0 ? (pnl / injected * 100) : null, first: first, injected: injected, pnl: pnl };
+}
+async function fetchBenchReturns(firstDate) {
+    const span = Math.ceil((Date.now() - new Date(firstDate + 'T00:00:00').getTime()) / 86400000);
+    const range = span <= 370 ? '1y' : (span <= 740 ? '2y' : (span <= 1850 ? '5y' : '10y'));
+    async function one(sym) {
+        try {
+            const r = await fetch(API_BASE_URL + '/ohlc?ticker=' + sym + '&range=' + range);
+            const j = await r.json(); const s = j.series || [];
+            if (!s.length) return null;
+            let start = null;
+            for (const pt of s) { if (pt.time >= firstDate) { start = pt.close; break; } }
+            if (start == null) start = s[0].close;
+            const last = s[s.length - 1].close;
+            return start > 0 ? (last / start - 1) * 100 : null;
+        } catch (e) { return null; }
+    }
+    const res = await Promise.all([one('SPY'), one('QQQ')]);
+    return { spy: res[0], qqq: res[1] };
+}
+function renderBenchmark() {
+    const sec = document.getElementById('benchmarkSection'); if (!sec) return;
+    const me = computeMyReturn();
+    if (me.retPct == null || !me.first) { sec.classList.add('hidden'); return; }
+    sec.classList.remove('hidden');
+    const pEl = document.getElementById('benchPeriod'); if (pEl) pEl.innerText = me.first + ' ~ 현재';
+    let bench = null;
+    try { const c = JSON.parse(localStorage.getItem('umt_bench_cache') || '{}'); if (c && c.first === me.first && (Date.now() - c.ts) < 21600000) bench = c.data; } catch (e) {}
+    _drawBenchmark(me, bench);
+    if (!bench && !_benchInFlight) {
+        _benchInFlight = true;
+        fetchBenchReturns(me.first).then(function(b){ _benchInFlight = false; if (b) { try { localStorage.setItem('umt_bench_cache', JSON.stringify({ first: me.first, ts: Date.now(), data: b })); } catch (e) {} _drawBenchmark(me, b); } });
+    }
+}
+function _drawBenchmark(me, bench) {
+    const wrap = document.getElementById('benchmarkBars'); if (!wrap) return;
+    const rows = [{ l: '내 포트폴리오', v: me.retPct, hi: true }, { l: 'SPY (S&P500)', v: bench ? bench.spy : null }, { l: 'QQQ (나스닥100)', v: bench ? bench.qqq : null }];
+    let maxAbs = 1; rows.forEach(function(r){ if (r.v != null) maxAbs = Math.max(maxAbs, Math.abs(r.v)); });
+    wrap.innerHTML = rows.map(function(r){
+        const nameCls = r.hi ? 'text-white font-bold' : 'text-slate-400';
+        if (r.v == null) return '<div class="flex items-center gap-2"><span class="w-24 shrink-0 text-[11px] ' + nameCls + '">' + r.l + '</span><span class="text-[10px] text-slate-600">불러오는 중…</span></div>';
+        const col = r.v >= 0 ? 'text-red-400' : 'text-blue-400';
+        const bg = r.v >= 0 ? 'bg-red-500/70' : 'bg-blue-500/70';
+        const w = Math.max(4, Math.abs(r.v) / maxAbs * 100);
+        return '<div class="flex items-center gap-2">'
+            + '<span class="w-24 shrink-0 text-[11px] ' + nameCls + '">' + r.l + '</span>'
+            + '<div class="flex-1 bg-slate-800 rounded h-5 overflow-hidden"><div class="' + bg + ' h-full rounded" style="width:' + w.toFixed(0) + '%"></div></div>'
+            + '<span class="w-16 text-right text-[11px] font-black ' + col + '">' + (r.v >= 0 ? '+' : '') + r.v.toFixed(1) + '%</span>'
+            + '</div>';
+    }).join('');
 }
 
 var _heatmapWidgetInjected = false;
