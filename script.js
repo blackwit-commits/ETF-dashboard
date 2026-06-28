@@ -417,7 +417,7 @@ function loadHotFromCache() {
 function startHotIssues() {
     var list = document.getElementById('hotIssuesList');
     if (list) list.classList.remove('hidden');
-    if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>최신 핫이슈 수집 중... (약 30초)</div>';
+    if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>최신 핫이슈 불러오는 중...</div>';
     var btn = document.getElementById('hotToggleBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-chevron-up text-xs" id="hotChev"></i>';
 
     fetch(API_BASE_URL + '/hot', { signal: AbortSignal.timeout ? AbortSignal.timeout(90000) : undefined })

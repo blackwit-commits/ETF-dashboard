@@ -360,11 +360,31 @@ export default {
         });
       }
       try {
-        const hotResult = await callGeminiHotIssues(env.GEMINI_API_KEY);
+        // KV 캐시 우선 — 있으면 즉시 반환, 만료됐으면 백그라운드 갱신(stale-while-revalidate)
+        if (env.UMT_KV) {
+          const cached = await env.UMT_KV.get(HOT_KV_KEY, "json");
+          if (cached && cached._cachedAt) {
+            if (Date.now() - cached._cachedAt > HOT_KV_TTL_MS) {
+              ctx.waitUntil(refreshHotToKV(env, "swr").catch(() => {}));
+            }
+            return new Response(JSON.stringify(cached), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" }
+            });
+          }
+        }
+        // 캐시 없음(콜드스타트) → 동기 생성 1회 후 KV 저장
+        const hotResult = await refreshHotToKV(env, "ondemand");
         return new Response(JSON.stringify(hotResult), {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       } catch (e) {
+        // 실패 시 만료된 KV라도 폴백 반환
+        if (env.UMT_KV) {
+          try {
+            const stale = await env.UMT_KV.get(HOT_KV_KEY, "json");
+            if (stale) return new Response(JSON.stringify(stale), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          } catch (_) { /* 무시 */ }
+        }
         return new Response(JSON.stringify({ error: e.message }), {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
@@ -636,6 +656,12 @@ export default {
     if (cron === "0 21 * * 1-5" && env.GEMINI_API_KEY) {
       ctx.waitUntil((async () => {
         try { await refreshMacroToKV(env, "scheduled"); } catch (e) { /* 다음 트리거에 재시도 */ }
+      })());
+    }
+    // 실시간 핫이슈: 개장 전(13:00) / 마감 후(21:00) 미리 계산해 KV에 저장 → /hot 즉시 응답
+    if ((cron === "0 13 * * 1-5" || cron === "0 21 * * 1-5") && env.GEMINI_API_KEY) {
+      ctx.waitUntil((async () => {
+        try { await refreshHotToKV(env, "scheduled"); } catch (e) { /* 다음 트리거에 재시도 */ }
       })());
     }
     // 텔레그램 정기 브리핑 (개장 전 13:00 / 마감 후 21:00 UTC 에만)
@@ -1126,6 +1152,20 @@ async function refreshMacroToKV(env, source) {
   result._source = source || "ondemand";
   if (env.UMT_KV) {
     try { await env.UMT_KV.put(MACRO_KV_KEY, JSON.stringify(result)); } catch (e) { /* KV 실패 무시 */ }
+  }
+  return result;
+}
+
+// 실시간 핫이슈: KV 캐시 (크론이 미리 계산 → 즉시 응답, Gemini 31초 호출 회피)
+const HOT_KV_KEY = "hot_latest";
+const HOT_KV_TTL_MS = 3 * 60 * 60 * 1000; // 3시간 신선도 (초과 시 stale 반환 + 백그라운드 갱신)
+
+async function refreshHotToKV(env, source) {
+  const result = await callGeminiHotIssues(env.GEMINI_API_KEY);
+  result._cachedAt = Date.now();
+  result._source = source || "ondemand";
+  if (env.UMT_KV) {
+    try { await env.UMT_KV.put(HOT_KV_KEY, JSON.stringify(result)); } catch (e) { /* KV 실패 무시 */ }
   }
   return result;
 }
