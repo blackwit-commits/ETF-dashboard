@@ -4247,11 +4247,8 @@ function renderTaxSummary(){
     const cgt = estimateOverseasCGT(cur.krw);
     let html = '<div class="bg-slate-900/60 rounded-xl p-4 border border-amber-700/40">'
         + '<div class="flex items-center justify-between mb-2"><span class="text-xs font-bold text-amber-300">' + curYear + '년 실현손익 (올해)</span><span class="text-[10px] text-slate-500">' + cur.count + '건</span></div>'
-        + '<div class="text-2xl font-black ' + cls(cur.krw) + ' mb-2">' + sign(cur.krw) + fmtW(cur.krw) + '</div>'
-        + '<div class="bg-slate-800/40 rounded-lg p-2 mb-3 space-y-1">'
-        + '<div class="flex items-center justify-between text-[11px]"><span class="text-slate-400"><i class="fa-solid fa-chart-line mr-1.5 text-slate-500"></i>매매손익 <span class="text-slate-600">(주가)</span></span><span class="font-bold ' + cls(cur.trade) + '">' + sign(cur.trade) + fmtW(cur.trade) + '</span></div>'
-        + '<div class="flex items-center justify-between text-[11px]"><span class="text-slate-400"><i class="fa-solid fa-money-bill-transfer mr-1.5 text-slate-500"></i>환차손익 <span class="text-slate-600">(환율)</span></span><span class="font-bold ' + cls(cur.fx) + '">' + sign(cur.fx) + fmtW(cur.fx) + '</span></div>'
-        + '</div>'
+        + '<div class="text-2xl font-black ' + cls(cur.krw) + ' mb-1">' + sign(cur.krw) + fmtW(cur.krw) + '</div>'
+        + '<div class="text-[10px] text-slate-500 mb-3">환차손익 포함 · 환차 상세는 위 “손익 분석”에서 확인</div>'
         + '<div class="grid grid-cols-3 gap-2 text-center">'
         + '<div class="bg-slate-800/60 rounded-lg py-2"><div class="text-[9px] text-slate-500 mb-0.5">과세표준</div><div class="text-[11px] font-bold text-slate-300">' + fmtW(cgt.taxable) + '</div></div>'
         + '<div class="bg-slate-800/60 rounded-lg py-2"><div class="text-[9px] text-slate-500 mb-0.5">양도세 추정</div><div class="text-[11px] font-bold text-red-400">−' + fmtW(cgt.tax) + '</div></div>'
