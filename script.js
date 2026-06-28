@@ -2417,6 +2417,36 @@ function getEventOverlayAdjustments() {
     return { boost: boost, dampen: dampen };
 }
 
+// ===== 배당일 (다음 배당락일 추정) =====
+var DIVIDEND_DATA = {};
+(function(){ try { var c = JSON.parse(localStorage.getItem('umt_div_cache')||'{}'); if(c && c.data) DIVIDEND_DATA = c.data; } catch(e){} })();
+var _divInFlight = false;
+function ensureDividends(syms){
+    if(!syms || !syms.length || _divInFlight) return;
+    var ts = 0; try { ts = (JSON.parse(localStorage.getItem('umt_div_cache')||'{}').ts)||0; } catch(e){}
+    var stale = (Date.now() - ts) > 12*3600*1000;
+    var missing = syms.some(function(s){ return !(s in DIVIDEND_DATA); });
+    if(!stale && !missing) return;
+    _divInFlight = true;
+    fetch(API_BASE_URL + '/dividends?symbols=' + encodeURIComponent(syms.join(',')))
+        .then(function(r){ return r.json(); })
+        .then(function(arr){
+            if(Array.isArray(arr)) arr.forEach(function(d){ if(d && d.symbol) DIVIDEND_DATA[d.symbol] = d; });
+            try { localStorage.setItem('umt_div_cache', JSON.stringify({ ts: Date.now(), data: DIVIDEND_DATA })); } catch(e){}
+            _divInFlight = false;
+            try { renderHoldingStatus(); } catch(e){}
+        })
+        .catch(function(){ _divInFlight = false; });
+}
+function divLineHtml(sym){
+    var d = DIVIDEND_DATA[sym];
+    if(!d || !d.next) return '';
+    var days = Math.ceil((new Date(d.next + 'T00:00:00') - new Date()) / 86400000);
+    var dd = days >= 0 ? ('D-' + days) : ('D+' + (-days));
+    var yieldTxt = d.yieldPct ? (' · 수익률 ' + d.yieldPct.toFixed(1) + '%') : '';
+    return '<div class="text-[10px] text-purple-300 mt-0.5"><i class="fa-regular fa-calendar mr-1"></i>배당락 예상 ' + d.next + ' <span class="text-slate-500">(' + dd + ')</span>' + yieldTxt + '</div>';
+}
+
 function renderHoldingStatus() {
     var section = document.getElementById('holdingStatusSection');
     var list = document.getElementById('holdingStatusList');
@@ -2452,6 +2482,7 @@ function renderHoldingStatus() {
             + '<div>'
             + '<div class="flex items-center gap-1.5"><span class="font-black text-white text-sm">' + sym + '</span><span class="text-[9px] text-slate-500">' + escapeHtml(meta.desc||'') + '</span></div>'
             + '<div class="text-[10px] text-slate-400">' + escapeHtml(status.reason) + '</div>'
+            + divLineHtml(sym)
             + '</div>'
             + '</div>'
             + '<div class="text-right">'
@@ -2459,6 +2490,8 @@ function renderHoldingStatus() {
             + '<div class="text-xs font-bold ' + pnlColor + '">' + (pnlPct>=0?'+':'') + pnlPct.toFixed(1) + '%</div>'
             + '</div></div>';
     }).join('');
+
+    ensureDividends(syms); // 배당 데이터 로드(캐시 12h) → 도착 시 자동 재렌더
 }
 
 function getHoldingStatus(sym, meta, md, quadNow) {
@@ -2851,7 +2884,7 @@ function switchTab(id) {
     stopNewsAutoRefresh();
     if(id==='news') { setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
-    if(id==='settings') { initInputs(); fetchLiveFxRate(); }
+    if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }
 
@@ -4160,7 +4193,74 @@ function switchStratView(view) {
     }
 }
 function deleteActiveTicker() { if(!activeTicker) return; if(confirm(`'${activeTicker}' 종목을 삭제하시겠습니까?\n전략 설정은 삭제되지만 매매 기록은 보존됩니다.`)) { const d = portfolios[activeTicker]; if (d && Array.isArray(d.history) && d.history.length > 0) { try { const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); archived[activeTicker] = (archived[activeTicker] || []).concat(d.history); localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } catch(e) { console.error('History archive failed:', e); } } delete portfolios[activeTicker]; saveAll(); activeTicker = null; localStorage.removeItem('umt_last_ticker'); const keys = Object.keys(portfolios); if (keys.length > 0) { selectTicker(keys[0]); } else { switchTab('home'); renderTickerBar(); } } }
-function exportData(){ const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({global:globalData, ports:portfolios})); const node = document.createElement('a'); node.setAttribute("href", dataStr); node.setAttribute("download", "UMT_Backup.json"); document.body.appendChild(node); node.click(); node.remove(); }
+function exportData(){ const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({global:globalData, ports:portfolios})); const node = document.createElement('a'); node.setAttribute("href", dataStr); node.setAttribute("download", "UMT_Backup.json"); document.body.appendChild(node); node.click(); node.remove(); try { localStorage.setItem('umt_last_backup', Date.now().toString()); } catch(e){} renderBackupStatus(); }
+
+// 백업 경과일 표시 (7일 초과 또는 미백업 시 경고)
+function renderBackupStatus(){
+    const el = document.getElementById('backupStatus'); if(!el) return;
+    const ts = parseInt(localStorage.getItem('umt_last_backup') || '0', 10);
+    if(!ts){ el.innerHTML = '<span class="text-red-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>아직 백업한 적 없어요 — 지금 백업을 권장합니다</span>'; return; }
+    const days = Math.floor((Date.now() - ts) / 86400000);
+    const dateStr = new Date(ts).toLocaleDateString('ko-KR');
+    if(days >= 7) el.innerHTML = '<span class="text-amber-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>마지막 백업 ' + days + '일 전 (' + dateStr + ') — 백업을 권장합니다</span>';
+    else el.innerHTML = '<span class="text-slate-500"><i class="fa-solid fa-circle-check mr-1 text-emerald-500"></i>마지막 백업 ' + (days===0?'오늘':days+'일 전') + ' (' + dateStr + ')</span>';
+}
+
+// 세금 · 실수령 추정 (해외주식 양도세 + 배당 원천징수 안내)
+function renderTaxSummary(){
+    const el = document.getElementById('taxSummary'); if(!el) return;
+    const byYear = getRealizedByYear();
+    const years = Object.keys(byYear).sort().reverse();
+    const curYear = new Date().getFullYear().toString();
+    const fmtW = (v) => '₩' + Math.round(v).toLocaleString();
+    const sign = (v) => v >= 0 ? '+' : '';
+    const cls = (v) => v >= 0 ? 'text-red-400' : 'text-blue-400';
+
+    // 누적 배당 (원천징수 15% 가정 — 미국 ETF)
+    let totalDivKRW = 0;
+    Object.values(portfolios||{}).forEach(p => { if(p && p.totalDivKRW) totalDivKRW += p.totalDivKRW; });
+
+    if(years.length === 0 && totalDivKRW === 0){
+        el.innerHTML = '<div class="text-center text-slate-500 text-xs py-4">아직 실현 거래(매도)가 없어요.<br>매도가 기록되면 양도세·실수령액이 자동 계산됩니다.</div>';
+        return;
+    }
+
+    // 올해 양도세 추정 카드 (강조)
+    const cur = byYear[curYear] || { usd:0, krw:0, count:0 };
+    const cgt = estimateOverseasCGT(cur.krw);
+    let html = '<div class="bg-slate-900/60 rounded-xl p-4 border border-amber-700/40">'
+        + '<div class="flex items-center justify-between mb-2"><span class="text-xs font-bold text-amber-300">' + curYear + '년 실현손익 (올해)</span><span class="text-[10px] text-slate-500">' + cur.count + '건</span></div>'
+        + '<div class="text-2xl font-black ' + cls(cur.krw) + ' mb-3">' + sign(cur.krw) + fmtW(cur.krw) + '</div>'
+        + '<div class="grid grid-cols-3 gap-2 text-center">'
+        + '<div class="bg-slate-800/60 rounded-lg py-2"><div class="text-[9px] text-slate-500 mb-0.5">과세표준</div><div class="text-[11px] font-bold text-slate-300">' + fmtW(cgt.taxable) + '</div></div>'
+        + '<div class="bg-slate-800/60 rounded-lg py-2"><div class="text-[9px] text-slate-500 mb-0.5">양도세 추정</div><div class="text-[11px] font-bold text-red-400">−' + fmtW(cgt.tax) + '</div></div>'
+        + '<div class="bg-slate-800/60 rounded-lg py-2"><div class="text-[9px] text-slate-500 mb-0.5">세후 실수령</div><div class="text-[11px] font-bold ' + cls(cgt.afterTax) + '">' + sign(cgt.afterTax) + fmtW(cgt.afterTax) + '</div></div>'
+        + '</div>'
+        + (cur.krw > 0 && cgt.tax === 0 ? '<div class="text-[10px] text-emerald-400 mt-2 text-center"><i class="fa-solid fa-circle-check mr-1"></i>기본공제 250만원 이내 — 양도세 없음</div>' : '')
+        + '</div>';
+
+    // 배당 원천징수 안내
+    if(totalDivKRW > 0){
+        html += '<div class="bg-slate-900/40 rounded-xl p-3 border border-slate-700 flex items-center justify-between">'
+            + '<div><div class="text-[11px] font-bold text-slate-300">누적 배당 수령</div><div class="text-[9px] text-slate-500">미국 ETF 배당세 15% 원천징수 (현지 자동 차감)</div></div>'
+            + '<div class="text-sm font-black text-emerald-400">' + fmtW(totalDivKRW) + '</div></div>';
+    }
+
+    // 연도별 내역 (올해 외)
+    const others = years.filter(y => y !== curYear);
+    if(others.length){
+        html += '<div class="bg-slate-900/40 rounded-xl p-3 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-2">연도별 실현손익</div><div class="space-y-1.5">';
+        others.forEach(y => {
+            const yc = estimateOverseasCGT(byYear[y].krw);
+            html += '<div class="flex items-center justify-between text-[11px]"><span class="text-slate-400">' + y + '년 <span class="text-slate-600">(' + byYear[y].count + '건)</span></span>'
+                + '<span class="flex items-center gap-2"><span class="' + cls(byYear[y].krw) + ' font-bold">' + sign(byYear[y].krw) + fmtW(byYear[y].krw) + '</span>'
+                + '<span class="text-slate-600">세 −' + fmtW(yc.tax) + '</span></span></div>';
+        });
+        html += '</div></div>';
+    }
+
+    el.innerHTML = html;
+}
 function importData(input){ const file = input.files[0]; if(!file)return; const reader = new FileReader(); reader.onload = function(e){ try { const json = JSON.parse(e.target.result); if(json.global && json.ports) { localStorage.setItem('umt_v172_global', JSON.stringify(json.global)); localStorage.setItem('umt_v172_ports', JSON.stringify(json.ports)); alert("복구 완료!"); location.reload(); } } catch(err) { alert("파일 오류"); } }; reader.readAsText(file); }
 function applyFeePreset(){ const v=document.getElementById('feePreset').value; if(v!=='custom') document.getElementById('globalFeeRate').value=v; }
     
@@ -4459,6 +4559,7 @@ function submitTrade() {
         plannedPrice,
         plannedQty,
         plannedStage,
+        fxRate: (_liveUsdKrw > 0 ? _liveUsdKrw : getUsdToKrwRate()), // 체결 시점 USD/KRW (환차손익·양도세용)
         cycleId: d.currentCycleId != null ? d.currentCycleId : null
     };
     d.history.push(saved);
@@ -4478,7 +4579,75 @@ function submitTrade() {
     closeTradeModal();
 }
     
-function recalcPortfolio(d) { const sorted = [...d.history].sort((a,b)=>new Date(a.date)-new Date(b.date)); let q = 0; let totalCost = 0; let realizedPnL = 0; let totalDiv = 0; sorted.forEach(h => { if(h.type === 'BUY') { totalCost += h.total; q += h.qty; } else if(h.type === 'SELL') { if(q > 0) { let avgPrice = totalCost / q; let costOfSold = avgPrice * h.qty; totalCost -= costOfSold; let profit = h.total - costOfSold; realizedPnL += profit; q -= h.qty; } } else if(h.type === 'DIV') { totalDiv += h.total; } }); if(q <= 0) { q = 0; totalCost = 0; } d.qty = q; d.avgPrice = q > 0 ? totalCost / q : 0; d.realizedPnL = realizedPnL; d.totalDiv = totalDiv; }
+function recalcPortfolio(d) {
+    const sorted = [...d.history].sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const fallbackFx = getUsdToKrwRate();
+    const fxOf = (h) => (h && h.fxRate > 0) ? h.fxRate : fallbackFx;
+    let q = 0, totalCost = 0, totalCostKRW = 0;            // USD/원화 취득원가 (보유분)
+    let realizedPnL = 0, realizedPnLKRW = 0;               // 실현손익 (USD / 원화·환차포함)
+    let totalDiv = 0, totalDivKRW = 0;
+    sorted.forEach(h => {
+        if(h.type === 'BUY') {
+            totalCost += h.total; totalCostKRW += h.total * fxOf(h); q += h.qty;
+        } else if(h.type === 'SELL') {
+            if(q > 0) {
+                const avgPrice = totalCost / q;
+                const avgKRWperShare = totalCostKRW / q;
+                const costOfSold = avgPrice * h.qty;
+                const costOfSoldKRW = avgKRWperShare * h.qty;
+                totalCost -= costOfSold; totalCostKRW -= costOfSoldKRW;
+                realizedPnL += (h.total - costOfSold);
+                realizedPnLKRW += ((h.total * fxOf(h)) - costOfSoldKRW); // 원화 실현손익 = 매도대금(체결환율) - 취득원가(매수환율)
+                q -= h.qty;
+            }
+        } else if(h.type === 'DIV') {
+            totalDiv += h.total; totalDivKRW += h.total * fxOf(h);
+        }
+    });
+    if(q <= 0) { q = 0; totalCost = 0; totalCostKRW = 0; }
+    d.qty = q;
+    d.avgPrice = q > 0 ? totalCost / q : 0;
+    d.avgFxRate = q > 0 && totalCost > 0 ? totalCostKRW / totalCost : 0; // 보유분 평균 매수환율
+    d.realizedPnL = realizedPnL;
+    d.realizedPnLKRW = realizedPnLKRW;
+    d.totalDiv = totalDiv;
+    d.totalDivKRW = totalDivKRW;
+}
+
+// 연도별 실현손익 집계 (해외주식 양도세 추정용) — 전 종목 SELL 거래를 매도일 기준으로 재집계
+function getRealizedByYear() {
+    const byYear = {}; // { '2026': { usd, krw, count } }
+    Object.values(portfolios || {}).forEach(d => {
+        if (!d || !Array.isArray(d.history)) return;
+        const sorted = [...d.history].sort((a,b)=>new Date(a.date)-new Date(b.date));
+        const fallbackFx = getUsdToKrwRate();
+        const fxOf = (h) => (h && h.fxRate > 0) ? h.fxRate : fallbackFx;
+        let q = 0, totalCost = 0, totalCostKRW = 0;
+        sorted.forEach(h => {
+            if (h.type === 'BUY') { totalCost += h.total; totalCostKRW += h.total * fxOf(h); q += h.qty; }
+            else if (h.type === 'SELL' && q > 0) {
+                const avgPrice = totalCost / q, avgKRWperShare = totalCostKRW / q;
+                const costOfSold = avgPrice * h.qty, costOfSoldKRW = avgKRWperShare * h.qty;
+                totalCost -= costOfSold; totalCostKRW -= costOfSoldKRW;
+                const profitUSD = h.total - costOfSold;
+                const profitKRW = (h.total * fxOf(h)) - costOfSoldKRW;
+                const yr = (h.date || '').slice(0,4) || '기타';
+                if (!byYear[yr]) byYear[yr] = { usd: 0, krw: 0, count: 0 };
+                byYear[yr].usd += profitUSD; byYear[yr].krw += profitKRW; byYear[yr].count++;
+                q -= h.qty;
+            }
+            if (q <= 0) { q = 0; totalCost = 0; totalCostKRW = 0; }
+        });
+    });
+    return byYear;
+}
+
+// 해외주식 양도소득세 추정 (양도차익 - 250만원 기본공제) × 22%
+function estimateOverseasCGT(realizedKRW) {
+    const DEDUCTION = 2500000, RATE = 0.22;
+    const taxable = Math.max(0, realizedKRW - DEDUCTION);
+    return { taxable: taxable, tax: Math.round(taxable * RATE), afterTax: Math.round(realizedKRW - taxable * RATE) };
+}
     
 // 전략탭 일지 — 사이클 필터 (null=전체, cid 문자열=해당 사이클만)
 var _stratJournalCycleFilter = null;

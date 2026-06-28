@@ -9,7 +9,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260629h">
+    <link rel="stylesheet" href="style.css?v=20260629i">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -623,7 +623,17 @@
                 <button onclick="openCashFlowModal()" class="w-full py-3.5 bg-emerald-700 hover:bg-emerald-600 rounded-xl text-white font-bold text-sm shadow-lg transition mb-2">💵 입출금 내역 관리</button>
                 <div id="cashFlowSummary" class="space-y-1 mb-2"></div>
                 
-                <div class="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-700"><button onclick="exportData()" class="py-3 bg-slate-800 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 hover:text-white transition"><i class="fa-solid fa-download mr-1"></i> 백업 저장</button><label class="py-3 bg-slate-800 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 text-center cursor-pointer hover:text-white transition"><i class="fa-solid fa-upload mr-1"></i> 데이터 복구<input type="file" class="hidden" onchange="importData(this)"></label></div>
+                <div class="mt-4 pt-4 border-t border-slate-700">
+                    <div id="backupStatus" class="text-[11px] font-bold mb-2 text-center"></div>
+                    <div class="grid grid-cols-2 gap-3"><button onclick="exportData()" class="py-3 bg-slate-800 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 hover:text-white transition"><i class="fa-solid fa-download mr-1"></i> 백업 저장</button><label class="py-3 bg-slate-800 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 text-center cursor-pointer hover:text-white transition"><i class="fa-solid fa-upload mr-1"></i> 데이터 복구<input type="file" class="hidden" onchange="importData(this)"></label></div>
+                </div>
+            </div>
+
+            <!-- 세금 / 실수령 추정 -->
+            <div class="glass-panel rounded-2xl p-5 border-t-4 border-amber-500">
+                <h2 class="text-sm font-bold text-white mb-1 flex items-center gap-2"><i class="fa-solid fa-receipt text-amber-400"></i> 세금 · 실수령 추정</h2>
+                <p class="text-[10px] text-slate-500 mb-3">해외주식 양도세(차익−250만원)×22% · 환율 반영 원화 기준 추정치 (참고용)</p>
+                <div id="taxSummary" class="space-y-3"></div>
             </div>
 
             <!-- 가이드 / 용어 사전 -->
@@ -830,6 +840,6 @@
         </div>
     </div>
     <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-sm font-bold shadow-xl opacity-0 transition-opacity duration-300 pointer-events-none" aria-live="polite"></div>
-<script src="script.js?v=20260629h"></script>
+<script src="script.js?v=20260629i"></script>
 </body>
 </html>

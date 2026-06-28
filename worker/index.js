@@ -141,6 +141,56 @@ export default {
       }
     }
 
+    // 1-1b. 배당일 (/dividends?symbols=TQQQ,SCHD) — 과거 배당 이벤트로 다음 배당락일 추정
+    if (path === "/dividends") {
+      const symsParam = (url.searchParams.get("symbols") || "").trim();
+      const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=43200" };
+      if (!symsParam) return new Response("[]", { headers: jsonHeaders });
+      const syms = symsParam.split(",").map(s => s.trim().toUpperCase()).filter(Boolean).slice(0, 30);
+      const nowSec = Math.floor(Date.now() / 1000);
+      const toISO = (sec) => new Date(sec * 1000).toISOString().slice(0, 10);
+      try {
+        const results = await Promise.all(syms.map(async (sym) => {
+          const empty = { symbol: sym, last: null, next: null, cadenceDays: 0, ttm: 0, yieldPct: 0 };
+          try {
+            const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${sym}?range=2y&interval=1d&events=div`, { headers: { "User-Agent": "Mozilla/5.0" } });
+            const j = await r.json();
+            const res = j.chart && j.chart.result && j.chart.result[0];
+            if (!res) return empty;
+            const price = (res.meta && res.meta.regularMarketPrice) || 0;
+            const divObj = (res.events && res.events.dividends) || {};
+            const divs = Object.keys(divObj)
+              .map(k => ({ date: divObj[k].date, amount: divObj[k].amount }))
+              .filter(d => d.date && d.amount)
+              .sort((a, b) => a.date - b.date);
+            if (!divs.length) return empty;
+            const last = divs[divs.length - 1];
+            // 최근 간격들의 중앙값으로 배당 주기 추정 (월/분기/연)
+            const gaps = [];
+            for (let i = Math.max(1, divs.length - 4); i < divs.length; i++) gaps.push(divs[i].date - divs[i - 1].date);
+            let cadenceSec = 0;
+            if (gaps.length) { gaps.sort((a, b) => a - b); cadenceSec = gaps[Math.floor(gaps.length / 2)]; }
+            // 다음 배당락일 = 마지막 배당일 + 주기 (미래가 될 때까지 누적)
+            let nextSec = 0;
+            if (cadenceSec) { nextSec = last.date; while (nextSec <= nowSec) nextSec += cadenceSec; }
+            // 최근 12개월 배당 합계 → 배당수익률 추정
+            const ttm = divs.filter(d => d.date >= nowSec - 365 * 86400).reduce((s, d) => s + d.amount, 0);
+            return {
+              symbol: sym,
+              last: { date: toISO(last.date), amount: Math.round(last.amount * 10000) / 10000 },
+              next: nextSec ? toISO(nextSec) : null,
+              cadenceDays: cadenceSec ? Math.round(cadenceSec / 86400) : 0,
+              ttm: Math.round(ttm * 10000) / 10000,
+              yieldPct: price > 0 ? Math.round((ttm / price) * 10000) / 100 : 0
+            };
+          } catch (e) { return empty; }
+        }));
+        return new Response(JSON.stringify(results), { headers: jsonHeaders });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: corsHeaders });
+      }
+    }
+
     // 1-2. 종목 자동완성 검색 (/search?q=apple) - 야후 파이낸스 검색 프록시
     if (path === "/search") {
       const q = (url.searchParams.get("q") || "").trim();
