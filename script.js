@@ -4788,7 +4788,23 @@ function renderTradeLog() {
 
     var all = getAggregatedTrades();
     all = enrichTradesWithReturn(all);
-    var stats = calculateTradeStats(all);
+
+    // 필터 + 기간 (페이지 전체 적용) — 복기요약/분석/목록 모두 이 결과 사용
+    var prevTicker = tickerSelect.value;
+    var tickers = all.map(function(h) { return h.sym; }).filter(function(v, i, a) { return a.indexOf(v) === i; }).sort();
+    tickerSelect.innerHTML = '<option value="">전체 종목</option>';
+    tickers.forEach(function(sym) { tickerSelect.innerHTML += '<option value="' + sym + '">' + sym + '</option>'; });
+    if (prevTicker) tickerSelect.value = prevTicker;
+    var filterTicker = (tickerSelect.value || '').trim();
+    var filterType = (document.getElementById('tradelogType') && document.getElementById('tradelogType').value) || '';
+    var dateFrom = document.getElementById('tradelogDateFrom') && document.getElementById('tradelogDateFrom').value;
+    var dateTo = document.getElementById('tradelogDateTo') && document.getElementById('tradelogDateTo').value;
+    var filtered = all;
+    if (filterTicker) filtered = filtered.filter(function(h) { return h.sym === filterTicker; });
+    if (filterType) filtered = filtered.filter(function(h) { return h.type === filterType; });
+    if (dateFrom) filtered = filtered.filter(function(h) { return h.date >= dateFrom; });
+    if (dateTo) filtered = filtered.filter(function(h) { return h.date <= dateTo; });
+    var stats = calculateTradeStats(filtered);
 
     var statsBody = document.getElementById('tradelogReviewStatsBody');
     if (statsBody) {
@@ -4819,7 +4835,7 @@ function renderTradeLog() {
                 + '<div class="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white border-2 border-slate-900" style="left:calc(' + posPct(stats.avgReturn) + '% - 5px)"></div>'
                 + '</div></div>';
             // 최근 매매 수익률 추이 (SVG 막대)
-            var sells = (all || []).filter(function(t) { return t.type === 'SELL' && t.returnPct != null && !isNaN(t.returnPct); })
+            var sells = (filtered || []).filter(function(t) { return t.type === 'SELL' && t.returnPct != null && !isNaN(t.returnPct); })
                 .slice().sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
             var data = sells.map(function(t) { return t.returnPct; }).slice(-24);
             var spark = '';
@@ -4861,21 +4877,6 @@ function renderTradeLog() {
             tagStatsPanel.classList.add('hidden');
         }
     }
-
-    var tickers = all.map(function(h) { return h.sym; }).filter(function(v, i, a) { return a.indexOf(v) === i; }).sort();
-    tickerSelect.innerHTML = '<option value="">전체 종목</option>';
-    tickers.forEach(function(sym) { tickerSelect.innerHTML += '<option value="' + sym + '">' + sym + '</option>'; });
-
-    var filterTicker = (tickerSelect.value || '').trim();
-    var filterType = (document.getElementById('tradelogType') && document.getElementById('tradelogType').value) || '';
-    var dateFrom = document.getElementById('tradelogDateFrom') && document.getElementById('tradelogDateFrom').value;
-    var dateTo = document.getElementById('tradelogDateTo') && document.getElementById('tradelogDateTo').value;
-
-    var filtered = all;
-    if (filterTicker) filtered = filtered.filter(function(h) { return h.sym === filterTicker; });
-    if (filterType) filtered = filtered.filter(function(h) { return h.type === filterType; });
-    if (dateFrom) filtered = filtered.filter(function(h) { return h.date >= dateFrom; });
-    if (dateTo) filtered = filtered.filter(function(h) { return h.date <= dateTo; });
 
     // 사이클 그룹(종목+cycleId)별 날짜 범위 계산
     var groupMeta = {};
