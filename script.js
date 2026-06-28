@@ -3495,6 +3495,7 @@ function runAiResultLogic() {
     if(d.config.basePrice === 0) d.config.basePrice = currentPrice;
 
     saveAll(); renderStageInputs(); renderSellPlan();
+    try { renderPositionOverview(); } catch(e) {}
     showToast(modeLabels[weightMode] + ' · MDD -' + mddRecommend.toFixed(0) + '% · ' + stages + '단계 적용');
 }
 
@@ -3542,6 +3543,7 @@ function applyManualConfig() {
     }
     saveAll();
     renderStageInputs();
+    try { renderPositionOverview(); } catch(e) {}
     showStrategyMessage('manualConfigSaveMessage', '저장 완료');
 }
 
@@ -3653,6 +3655,7 @@ function applyCycleReset() {
     saveAll();
     closeCycleResetModal();
     loadTickerData(activeTicker);
+    try { renderPositionOverview(); } catch(e) {}
     showToast('사이클 리셋 완료 — 가용자금 $' + available.toFixed(2));
 }
 
@@ -3911,6 +3914,7 @@ function updateConfig() {
     }
     saveAll();
     calculatePlan();
+    try { renderPositionOverview(); } catch(e) {}
 }
 
 // --- UI/UX & Data ---
