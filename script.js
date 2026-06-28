@@ -5262,6 +5262,11 @@ function renderSellPlan() {
     if (!panel) return;
     if (d.qty > 0) {
         panel.classList.remove('hidden');
+        // 시세(현재가/MA200) — 목표 도달 판정용 (MARKET_SNAPSHOT 우선, portfolios.marketData 폴백)
+        var md = MARKET_SNAPSHOT[activeTicker] || {};
+        if ((!md.ma200 || md.ma200 <= 0) && d.marketData) md = Object.assign({}, d.marketData, md);
+        var curPrice = md.price || 0;
+
         const plans = d.config.sellPlans || [];
         for (let i = 1; i <= 3; i++) {
             const p = plans[i - 1] || {};
@@ -5271,13 +5276,48 @@ function renderSellPlan() {
             if (el) el.innerText = '$' + targetPrice.toFixed(2);
             const lbl = document.getElementById('sellTargetLabel' + i);
             if (lbl) lbl.innerText = i + '차 목표가 (순익 +' + targetPct + '%)';
+            // 도달/근접/대기 배지 + 행 강조
+            var stEl = document.getElementById('sellTargetStatus' + i);
+            var rowEl = document.getElementById('sellTargetRow' + i);
+            if (stEl && rowEl) {
+                var rowBase = 'flex justify-between items-center p-2 rounded-lg border ';
+                if (curPrice > 0 && targetPrice > 0 && curPrice >= targetPrice) {
+                    stEl.innerHTML = '<span class="text-emerald-400"><i class="fa-solid fa-bullseye mr-0.5"></i>도달</span>';
+                    rowEl.className = rowBase + 'bg-emerald-900/25 border-emerald-500/50';
+                } else if (curPrice > 0 && targetPrice > 0) {
+                    var gap = (targetPrice - curPrice) / targetPrice * 100;
+                    if (gap <= 2) {
+                        stEl.innerHTML = '<span class="text-amber-400">근접 -' + gap.toFixed(1) + '%</span>';
+                        rowEl.className = rowBase + 'bg-amber-900/15 border-amber-600/40';
+                    } else {
+                        stEl.innerHTML = '<span class="text-slate-500">대기 -' + gap.toFixed(1) + '%</span>';
+                        rowEl.className = rowBase + 'bg-slate-800 border-transparent';
+                    }
+                } else {
+                    stEl.innerHTML = '';
+                    rowEl.className = rowBase + 'bg-slate-800 border-transparent';
+                }
+            }
         }
 
-        // MA200 TREND 이탈가 (MARKET_SNAPSHOT 우선, portfolios.marketData 폴백)
-        var md = MARKET_SNAPSHOT[activeTicker] || {};
-        if ((!md.ma200 || md.ma200 <= 0) && d.marketData) md = Object.assign({}, d.marketData, md);
         const trendEl = document.getElementById('sellTrendExitPrice');
         if (trendEl) trendEl.innerText = md.ma200 > 0 ? ('$' + md.ma200.toFixed(2)) : '수신 대기';
+        // TREND 이탈 상태
+        var trendSt = document.getElementById('sellTrendStatus');
+        var trendRow = document.getElementById('sellTrendRow');
+        if (trendSt && trendRow) {
+            var trBase = 'flex justify-between items-center p-2 rounded-lg border ';
+            if (curPrice > 0 && md.ma200 > 0) {
+                if (curPrice < md.ma200) {
+                    trendSt.innerHTML = '<span class="text-red-400"><i class="fa-solid fa-arrow-trend-down mr-0.5"></i>이탈!</span>';
+                    trendRow.className = trBase + 'bg-red-900/25 border-red-500/50';
+                } else {
+                    var distMa = (curPrice - md.ma200) / md.ma200 * 100;
+                    trendSt.innerHTML = '<span class="text-slate-500">+' + distMa.toFixed(1) + '%</span>';
+                    trendRow.className = trBase + 'bg-slate-800 border-orange-500/30';
+                }
+            } else { trendSt.innerHTML = ''; trendRow.className = trBase + 'bg-slate-800 border-orange-500/30'; }
+        }
 
         // 3가지 매도 시그널 알림
         const alertsEl = document.getElementById('sellSignalAlerts');
