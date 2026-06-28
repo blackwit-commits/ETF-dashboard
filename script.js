@@ -1716,8 +1716,24 @@ function manualLoadFromCloud() {
 // ==========================================
 // 💡 UI 렌더링
 // ==========================================
-function renderInitialMarketList() { 
-    const list = document.getElementById('marketList'); 
+var _etfListQuad = undefined; // ETF 리스트가 마지막으로 렌더된 시점의 Quad
+// 모든 ETF 카드 가격/등락을 현재 스냅샷으로 다시 채움 (재렌더 직후 호출)
+function refreshAllEtfCards() {
+    ETF_DB.forEach(function (e) {
+        var md = MARKET_SNAPSHOT[e.sym];
+        if (md && !md.error && md.price > 0) updateSingleCard(e.sym, md);
+    });
+}
+// Quad가 바뀌었을 때만 ETF 리스트를 다시 그림 (현재 국면 그룹을 맨 위로/강조)
+function maybeRerenderEtfList() {
+    if (getCurrentQuad() !== _etfListQuad) {
+        renderInitialMarketList();
+        refreshAllEtfCards();
+    }
+}
+
+function renderInitialMarketList() {
+    const list = document.getElementById('marketList');
     if(!list) return;
     function getSector(e) {
         const map = {
@@ -1738,11 +1754,16 @@ function renderInitialMarketList() {
         if (!groups[sector]) groups[sector] = [];
         groups[sector].push(e);
     });
-    const order = ['Quad 1 — 성장주','Quad 2 — 인플레 수혜','Quad 3 — 방어/인버스','Quad 4 — 채권/방어주','특수 목적','전 Quad 공용','기타'];
+    let order = ['Quad 1 — 성장주','Quad 2 — 인플레 수혜','Quad 3 — 방어/인버스','Quad 4 — 채권/방어주','특수 목적','전 Quad 공용','기타'];
 
     var quadNow = getCurrentQuad();
     var quadSectorMap = {1:'Quad 1 — 성장주', 2:'Quad 2 — 인플레 수혜', 3:'Quad 3 — 방어/인버스', 4:'Quad 4 — 채권/방어주'};
     var currentQuadSector = quadSectorMap[quadNow] || '';
+    // 현재 국면 수혜 섹터를 맨 위로 끌어올림 (상단 Quad 대시보드와 직접 연결)
+    if (currentQuadSector && order.indexOf(currentQuadSector) > -1) {
+        order = [currentQuadSector].concat(order.filter(function(k){ return k !== currentQuadSector; }));
+    }
+    _etfListQuad = quadNow;
 
     list.innerHTML = order.filter(k => groups[k] && groups[k].length).map((sector, idx) => {
         const cards = groups[sector].map(e => {
@@ -1818,7 +1839,9 @@ function updateSingleCard(sym, md) {
     let stColor = md.price < md.ma200 ? 'text-red-400' : (md.rsi < 60 ? 'text-green-400' : 'text-blue-400'); 
     let stText = md.price < md.ma200 ? '하락추세' : (md.rsi < 60 ? '매수적기' : '상승추세'); 
 
-    pEl.innerText = '$' + md.price.toFixed(2);
+    var _chg = (md.change != null && !isNaN(md.change)) ? md.change : null;
+    var _chgHtml = _chg != null ? ' <span class="text-[10px] font-bold ' + chgClass(_chg) + '">' + (_chg > 0 ? '+' : '') + _chg.toFixed(1) + '%</span>' : '';
+    pEl.innerHTML = '$' + md.price.toFixed(2) + _chgHtml;
     pEl.className = "text-sm font-bold text-white";
     
     const e = ETF_DB.find(x => x.sym === sym);
@@ -2073,6 +2096,7 @@ function updateMacroDashboard() {
     try { renderUpcomingEvents(); } catch(e) { console.error('[Macro] renderUpcomingEvents:', e); }
     try { renderNewsBriefing(); } catch(e) { console.error('[Macro] renderNewsBriefing:', e); }
     try { renderHoldingStatus(); } catch(e) { console.error('[Macro] renderHoldingStatus:', e); }
+    try { maybeRerenderEtfList(); } catch(e) { console.error('[Macro] maybeRerenderEtfList:', e); }
     // 상단 전광판은 Google News RSS (startNewsTicker)가 담당
 }
 
