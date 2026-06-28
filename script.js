@@ -4255,7 +4255,7 @@ function renderTaxSummary(){
         + '<div class="grid grid-cols-3 gap-2 text-center">'
         + '<div class="bg-slate-800/60 rounded-lg py-2"><div class="text-[9px] text-slate-500 mb-0.5">과세표준</div><div class="text-[11px] font-bold text-slate-300">' + fmtW(cgt.taxable) + '</div></div>'
         + '<div class="bg-slate-800/60 rounded-lg py-2"><div class="text-[9px] text-slate-500 mb-0.5">양도세 추정</div><div class="text-[11px] font-bold text-red-400">−' + fmtW(cgt.tax) + '</div></div>'
-        + '<div class="bg-slate-800/60 rounded-lg py-2"><div class="text-[9px] text-slate-500 mb-0.5">세후 실수령</div><div class="text-[11px] font-bold ' + cls(cgt.afterTax) + '">' + sign(cgt.afterTax) + fmtW(cgt.afterTax) + '</div></div>'
+        + '<div class="bg-slate-800/60 rounded-lg py-2"><div class="text-[9px] text-slate-500 mb-0.5">세후 실손익</div><div class="text-[11px] font-bold ' + cls(cgt.afterTax) + '">' + sign(cgt.afterTax) + fmtW(cgt.afterTax) + '</div></div>'
         + '</div>'
         + (cur.krw > 0 && cgt.tax === 0 ? '<div class="text-[10px] text-emerald-400 mt-2 text-center"><i class="fa-solid fa-circle-check mr-1"></i>기본공제 250만원 이내 — 양도세 없음</div>' : '')
         + '</div>';
