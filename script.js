@@ -3154,16 +3154,17 @@ function renderStrategyProgressCard(sym) {
         }
     }
 
-    const pnlWrap = document.getElementById('progressPnlWrap');
     const pnlEl = document.getElementById('progressPnlPct');
     const avg = d.avgPrice || 0;
-    if (pnlWrap && pnlEl && currentPrice > 0 && avg > 0) {
-        const pct = ((currentPrice - avg) / avg) * 100;
-        pnlWrap.classList.remove('hidden');
-        pnlEl.innerText = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
-        pnlEl.className = 'font-black text-sm leading-tight ' + (pct >= 0 ? 'text-red-400' : 'text-blue-400');
-    } else if (pnlWrap) {
-        pnlWrap.classList.add('hidden');
+    if (pnlEl) {
+        if (currentPrice > 0 && avg > 0 && (d.qty || 0) > 0) {
+            const pct = ((currentPrice - avg) / avg) * 100;
+            pnlEl.innerText = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+            pnlEl.className = 'font-black text-base ' + (pct >= 0 ? 'text-red-400' : 'text-blue-400');
+        } else {
+            pnlEl.innerText = '미보유';
+            pnlEl.className = 'font-black text-base text-slate-500';
+        }
     }
 
     // 부스터 권장 알림: 모든 기본 단계 완료 + 현재가가 마지막 단계 아래
@@ -4006,7 +4007,7 @@ function renderPositionOverview() {
         return;
     }
     var quadNow = getCurrentQuad();
-    box.innerHTML = syms.map(function (sym) {
+    function cardHtml(sym) {
         var p = portfolios[sym];
         var md = MARKET_SNAPSHOT[sym] || {};
         var meta = ETF_DB.find(function (e) { return e.sym === sym; }) || {};
@@ -4051,8 +4052,18 @@ function renderPositionOverview() {
             + '</button>'
             + '<button type="button" onclick="deletePosition(\'' + sym + '\', event)" class="shrink-0 w-10 flex items-center justify-center text-slate-600 hover:text-red-400 active:text-red-400 border-l border-slate-700/40" title="' + sym + ' 삭제"><i class="fa-solid fa-trash-can text-xs"></i></button>'
             + '</div>';
-    }).join('')
-    + '<button type="button" onclick="openEtfSearchModal()" class="w-full rounded-xl p-3 border border-dashed border-slate-600 text-slate-400 text-xs font-bold hover:bg-slate-800/50 active:opacity-80 transition"><i class="fa-solid fa-plus mr-1.5"></i>종목 추가</button>';
+    }
+    var addBtn = '<button type="button" onclick="openEtfSearchModal()" class="w-full rounded-xl p-3 border border-dashed border-slate-600 text-slate-400 text-xs font-bold hover:bg-slate-800/50 active:opacity-80 transition"><i class="fa-solid fa-plus mr-1.5"></i>종목 추가</button>';
+    var held = syms.filter(function (s) { return (portfolios[s].qty || 0) > 0; });
+    var waiting = syms.filter(function (s) { return (portfolios[s].qty || 0) <= 0; });
+    function secHeader(label, count, icon) {
+        return '<div class="flex items-center gap-2 px-1 pt-1"><span class="text-[13px] font-bold text-slate-200">' + icon + ' ' + label + '</span><span class="text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded-full font-bold">' + count + '</span></div>';
+    }
+    var html = '';
+    if (held.length) html += secHeader('보유 종목', held.length, '<i class="fa-solid fa-wallet text-cyan-400"></i>') + held.map(cardHtml).join('');
+    if (waiting.length) html += secHeader('매수 대기', waiting.length, '<i class="fa-regular fa-clock text-slate-400"></i>') + waiting.map(cardHtml).join('');
+    html += addBtn;
+    box.innerHTML = html;
 }
 
 // 포지션 카드에서 직접 삭제 (특정 종목)

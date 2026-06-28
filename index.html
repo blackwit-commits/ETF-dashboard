@@ -9,7 +9,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260628l">
+    <link rel="stylesheet" href="style.css?v=20260628m">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -307,35 +307,23 @@
                         <div class="flex justify-between items-center border-t border-slate-800 pt-1"><span class="text-slate-500">할당 총액</span><span class="font-bold text-slate-300" id="stratExecAlloc">$0</span></div>
                     </div>
                 </div>
-                <div class="grid grid-cols-2 gap-1.5 text-xs">
-                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5"><span class="text-slate-500 text-[10px] leading-tight block">할당 비중</span><div class="font-black text-white text-sm leading-tight" id="progressAllocPct">0%</div></div>
-                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5"><span class="text-slate-500 text-[10px] leading-tight block">할당 금액</span><div class="font-black text-blue-400 text-sm leading-tight" id="progressAllocUsd">$0</div><div class="text-slate-500 text-[10px] leading-tight" id="progressAllocKrw">₩0</div></div>
-                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5"><span class="text-slate-500 text-[10px] leading-tight block">현재 매수 금액</span><div class="font-black text-white text-sm leading-tight" id="progressInvestedUsd">$0</div><div class="text-slate-500 text-[10px] leading-tight" id="progressInvestedKrw">₩0</div></div>
-                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5 flex justify-between items-start gap-2">
-                        <div class="min-w-0">
-                            <span class="text-slate-500 text-[10px] leading-tight block">보유 수량 / 평단가</span>
-                            <div class="font-black text-white text-sm leading-tight" id="progressQtyAvg">0 / $0</div>
-                        </div>
-                        <div id="progressPnlWrap" class="hidden text-right shrink-0">
-                            <span class="text-slate-500 text-[10px] leading-tight block">수익률</span>
-                            <div class="font-black text-sm leading-tight" id="progressPnlPct">0%</div>
-                        </div>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-slate-800/40 rounded-lg p-2.5">
+                        <span class="text-[10px] text-slate-500 block mb-0.5">보유 수량 / 평단가</span>
+                        <div class="font-black text-white text-sm" id="progressQtyAvg">0 / $0</div>
                     </div>
-                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5">
-                        <span class="text-slate-500 text-[10px] leading-tight block">진행 단계</span>
-                        <div class="font-black text-yellow-400 text-sm leading-tight" id="progressStage">- / -</div>
-                        <div class="text-[10px] text-slate-400 leading-tight mt-0.5" id="progressSellStage">매도: —</div>
+                    <div class="bg-slate-800/40 rounded-lg p-2.5">
+                        <span class="text-[10px] text-slate-500 block mb-0.5">평가 수익률</span>
+                        <div class="font-black text-base text-slate-500" id="progressPnlPct">미보유</div>
                     </div>
-                    <div class="bg-slate-800/40 rounded-lg px-3 py-1.5">
-                        <span class="text-slate-500 text-[10px] leading-tight block">집행률</span>
-                        <div class="font-black text-emerald-400 text-sm leading-tight" id="progressExecRate">0%</div>
-                        <div class="mt-1 h-[3px] rounded-full bg-slate-700 overflow-hidden"><div id="progressExecBar" class="h-full rounded-full bg-emerald-500/80 transition-all duration-300" style="width:0%"></div></div>
+                </div>
+                <div class="bg-slate-800/40 rounded-lg p-2.5 mt-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[10px] text-slate-500 font-bold"><i class="fa-solid fa-layer-group mr-1 text-yellow-500/70"></i>진행 단계</span>
+                        <span class="text-[10px] text-slate-500">할당 비중 <span class="text-white font-bold" id="progressAllocPct">0%</span></span>
                     </div>
-                    <div class="col-span-2 bg-slate-800/40 rounded-lg px-3 py-1 flex items-center justify-between gap-2">
-                        <span class="text-slate-500 text-[10px] shrink-0">남은 투자 가능 금액</span>
-                        <span class="font-black text-white text-sm" id="progressRemainUsd">$0</span>
-                        <span class="text-slate-500 text-[10px]" id="progressRemainKrw">₩0</span>
-                    </div>
+                    <div class="font-black text-yellow-400 text-sm mt-1" id="progressStage">- / -</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5" id="progressSellStage">매도: —</div>
                 </div>
             </div>
             
@@ -796,6 +784,6 @@
         </div>
     </div>
     <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-sm font-bold shadow-xl opacity-0 transition-opacity duration-300 pointer-events-none" aria-live="polite"></div>
-<script src="script.js?v=20260628l"></script>
+<script src="script.js?v=20260628m"></script>
 </body>
 </html>
