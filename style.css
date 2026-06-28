@@ -253,16 +253,6 @@ select:focus {
     transition: border-color 0.5s ease;
 }
 
-/* 2×2 매트릭스 현재 국면 칸 강조 */
-#quadMatrix > div { min-height: 62px; }
-.quad-current-cell {
-    /* 색상 글로우는 인라인 box-shadow(쿼드별 색)로 덮어씀 */
-    animation: quadCellIn 0.35s ease-out;
-}
-@keyframes quadCellIn {
-    from { transform: scale(0.96); opacity: 0.6; }
-    to   { transform: scale(1); opacity: 1; }
-}
 
 #newsDeep0, #newsDeep1, #newsDeep2, #newsDeep3, #newsDeep4 {
     animation: fadeSlide 0.25s ease-out;

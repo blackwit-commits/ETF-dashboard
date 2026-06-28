@@ -2015,43 +2015,54 @@ const QUAD_META = {
 const QUAD_GRID_ORDER = [3, 2, 4, 1];
 
 function renderQuadMatrix(quad) {
-    var grid = document.getElementById('quadMatrix');
-    if (!grid) return;
-    var cur = quad ? quad.current : 0;
-    grid.innerHTML = QUAD_GRID_ORDER.map(function(n) {
-        var m = QUAD_META[n];
-        var isCur = (n === cur);
-        var base = 'relative rounded-xl p-2.5 border transition-all ';
-        var cls = isCur
-            ? base + 'bg-slate-700/60 border-slate-500 ring-1 ring-slate-400/30 quad-current-cell'
-            : base + 'bg-slate-800/40 border-slate-700/50';
-        return '<div class="' + cls + '">'
-            + (isCur ? '<span class="absolute top-2 right-2 flex items-center gap-1 text-[9px] font-black ' + m.txt + '"><span class="w-1.5 h-1.5 rounded-full ' + m.dot + ' animate-pulse"></span>현재</span>' : '')
-            + '<div class="flex items-center gap-1.5 text-[10px] font-bold ' + m.txt + '"><i class="fa-solid ' + m.icon + '"></i>Q' + n + '</div>'
-            + '<div class="text-[14px] font-black leading-tight mt-1 ' + (isCur ? 'text-white' : 'text-slate-200') + '">' + m.name + '</div>'
-            + '<div class="text-[9px] mt-0.5 ' + (isCur ? 'text-slate-300' : 'text-slate-400') + '">' + m.play + '</div>'
-            + '</div>';
-    }).join('');
+    var box = document.getElementById('quadList');
+    if (!box) return;
 
-    // 요약 + 확신도
-    var sumRow  = document.getElementById('quadSummaryRow');
-    var sumText = document.getElementById('quadSummaryText');
-    var confBar = document.getElementById('quadConfBar');
-    var confVal = document.getElementById('quadConfVal');
-    if (sumRow) sumRow.classList.remove('hidden');
-    if (quad) {
-        var g = quad.growth === 'accelerating' ? '성장 가속↑' : '성장 둔화↓';
-        var i = quad.inflation === 'accelerating' ? '인플레 가속↑' : '인플레 둔화↓';
-        var mc = QUAD_META[cur] || {};
-        if (sumText) sumText.innerHTML = '<span class="' + (mc.txt||'text-white') + ' font-black">Q' + cur + ' ' + (quad.name||mc.name||'') + '</span> <span class="text-slate-200">· ' + g + ' · ' + i + '</span>';
-        var conf = quad.confidence || 0;
-        if (confBar) confBar.style.width = conf + '%';
-        if (confVal) confVal.innerText = conf + '%';
-    } else {
-        if (sumText) sumText.innerHTML = '<span class="text-slate-500"><i class="fa-solid fa-spinner fa-spin mr-1 text-[9px]"></i>AI 판정 대기 중…</span>';
-        if (confBar) confBar.style.width = '0%';
-        if (confVal) confVal.innerText = '--';
+    // 대기 상태
+    if (!quad) {
+        box.innerHTML = '<div class="flex items-center gap-2 text-slate-500 text-[12px] py-3">'
+            + '<i class="fa-solid fa-spinner fa-spin text-[11px]"></i>AI 판정 대기 중…</div>';
+        return;
     }
+
+    var cur = quad.current;
+    var mc = QUAD_META[cur] || {};
+    var g = quad.growth === 'accelerating' ? '성장 가속↑' : '성장 둔화↓';
+    var i = quad.inflation === 'accelerating' ? '인플레 가속↑' : '인플레 둔화↓';
+    var conf = quad.confidence || 0;
+
+    // 1) 현재 국면 강조 블록
+    var html = '<div class="rounded-xl bg-slate-800/50 border border-slate-700/60 p-3">'
+        + '<div class="flex items-center justify-between gap-2">'
+        +   '<div class="flex items-center gap-2 text-[15px] font-black leading-none">'
+        +     '<i class="fa-solid ' + (mc.icon||'') + ' ' + (mc.txt||'') + '"></i>'
+        +     '<span class="' + (mc.txt||'text-white') + '">Q' + cur + '</span>'
+        +     '<span class="text-white">' + (quad.name||mc.name||'') + '</span>'
+        +   '</div>'
+        +   '<span class="flex items-center gap-1 text-[10px] font-black ' + (mc.txt||'text-white') + ' shrink-0"><span class="w-1.5 h-1.5 rounded-full ' + (mc.dot||'bg-white') + ' animate-pulse"></span>현재</span>'
+        + '</div>'
+        + '<div class="text-[11px] text-slate-300 font-bold mt-1.5">' + g + ' · ' + i + '</div>'
+        + '<div class="flex items-center gap-2 mt-2">'
+        +   '<span class="text-[9px] text-slate-500 shrink-0">확신도</span>'
+        +   '<div class="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden"><div class="h-full rounded-full bg-blue-400 transition-all" style="width:' + conf + '%"></div></div>'
+        +   '<span class="text-[11px] font-black text-blue-300 shrink-0">' + conf + '%</span>'
+        + '</div>'
+        + '</div>';
+
+    // 2) 나머지 국면 목록 (번호순, 차분하게)
+    var others = [1,2,3,4].filter(function(n){ return n !== cur; });
+    html += '<div class="mt-1.5">';
+    others.forEach(function(n) {
+        var m = QUAD_META[n];
+        html += '<div class="flex items-center gap-2 px-1 py-1.5">'
+            + '<i class="fa-solid ' + m.icon + ' ' + m.txt + ' text-[11px] w-4 text-center shrink-0"></i>'
+            + '<span class="text-[12px] font-bold text-slate-300">Q' + n + ' ' + m.name + '</span>'
+            + '<span class="text-[10px] text-slate-500 ml-auto">' + m.play + '</span>'
+            + '</div>';
+    });
+    html += '</div>';
+
+    box.innerHTML = html;
 }
 
 function updateMacroDashboard() {
