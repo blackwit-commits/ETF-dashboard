@@ -3978,6 +3978,7 @@ function renderTickerBar() { const bar = document.getElementById('tickerBar'); b
 function buyStageProgress(p) {
     var total = (p && p.config && p.config.stages) ? parseInt(p.config.stages, 10) : 0;
     if (!total) return { done: 0, total: 0 };
+    if ((p.qty || 0) <= 0) return { done: 0, total: total }; // 미보유 = 0단계 (과거 매도완료 사이클 제외)
     var cycleId = (p.currentCycleId != null) ? p.currentCycleId : 0;
     var seen = {};
     (p.history || []).forEach(function (h) {
@@ -4022,35 +4023,65 @@ function renderPositionOverview() {
         if (stTotal > 0) {
             var pctFill = Math.round((stDone / stTotal) * 100);
             stageMini = '<div class="flex items-center gap-1.5">'
-                + '<span class="text-[10px] text-slate-400 font-bold whitespace-nowrap">매수 ' + stDone + '/' + stTotal + '</span>'
+                + '<span class="text-[10px] text-slate-400 font-bold whitespace-nowrap">진행단계 ' + stDone + '/' + stTotal + '</span>'
                 + '<div class="w-10 h-1.5 rounded-full bg-slate-700 overflow-hidden"><div class="h-full rounded-full bg-emerald-400" style="width:' + pctFill + '%"></div></div>'
                 + '</div>';
         }
         var pnlPill = (pnlPct == null)
             ? '<span class="text-[10px] text-slate-500 font-bold">미보유</span>'
             : '<span class="text-sm font-black ' + chgClass(pnlPct) + '">' + (pnlPct > 0 ? '+' : '') + pnlPct.toFixed(1) + '%</span>';
-        return '<button type="button" onclick="selectPosition(\'' + sym + '\')" class="w-full glass-panel rounded-xl p-3 border ' + (active ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700/60') + ' transition text-left active:opacity-80">'
-            + '<div class="flex items-center justify-between gap-2">'
-            +   '<div class="flex items-center gap-1.5 min-w-0">'
-            +     (dot ? '<span class="w-2 h-2 rounded-full ' + dot + ' shrink-0"></span>' : '')
-            +     '<span class="font-black text-white text-base">' + sym + '</span>'
-            +     (active ? '<span class="text-[8px] bg-blue-500/20 text-blue-300 px-1 py-0.5 rounded font-bold shrink-0">선택</span>' : '')
+        return '<div class="glass-panel rounded-xl border ' + (active ? 'border-blue-500 bg-blue-500/5' : 'border-slate-700/60') + ' transition flex items-stretch overflow-hidden">'
+            + '<button type="button" onclick="selectPosition(\'' + sym + '\')" class="flex-1 min-w-0 text-left p-3 active:opacity-80">'
+            +   '<div class="flex items-center justify-between gap-2">'
+            +     '<div class="flex items-center gap-1.5 min-w-0">'
+            +       (dot ? '<span class="w-2 h-2 rounded-full ' + dot + ' shrink-0"></span>' : '')
+            +       '<span class="font-black text-white text-base">' + sym + '</span>'
+            +       (active ? '<span class="text-[8px] bg-blue-500/20 text-blue-300 px-1 py-0.5 rounded font-bold shrink-0">선택</span>' : '')
+            +     '</div>'
+            +     '<div class="text-sm font-black text-white shrink-0 whitespace-nowrap">' + (price > 0 ? ('$' + price.toFixed(2)) : '--') + ' <span class="text-[11px] font-bold ' + chgClass(chg) + '">' + chgTxt + '</span></div>'
             +   '</div>'
-            +   '<div class="text-sm font-black text-white shrink-0 whitespace-nowrap">' + (price > 0 ? ('$' + price.toFixed(2)) : '--') + ' <span class="text-[11px] font-bold ' + chgClass(chg) + '">' + chgTxt + '</span></div>'
-            + '</div>'
-            + '<div class="flex items-center justify-between gap-2 mt-2">'
-            +   '<span class="text-[10px] text-slate-500 truncate">' + escapeHtml(meta.name || meta.desc || '') + '</span>'
-            +   '<div class="flex items-center gap-3 shrink-0">' + stageMini + pnlPill + '</div>'
-            + '</div>'
-            + '</button>';
+            +   '<div class="flex items-center justify-between gap-2 mt-2">'
+            +     '<span class="text-[10px] text-slate-500 truncate">' + escapeHtml(meta.name || meta.desc || '') + '</span>'
+            +     '<div class="flex items-center gap-3 shrink-0">' + stageMini + pnlPill + '</div>'
+            +   '</div>'
+            + '</button>'
+            + '<button type="button" onclick="deletePosition(\'' + sym + '\', event)" class="shrink-0 w-10 flex items-center justify-center text-slate-600 hover:text-red-400 active:text-red-400 border-l border-slate-700/40" title="' + sym + ' 삭제"><i class="fa-solid fa-trash-can text-xs"></i></button>'
+            + '</div>';
     }).join('')
     + '<button type="button" onclick="openEtfSearchModal()" class="w-full rounded-xl p-3 border border-dashed border-slate-600 text-slate-400 text-xs font-bold hover:bg-slate-800/50 active:opacity-80 transition"><i class="fa-solid fa-plus mr-1.5"></i>종목 추가</button>';
+}
+
+// 포지션 카드에서 직접 삭제 (특정 종목)
+function deletePosition(sym, ev) {
+    if (ev && ev.stopPropagation) ev.stopPropagation();
+    if (!portfolios[sym]) return;
+    if (!confirm("'" + sym + "' 종목을 삭제하시겠습니까?\n전략 설정은 삭제되지만 매매 기록은 보존됩니다.")) return;
+    var d = portfolios[sym];
+    if (d && Array.isArray(d.history) && d.history.length > 0) {
+        try {
+            var arch = JSON.parse(localStorage.getItem('umt_archived_history') || '{}');
+            arch[sym] = (arch[sym] || []).concat(d.history);
+            localStorage.setItem('umt_archived_history', JSON.stringify(arch));
+        } catch (e) { console.error('History archive failed:', e); }
+    }
+    delete portfolios[sym];
+    saveAll();
+    if (activeTicker === sym) {
+        activeTicker = null;
+        localStorage.removeItem('umt_last_ticker');
+        var keys = Object.keys(portfolios);
+        if (keys.length > 0) { selectTicker(keys[0]); }
+        else { renderTickerBar(); renderPositionOverview(); }
+    } else {
+        renderTickerBar();
+        renderPositionOverview();
+    }
 }
 
 function selectPosition(sym) {
     selectTicker(sym);
     switchStratView('status');
-    var anchor = document.getElementById('stratSubTabs');
+    var anchor = document.getElementById('stratSubTabsWrap');
     try { if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
 }
 
