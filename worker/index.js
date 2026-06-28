@@ -234,27 +234,35 @@ export default {
             }
             const text = await resp.text();
 
-            // XML 파싱: <item> 블록을 분리한 뒤 개별 필드 추출
-            const items = [];
+            // XML 파싱: <item> 블록을 분리한 뒤 개별 필드 추출 (Bing은 '관련도순'이라 전부 모아 최신순 재정렬)
+            const parsed = [];
             const itemBlocks = text.split('<item>').slice(1);
             for (let block of itemBlocks) {
-                if (items.length >= 10) break;
                 const endIdx = block.indexOf('</item>');
                 if (endIdx > 0) block = block.substring(0, endIdx);
                 const titleMatch = block.match(/<title>(.*?)<\/title>/);
                 const linkMatch = block.match(/<link>(.*?)<\/link>/);
                 const dateMatch = block.match(/<pubDate>(.*?)<\/pubDate>/);
                 if (titleMatch && linkMatch) {
-                    items.push({
+                    const ts = dateMatch ? Date.parse(dateMatch[1]) : 0;
+                    parsed.push({
                         title: titleMatch[1].replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">"),
                         url: linkMatch[1],
-                        date: dateMatch ? new Date(dateMatch[1]).toLocaleDateString() : ""
+                        ts: isNaN(ts) ? 0 : ts
                     });
                 }
             }
+            // 최신순 정렬 후 상위 10개
+            parsed.sort((a, b) => b.ts - a.ts);
+            const items = parsed.slice(0, 10).map(x => ({
+                title: x.title,
+                url: x.url,
+                date: x.ts ? new Date(x.ts).toLocaleDateString("en-US") : "",
+                ts: x.ts
+            }));
 
             return new Response(JSON.stringify(items), {
-                 headers: { ...corsHeaders, "Content-Type": "application/json" }
+                 headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=600" }
             });
         } catch(e) {
             return new Response(JSON.stringify({error: e.message, items: []}), { headers: {...corsHeaders, "Content-Type": "application/json"} });
