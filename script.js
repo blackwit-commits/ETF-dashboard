@@ -4482,6 +4482,8 @@ function recalcPortfolio(d) { const sorted = [...d.history].sort((a,b)=>new Date
     
 // 전략탭 일지 — 사이클 필터 (null=전체, cid 문자열=해당 사이클만)
 var _stratJournalCycleFilter = null;
+var _stratCycleExpanded = false;
+function toggleStratCycleExpand() { _stratCycleExpanded = !_stratCycleExpanded; renderStratCycleSummary(); }
 function filterStratCycle(cid) {
     if (cid !== null && _stratJournalCycleFilter === cid) cid = null; // 같은 카드 다시 누르면 해제
     _stratJournalCycleFilter = cid;
@@ -4538,7 +4540,8 @@ function renderStratCycleSummary() {
         return { cid:cid, b:b, s:s, avgBuy:avgBuy, avgSell:avgSell, openQty:isOpen?realHeld:0, closed:!isOpen, firstDate:firstDate, lastDate:lastDate, realized:realized, realizedPct:realizedPct };
     });
     cards.sort(function(a,b){ if(a.closed!==b.closed) return a.closed?1:-1; return (b.lastDate||'').localeCompare(a.lastDate||''); });
-    box.innerHTML = cards.map(function(c){
+    var _shown = _stratCycleExpanded ? cards : cards.slice(0, 3);
+    var _html = _shown.map(function(c){
         var statusBadge = c.closed ? '<span class="text-[9px] bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded font-bold">종료</span>' : '<span class="text-[9px] bg-emerald-900/50 text-emerald-300 px-1.5 py-0.5 rounded font-bold">보유중</span>';
         var cidLabel = c.cid==='0' ? '' : '<span class="text-[10px] text-purple-300 font-bold">사이클 #'+escapeHtml(c.cid)+'</span>';
         var pnlHtml;
@@ -4556,6 +4559,10 @@ function renderStratCycleSummary() {
             + '<div class="flex items-center justify-between mt-0.5"><span class="text-[10px] text-slate-500"><i class="fa-regular fa-clock mr-1"></i>'+period+'</span><span class="text-[9px] '+(active?'text-purple-300':'text-slate-600')+'">'+(active?'필터 해제':'이 사이클만 보기 ›')+'</span></div>'
             + '</button>';
     }).join('');
+    if (cards.length > 3) {
+        _html += '<button type="button" onclick="toggleStratCycleExpand()" class="w-full mt-1 py-2 text-[11px] text-purple-300 bg-slate-800/60 rounded-lg font-bold">' + (_stratCycleExpanded ? '접기' : ('더보기 (' + (cards.length - 3) + '개)')) + '</button>';
+    }
+    box.innerHTML = _html;
 }
 
 // 매매 기록 수정
@@ -5062,12 +5069,12 @@ function renderCycleSummary(trades) {
             + '<div class="text-[10px] text-slate-500 mt-0.5"><i class="fa-regular fa-clock mr-1"></i>' + period + (c.days ? ' (' + c.days + ')' : '') + '</div>'
             + '</div>';
     }).join('');
-    if (!_cycleExpanded && cards.length > 3) {
-        html += '<button onclick="expandCycleSummary()" class="w-full mt-1 py-2 text-[11px] text-purple-300 bg-slate-800/60 rounded-lg font-bold">더보기 (' + (cards.length - 3) + '개)</button>';
+    if (cards.length > 3) {
+        html += '<button onclick="expandCycleSummary()" class="w-full mt-1 py-2 text-[11px] text-purple-300 bg-slate-800/60 rounded-lg font-bold">' + (_cycleExpanded ? '접기' : ('더보기 (' + (cards.length - 3) + '개)')) + '</button>';
     }
     body.innerHTML = html;
 }
-function expandCycleSummary() { _cycleExpanded = true; if (_lastCycleTrades) renderCycleSummary(_lastCycleTrades); }
+function expandCycleSummary() { _cycleExpanded = !_cycleExpanded; if (_lastCycleTrades) renderCycleSummary(_lastCycleTrades); }
 
 // 매매일지 상세 — 포맷팅된 거래 카드 (체결/계획대비/분류/메모)
 function showTradeDetail(idx) {
