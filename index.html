@@ -9,7 +9,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260628d">
+    <link rel="stylesheet" href="style.css?v=20260628e">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -23,15 +23,18 @@
                 <div class="bg-slate-900 border border-slate-700 rounded-full px-2 py-0.5 flex items-center shrink-0" id="syncBadge" title="클라우드 동기화 상태">
                     <i class="fa-solid fa-cloud text-[10px] text-slate-500" id="syncIcon"></i>
                 </div>
-                <div class="flex-1 overflow-hidden h-6 flex items-center cursor-pointer" onclick="openNewsModal()">
+                <div class="flex-1 overflow-hidden h-6 flex items-center cursor-pointer" onclick="goToNewsTab()">
                     <div id="newsDisplay" class="text-xs text-slate-300 font-medium truncate w-full">시스템 준비 중...</div>
                 </div>
             </div>
-            <button onclick="location.reload()" class="ml-2 w-8 h-8 flex items-center justify-center bg-slate-800 rounded-full text-slate-400 border border-slate-700 active:bg-slate-700 active:text-white transition"><i class="fa-solid fa-rotate-right text-xs"></i></button>
-            <button onclick="openNewsModal()" class="ml-2 w-8 h-8 flex items-center justify-center bg-slate-800 rounded-full text-slate-400 border border-slate-700 active:bg-slate-700 active:text-white transition"><i class="fa-solid fa-list text-xs"></i></button>
+            <button onclick="location.reload()" class="ml-2 w-8 h-8 flex items-center justify-center bg-slate-800 rounded-full text-slate-400 border border-slate-700 active:bg-slate-700 active:text-white transition" title="새로고침"><i class="fa-solid fa-rotate-right text-xs"></i></button>
+            <button onclick="goToNewsTab()" class="ml-2 w-8 h-8 flex items-center justify-center bg-slate-800 rounded-full text-slate-400 border border-slate-700 active:bg-slate-700 active:text-white transition" title="뉴스 탭 열기"><i class="fa-solid fa-newspaper text-xs"></i></button>
         </div>
-        <div class="h-8 bg-black border-b border-slate-800 relative z-10">
-            <div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div><script type="text/javascript" src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>{ "symbols": [ { "proName": "FOREXCOM:DJI", "title": "다우" }, { "proName": "FOREXCOM:NSXUSD", "title": "나스닥" }, { "proName": "KRX:KOSPI", "title": "코스피" }, { "proName": "FX_IDC:USDKRW", "title": "원달러" }, { "proName": "CBOE:VIX", "title": "VIX" } ], "showSymbolLogo": true, "colorTheme": "dark", "isTransparent": true, "displayMode": "regular", "locale": "kr" }</script></div>
+        <div class="h-9 bg-black/40 border-b border-slate-800 relative z-10 overflow-hidden cursor-pointer flex items-center marquee-wrap" id="tickerBar" onclick="openGlobalMarketsModal()" title="글로벌 지수·환율 자세히 보기">
+            <div class="marquee-track inline-flex items-center h-full whitespace-nowrap" id="tickerTrack">
+                <span class="text-[11px] text-slate-500 px-4">시세 불러오는 중…</span>
+            </div>
+            <div class="absolute right-0 top-0 h-full w-9 flex items-center justify-center bg-gradient-to-l from-black/70 to-transparent pointer-events-none"><i class="fa-solid fa-chevron-right text-[10px] text-slate-500"></i></div>
         </div>
     </div>
 
@@ -672,6 +675,21 @@
             <div id="macroChartDetail" class="p-3 space-y-2 overflow-y-auto border-t border-slate-700" style="max-height:32vh;"></div>
         </div>
     </div>
+    <!-- 글로벌 지수·환율 모달 (전광판 클릭) -->
+    <div id="globalMarketsModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm" onclick="if(event.target===this)closeGlobalMarketsModal()">
+        <div class="bg-slate-900 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col border border-slate-700 shadow-2xl overflow-hidden">
+            <div class="flex justify-between items-center p-4 border-b border-slate-700 shrink-0">
+                <h3 class="font-bold text-white text-sm flex items-center gap-2"><i class="fa-solid fa-globe text-blue-400"></i> 글로벌 지수 · 환율</h3>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-slate-500" id="globalMarketsTime"></span>
+                    <button type="button" onclick="openGlobalMarketsModal(true)" class="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white" title="새로고침"><i class="fa-solid fa-arrows-rotate text-xs"></i></button>
+                    <button type="button" onclick="closeGlobalMarketsModal()" class="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+            <div id="globalMarketsBody" class="p-4 space-y-4 overflow-y-auto"></div>
+            <div class="px-4 py-2.5 border-t border-slate-700 text-[10px] text-slate-500 shrink-0">🔴 상승 · 🔵 하락 (국내 표기) · 지연 시세, 휴장 시 최근 종가</div>
+        </div>
+    </div>
     <div id="tradelogDetailModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-slate-900 rounded-2xl w-full max-w-sm p-5 border border-slate-600 shadow-2xl">
             <div class="flex justify-between items-center mb-3"><h3 class="font-bold text-white text-sm" id="tradelogDetailTitle">상세</h3><button type="button" onclick="closeTradeLogDetailModal()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-xmark"></i></button></div>
@@ -726,6 +744,6 @@
         </div>
     </div>
     <div id="toast" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[200] px-5 py-3 rounded-xl bg-slate-800 border border-slate-600 text-white text-sm font-bold shadow-xl opacity-0 transition-opacity duration-300 pointer-events-none" aria-live="polite"></div>
-<script src="script.js?v=20260628d"></script>
+<script src="script.js?v=20260628e"></script>
 </body>
 </html>

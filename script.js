@@ -1096,7 +1096,7 @@ function refreshNewsTickerUI() {
     const currentIndex = (typeof window.newsTickerIndex === 'number') ? window.newsTickerIndex % NEWS_FEED.length : 0;
     function tickerHtml(item) {
         const ko = item.titleKo ? "<br><span class=\"text-[10px] text-slate-500\">" + escapeHtml(item.titleKo) + "</span>" : "";
-        return "● " + escapeHtml(item.title) + ko;
+        return '<span class="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 align-middle animate-pulse"></span>' + escapeHtml(item.title) + ko;
     }
     if (listEl) {
         listEl.innerHTML = NEWS_FEED.map(n => {
@@ -1107,7 +1107,7 @@ function refreshNewsTickerUI() {
     }
     if (display) {
         display.innerHTML = tickerHtml(NEWS_FEED[currentIndex]);
-        display.onclick = () => window.open(NEWS_FEED[currentIndex].url, '_blank');
+        display.onclick = goToNewsTab;
     }
 }
 
@@ -1265,6 +1265,7 @@ function initApp() {
         }
 
         fetchNews();
+        startPriceTicker();
         fetchMarketDataInBackground();
         fetchMacroIndicatorsLive();
         fetchLiveFxRate();
@@ -2476,9 +2477,9 @@ function startNewsTicker() {
     
     function tickerHtml(item) {
         const ko = item.titleKo ? "<br><span class=\"text-[10px] text-slate-500\">" + escapeHtml(item.titleKo) + "</span>" : "";
-        return "● " + escapeHtml(item.title) + ko;
+        return '<span class="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 align-middle animate-pulse"></span>' + escapeHtml(item.title) + ko;
     }
-    
+
     let index = 0;
     window.newsTickerIndex = 0;
     const listEl = document.getElementById('fullNewsList');
@@ -2496,14 +2497,180 @@ function startNewsTicker() {
         const item = NEWS_FEED[index];
         display.classList.remove('news-slide-up'); void display.offsetWidth;
         display.innerHTML = tickerHtml(item);
-        display.onclick = () => window.open(item.url, '_blank');
+        display.onclick = goToNewsTab;
         display.classList.add('news-slide-up');
         index = (index + 1) % NEWS_FEED.length;
         window.newsTickerIndex = index;
     }, 3500); 
     
     display.innerHTML = tickerHtml(NEWS_FEED[0]);
-    display.onclick = () => window.open(NEWS_FEED[0].url, '_blank');
+    display.onclick = goToNewsTab;
+}
+
+// 헤더 뉴스/목록 → 뉴스 탭으로 이동 (A안: 헤더는 흐르는 속보, 전체는 뉴스 탭)
+function goToNewsTab() {
+    switchTab('news');
+    try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { window.scrollTo(0, 0); }
+}
+
+// ==========================================
+// 가격 전광판 (커스텀 마퀴) + 글로벌 지수·환율 모달
+// 국내 표기: 상승=빨강, 하락=파랑
+// ==========================================
+function chgClass(chg) {
+    if (chg == null || isNaN(chg)) return 'text-slate-400';
+    return chg > 0 ? 'text-red-400' : (chg < 0 ? 'text-blue-400' : 'text-slate-400');
+}
+function fmtNum(v, dec) {
+    if (v == null || isNaN(v)) return '--';
+    return Number(v).toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function fmtChgPct(chg) {
+    if (chg == null || isNaN(chg)) return '';
+    return (chg > 0 ? '▲' : (chg < 0 ? '▼' : '')) + (chg > 0 ? '+' : '') + chg.toFixed(2) + '%';
+}
+
+// 전광판 심볼 (간결하게)
+var TICKER_SYMBOLS = [
+    { sym: '^IXIC', label: '나스닥',  dec: 0 },
+    { sym: '^GSPC', label: 'S&P500', dec: 0 },
+    { sym: '^DJI',  label: '다우',    dec: 0 },
+    { sym: '^KS11', label: '코스피',  dec: 2 },
+    { sym: 'KRW=X', label: '원/달러', dec: 2 },
+    { sym: 'JPY=X', label: '엔/달러', dec: 2 },
+    { sym: '^VIX',  label: 'VIX',     dec: 2 }
+];
+var _tickerTimer = null;
+
+function tickerItemHtml(label, price, chg, dec) {
+    return '<span class="inline-flex items-baseline gap-1.5 px-4">'
+        + '<span class="text-[11px] font-bold text-slate-300">' + label + '</span>'
+        + '<span class="text-[11px] font-black text-white">' + fmtNum(price, dec) + '</span>'
+        + '<span class="text-[10px] font-bold ' + chgClass(chg) + '">' + fmtChgPct(chg) + '</span>'
+        + '</span>';
+}
+
+function startPriceTicker() {
+    refreshPriceTicker();
+    if (_tickerTimer) clearInterval(_tickerTimer);
+    _tickerTimer = setInterval(function () { if (!document.hidden) refreshPriceTicker(); }, 60000);
+}
+
+async function refreshPriceTicker() {
+    var track = document.getElementById('tickerTrack');
+    if (!track) return;
+    try {
+        var syms = TICKER_SYMBOLS.map(function (t) { return t.sym; }).join(',');
+        var res = await fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(syms));
+        var data = await res.json();
+        var map = {};
+        (data || []).forEach(function (q) { map[q.symbol] = q; });
+        var sep = '<span class="text-slate-700 px-1">·</span>';
+        var half = TICKER_SYMBOLS.map(function (t) {
+            var q = map[t.sym] || {};
+            return tickerItemHtml(t.label, q.price, q.chg, t.dec);
+        }).join(sep) + sep;
+        // 끊김 없는 무한 스크롤: 동일 세트 2벌(translateX -50%가 정확히 한 세트)
+        track.innerHTML = half + half;
+    } catch (e) {
+        track.innerHTML = '<span class="text-[11px] text-slate-500 px-4">시세를 불러오지 못했습니다</span>';
+    }
+}
+
+// 글로벌 지수·환율 모달
+var GLOBAL_MARKETS = [
+    { group: '🇺🇸 미국', items: [
+        { sym: '^GSPC', name: 'S&P 500', dec: 0 },
+        { sym: '^IXIC', name: '나스닥 종합', dec: 0 },
+        { sym: '^DJI',  name: '다우존스', dec: 0 },
+        { sym: '^VIX',  name: 'VIX 변동성', dec: 2 }
+    ]},
+    { group: '🇨🇳 중국·홍콩', items: [
+        { sym: '000001.SS', name: '상하이 종합', dec: 2 },
+        { sym: '^HSI', name: '홍콩 항셍', dec: 0 }
+    ]},
+    { group: '🇯🇵 일본', items: [
+        { sym: '^N225', name: '닛케이 225', dec: 0 }
+    ]},
+    { group: '🇪🇺 유럽', items: [
+        { sym: '^GDAXI', name: '독일 DAX', dec: 0 },
+        { sym: '^STOXX50E', name: '유로스톡스 50', dec: 0 },
+        { sym: '^FTSE', name: '영국 FTSE 100', dec: 0 }
+    ]},
+    { group: '🇰🇷 한국', items: [
+        { sym: '^KS11', name: '코스피', dec: 2 },
+        { sym: '^KQ11', name: '코스닥', dec: 2 }
+    ]},
+    { group: '💱 환율', items: [
+        { sym: 'KRW=X', name: '원/달러', dec: 2 },
+        { sym: 'JPY=X', name: '엔/달러', dec: 2 },
+        { sym: 'CNY=X', name: '위안/달러', dec: 3 },
+        { sym: 'EURUSD=X', name: '유로/달러', dec: 4 },
+        { sym: 'DX-Y.NYB', name: '달러 인덱스', dec: 2 }
+    ]},
+    { group: '🛢️ 원자재', items: [
+        { sym: 'CL=F', name: 'WTI 원유', dec: 2 },
+        { sym: 'GC=F', name: '금', dec: 1 }
+    ]}
+];
+var _globalMarketsCache = null;
+
+function openGlobalMarketsModal(force) {
+    var modal = document.getElementById('globalMarketsModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    var body = document.getElementById('globalMarketsBody');
+    if (_globalMarketsCache && force !== true) {
+        renderGlobalMarkets(_globalMarketsCache);
+    } else if (body) {
+        body.innerHTML = '<div class="flex items-center justify-center gap-2 text-slate-500 text-sm py-10"><i class="fa-solid fa-spinner fa-spin"></i> 불러오는 중…</div>';
+    }
+    loadGlobalMarkets();
+}
+function closeGlobalMarketsModal() {
+    var modal = document.getElementById('globalMarketsModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+async function loadGlobalMarkets() {
+    var allSyms = [];
+    GLOBAL_MARKETS.forEach(function (g) { g.items.forEach(function (it) { allSyms.push(it.sym); }); });
+    try {
+        var res = await fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(allSyms.join(',')));
+        var data = await res.json();
+        var map = {};
+        (data || []).forEach(function (q) { map[q.symbol] = q; });
+        _globalMarketsCache = map;
+        renderGlobalMarkets(map);
+    } catch (e) {
+        var body = document.getElementById('globalMarketsBody');
+        if (body && !_globalMarketsCache) body.innerHTML = '<div class="text-center text-red-400 text-sm py-10">시세를 불러오지 못했습니다</div>';
+    }
+}
+function renderGlobalMarkets(map) {
+    var body = document.getElementById('globalMarketsBody');
+    if (!body) return;
+    body.innerHTML = GLOBAL_MARKETS.map(function (g) {
+        var rows = g.items.map(function (it) {
+            var q = map[it.sym] || {};
+            var chg = q.chg;
+            return '<div class="flex items-center justify-between py-2 border-b border-slate-800/70 last:border-0">'
+                + '<span class="text-[12px] text-slate-200 font-medium">' + it.name + '</span>'
+                + '<span class="flex items-baseline gap-2">'
+                +   '<span class="text-[13px] font-black text-white">' + fmtNum(q.price, it.dec) + '</span>'
+                +   '<span class="text-[11px] font-bold w-[68px] text-right ' + chgClass(chg) + '">' + (chg == null ? '--' : fmtChgPct(chg)) + '</span>'
+                + '</span>'
+                + '</div>';
+        }).join('');
+        return '<div>'
+            + '<div class="text-[11px] font-black text-slate-400 mb-1">' + g.group + '</div>'
+            + '<div class="bg-slate-800/40 rounded-xl px-3">' + rows + '</div>'
+            + '</div>';
+    }).join('');
+    var te = document.getElementById('globalMarketsTime');
+    if (te) { var d = new Date(); te.innerText = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ' 기준'; }
 }
 
 // ==========================================

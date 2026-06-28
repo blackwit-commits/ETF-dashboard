@@ -14,6 +14,20 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
+    // 배치 시세 (/quotes?symbols=^GSPC,^IXIC,KRW=X) — 전광판/글로벌 지수·환율 모달용
+    if (path === "/quotes") {
+      const raw = (url.searchParams.get("symbols") || "").trim();
+      const syms = raw.split(",").map(s => s.trim()).filter(Boolean).slice(0, 30);
+      if (!syms.length) return new Response("[]", { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const results = await Promise.all(syms.map(async (s) => {
+        const q = await fetchQuoteSimple(s);
+        return { symbol: s, price: (q && q.price != null) ? q.price : null, chg: (q && q.chg != null) ? q.chg : null };
+      }));
+      return new Response(JSON.stringify(results), {
+        headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=30" }
+      });
+    }
+
     // 1. 주가 데이터 요청 (/price?ticker=TQQQ)
     if (path === "/price") {
       const ticker = url.searchParams.get("ticker");
@@ -583,6 +597,22 @@ async function fetchQuoteBrief(symbol) {
     const meta = d.chart.result[0].meta;
     const price = meta.regularMarketPrice;
     const prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
+    const chg = (prev && price) ? ((price - prev) / prev) * 100 : 0;
+    return { price, chg };
+  } catch (e) { return null; }
+}
+
+// 전광판/지수 모달용 시세 — 종가 배열 기반 등락률(선물 연속계약 chartPreviousClose 오류 방지)
+async function fetchQuoteSimple(symbol) {
+  try {
+    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=7d`, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const d = await r.json();
+    const res = d.chart.result[0];
+    const meta = res.meta;
+    const closes = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []).filter(v => v != null);
+    const price = meta.regularMarketPrice != null ? meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
+    let prev = closes.length >= 2 ? closes[closes.length - 2] : null;
+    if (prev == null) prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
     const chg = (prev && price) ? ((price - prev) / prev) * 100 : 0;
     return { price, chg };
   } catch (e) { return null; }

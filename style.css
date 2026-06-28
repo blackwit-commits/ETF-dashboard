@@ -185,6 +185,20 @@ select:focus {
     display: none;
 }
 
+/* 가격 전광판 마퀴 (끊김 없는 무한 스크롤) */
+.marquee-track {
+    animation: tickerScroll 38s linear infinite;
+    will-change: transform;
+}
+.marquee-wrap:hover .marquee-track,
+.marquee-wrap:active .marquee-track {
+    animation-play-state: paused;
+}
+@keyframes tickerScroll {
+    from { transform: translateX(0); }
+    to   { transform: translateX(-50%); }
+}
+
 /* 전략탭 계획가/실제매수가 표시(2열 고정) */
 .strategy-plan-table{
     table-layout: fixed;
