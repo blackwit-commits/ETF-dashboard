@@ -2894,7 +2894,7 @@ function switchTab(id) {
     stopNewsAutoRefresh();
     if(id==='news') { setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
-    if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); }
+    if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); var _ao=document.getElementById('alertOwnerToggle'); if(_ao) _ao.checked = localStorage.getItem('umt_alert_owner')==='1'; }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }
 
@@ -5997,7 +5997,15 @@ function saveSettings() {
     
 // ── 텔레그램 목표 도달 알림용: 보유 종목 목표가를 워커 KV에 동기화 (디바운스) ──
 var _posSyncTimer = null;
+function setAlertOwner(el){
+    if(el && el.checked){ localStorage.setItem('umt_alert_owner','1'); syncPositionsToWorker(); showToast('이 기기에서 목표가 알림을 보냅니다'); }
+    else { localStorage.removeItem('umt_alert_owner'); showToast('이 기기 알림 끔 (대시보드만 사용)'); }
+}
+
 function syncPositionsToWorker() {
+    // 목표가 알림 '소유자' 기기에서만 KV에 포지션을 올린다.
+    // (지인 공유 시 친구 기기가 공유 KV를 덮어써 내 알림이 깨지는 것 방지 — 친구는 기본 OFF)
+    if (localStorage.getItem('umt_alert_owner') !== '1') return;
     if (_posSyncTimer) clearTimeout(_posSyncTimer);
     _posSyncTimer = setTimeout(doSyncPositions, 1500);
 }
