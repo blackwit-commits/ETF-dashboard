@@ -2974,6 +2974,8 @@ function openSectorChart(sym, name) {
 // 주요 지수 클릭 → /ohlc + Lightweight 차트 (코스피/코스닥 포함 모든 지수 안정적, TradingView 심볼 제약 회피)
 var _indexChart = null;
 var _indexResizeObs = null;
+// 미국 지수는 TradingView 무료 임베드 가능 → ETF 차트와 동일한 위젯. 한국 지수/환율은 자체 차트(/ohlc)
+var INDEX_TV_MAP = { '^GSPC': 'TVC:SPX', '^IXIC': 'TVC:IXIC', '^DJI': 'TVC:DJI' };
 async function openIndexChart(sym, name) {
     var modal = document.getElementById('macroChartModal');
     var titleEl = document.getElementById('macroChartTitle');
@@ -2989,6 +2991,25 @@ async function openIndexChart(sym, name) {
             : '';
     }
     modal.classList.remove('hidden'); modal.classList.add('flex');
+    // 미국 지수 → TradingView 위젯 (ETF 차트와 동일)
+    var tv = INDEX_TV_MAP[sym];
+    if (tv && typeof TradingView !== 'undefined') {
+        if (_indexChart) { try { _indexChart.remove(); } catch (e) {} _indexChart = null; }
+        if (_indexResizeObs) { try { _indexResizeObs.disconnect(); } catch (e) {} _indexResizeObs = null; }
+        cont.innerHTML = '';
+        setTimeout(function () {
+            try {
+                _macroChartWidget = new TradingView.widget({
+                    "autosize": true, "symbol": tv, "interval": "D", "timezone": "Etc/UTC", "theme": "dark",
+                    "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false,
+                    "hide_top_toolbar": false, "hide_side_toolbar": true, "allow_symbol_change": false,
+                    "container_id": "macroChartContainer", "studies": ["MASimple@tv-basicstudies"]
+                });
+            } catch (e) { cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">차트를 불러올 수 없습니다.</div>'; }
+        }, 50);
+        return;
+    }
+    // 한국 지수/환율 → 자체 캔들 차트
     cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>차트 불러오는 중...</div>';
     try {
         var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(sym) + '&range=6mo');
