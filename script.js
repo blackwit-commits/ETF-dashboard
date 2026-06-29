@@ -2697,10 +2697,11 @@ function renderIndexGrid() {
     if (!box) return;
     box.innerHTML = HOME_INDICES.map(function (t) {
         var q = INDEX_QUOTE_MAP[t.sym] || {};
+        var _ar = (q.chg == null || isNaN(q.chg)) ? '' : (q.chg >= 0 ? '▲ ' : '▼ ');
         return '<div class="glass-panel rounded-xl p-2 cursor-pointer hover:bg-slate-800/70 transition" onclick="openIndexChart(\'' + t.sym + '\',\'' + t.label + '\')">'
-            + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold">' + t.label + '</span><span class="text-[9px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</span></div>'
-            + '<div class="text-xs font-black text-white mt-0.5">' + fmtNum(q.price, t.dec) + '</div>'
-            + '<div class="mt-1 h-5">' + (SPARK_CACHE[t.sym] ? sparkSvg(SPARK_CACHE[t.sym], 60, 20) : '') + '</div>'
+            + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold">' + t.label + '</span><span class="text-[10px] text-slate-400 font-bold">' + fmtNum(q.price, t.dec) + '</span></div>'
+            + '<div class="text-sm font-black mt-0.5 leading-none ' + chgClass(q.chg) + '">' + _ar + (fmtChgPct(q.chg) || '--').replace(/^[+\-]/, '') + '</div>'
+            + '<div class="mt-1.5 h-4">' + (SPARK_CACHE[t.sym] ? sparkSvg(SPARK_CACHE[t.sym], 60, 16) : '') + '</div>'
             + '</div>';
     }).join('');
 }
