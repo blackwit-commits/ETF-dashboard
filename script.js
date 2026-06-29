@@ -2115,6 +2115,8 @@ function renderQuadMatrix(quad) {
         cmp.innerHTML = '<i class="fa-solid ' + (mc.icon || '') + ' ' + (mc.txt || '') + ' mr-1"></i>Q' + cur + ' ' + (quad.name || mc.name || '') + ' <span class="text-slate-500 text-[11px] font-bold">· 확신 ' + conf + '%</span>';
         cmp.className = 'text-[13px] font-black truncate ' + (mc.txt || 'text-white');
     }
+    var sub = document.getElementById('quadCompactSub');
+    if (sub) sub.innerText = g + ' · ' + i;
 }
 
 function toggleQuadDetail() {
@@ -2152,9 +2154,7 @@ function renderQuadHeader() {
         tEl.innerText = mins < 60 ? (mins+'분 전 갱신') : (Math.round(mins/60)+'시간 전 갱신');
     }
 
-    // 카드 테두리 색상
-    var card = document.getElementById('quadDashboardCard');
-    if (card) { card.className = card.className.replace(/border-\w+-\d+\/\d+/g,''); card.classList.add(QUAD_BG[q.current]||''); card.style.borderTop = '2px solid'; }
+    // 카드 테두리 강조 제거 — 기본 glass-panel 유지 (요청)
 
     // 전환 리스크 바
     var trBar = document.getElementById('quadTransitionBar');
