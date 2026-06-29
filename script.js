@@ -410,6 +410,7 @@ function loadHotFromCache() {
         var cached = JSON.parse(raw);
         if (!cached || !cached._cachedAt) return null;
         if (Date.now() - cached._cachedAt > HOT_CACHE_TTL) return null;
+        if (!cached.markets) return null; // 구버전 캐시(시장별 요약 없음) → 새로 받아 갱신
         return cached;
     } catch(e) { return null; }
 }
