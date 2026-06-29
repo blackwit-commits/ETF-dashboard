@@ -5206,19 +5206,21 @@ function renderTradelogDailyPnl(trades) {
     });
 }
 function renderTradelogReasonDonut(trades) {
-    var canvas = document.getElementById('tradelogReasonChart');
-    if (!canvas || typeof Chart === 'undefined') return;
+    var box = document.getElementById('tradelogReasonList');
+    if (!box) return;
     var counts = {};
     (trades||[]).forEach(function(t){ if (t.type==='SELL') { var tag=t.tag||'—'; counts[tag]=(counts[tag]||0)+1; } });
-    var keys = Object.keys(counts);
-    if (_tlReasonChart) { try{_tlReasonChart.destroy();}catch(e){} _tlReasonChart=null; }
-    if (!keys.length) return;
+    var keys = Object.keys(counts).sort(function(a,b){ return counts[b]-counts[a]; });
+    var total = keys.reduce(function(s,k){ return s+counts[k]; }, 0);
+    if (!total) { box.innerHTML = '<div class="text-[11px] text-slate-500 text-center py-3">매도 기록 없음</div>'; return; }
     var palette = { QUANT:'#3b82f6', FOMO:'#ef4444', RESCUE:'#f59e0b', DIV:'#eab308', '—':'#64748b' };
-    _tlReasonChart = new Chart(canvas.getContext('2d'), {
-        type:'doughnut',
-        data:{ labels: keys.map(function(k){ return getTagLabel(k); }), datasets:[{ data: keys.map(function(k){ return counts[k]; }), backgroundColor: keys.map(function(k){ return palette[k]||'#8b5cf6'; }), borderWidth:0 }] },
-        options:{ responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{ legend:{ position:'bottom', labels:{ color:'#cbd5e1', font:{size:9}, boxWidth:10, padding:6 } } } }
-    });
+    box.innerHTML = keys.map(function(k){
+        var n = counts[k], pct = Math.round(n/total*100), col = palette[k]||'#8b5cf6';
+        return '<div>'
+            + '<div class="flex justify-between items-center text-[11px] mb-0.5"><span class="text-slate-300 font-bold"><span class="inline-block w-2 h-2 rounded-sm align-middle mr-1.5" style="background:'+col+'"></span>'+escapeHtml(getTagLabel(k))+'</span><span class="text-slate-400">'+n+'건 · '+pct+'%</span></div>'
+            + '<div class="h-1.5 bg-slate-800 rounded-full overflow-hidden"><div class="h-full rounded-full" style="width:'+pct+'%;background:'+col+'"></div></div>'
+            + '</div>';
+    }).join('');
 }
 
 function renderTradeLog() {
