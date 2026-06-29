@@ -534,18 +534,27 @@ export default {
     if (path === "/calendar") {
       const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
       try {
+        // KV 캐시 우선 — 있으면 즉시 반환, 12h 초과 시 백그라운드 갱신(SWR)
         if (env.UMT_KV) {
           const cached = await env.UMT_KV.get("econ_calendar", "json");
-          if (cached && cached.ts && (Date.now() - cached.ts < 12 * 3600 * 1000)) {
+          if (cached && cached.ts) {
+            if (Date.now() - cached.ts > 12 * 3600 * 1000) {
+              ctx.waitUntil(refreshCalendarToKV(env, "swr").catch(() => {}));
+            }
             return new Response(JSON.stringify(cached), { headers: jsonHeaders });
           }
         }
         if (!env.GEMINI_API_KEY) return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), { status: 500, headers: jsonHeaders });
-        const result = await callGeminiCalendar(env.GEMINI_API_KEY);
-        result.ts = Date.now();
-        if (env.UMT_KV) await env.UMT_KV.put("econ_calendar", JSON.stringify(result));
+        const result = await refreshCalendarToKV(env, "ondemand");
         return new Response(JSON.stringify(result), { headers: jsonHeaders });
       } catch (e) {
+        // 실패 시 만료된 KV라도 폴백 반환
+        if (env.UMT_KV) {
+          try {
+            const stale = await env.UMT_KV.get("econ_calendar", "json");
+            if (stale) return new Response(JSON.stringify(stale), { headers: jsonHeaders });
+          } catch (_) { /* 무시 */ }
+        }
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
       }
     }
@@ -666,10 +675,13 @@ export default {
         try { await refreshMacroToKV(env, "scheduled"); } catch (e) { /* 다음 트리거에 재시도 */ }
       })());
     }
-    // 실시간 핫이슈: 개장 전(13:00) / 마감 후(21:00) 미리 계산해 KV에 저장 → /hot 즉시 응답
+    // 실시간 핫이슈 + 경제 일정: 개장 전(13:00) / 마감 후(21:00) 미리 계산해 KV에 저장 → 즉시 응답
     if ((cron === "0 13 * * 1-5" || cron === "0 21 * * 1-5") && env.GEMINI_API_KEY) {
       ctx.waitUntil((async () => {
         try { await refreshHotToKV(env, "scheduled"); } catch (e) { /* 다음 트리거에 재시도 */ }
+      })());
+      ctx.waitUntil((async () => {
+        try { await refreshCalendarToKV(env, "scheduled"); } catch (e) { /* 다음 트리거에 재시도 */ }
       })());
     }
     // 텔레그램 정기 브리핑 (개장 전 13:00 / 마감 후 21:00 UTC 에만)
@@ -1178,6 +1190,17 @@ async function refreshHotToKV(env, source) {
   return result;
 }
 
+// 경제 일정: KV 캐시 (크론 예열 + SWR)
+async function refreshCalendarToKV(env, source) {
+  const result = await callGeminiCalendar(env.GEMINI_API_KEY);
+  result.ts = Date.now();
+  result._source = source || "ondemand";
+  if (env.UMT_KV) {
+    try { await env.UMT_KV.put("econ_calendar", JSON.stringify(result)); } catch (e) { /* KV 실패 무시 */ }
+  }
+  return result;
+}
+
 async function callGeminiMacroAnalysis(apiKey) {
   const data = await callGeminiWithFallback(apiKey, {
     contents: [{ parts: [{ text: MACRO_PROMPT }] }],
@@ -1266,7 +1289,7 @@ JSON 스키마:
 규칙: 날짜 오름차순 정렬, 최대 20개, 확실한 일정만(추측 금지), importance는 시장 영향도 기준.`;
 
 async function callGeminiCalendar(apiKey) {
-  let lastErr = "unknown";
+  let lastErr = "unknown", lastText = "";
   for (let attempt = 0; attempt < 2; attempt++) {
     const data = await callGeminiWithFallback(apiKey, {
       system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never output text, markdown, or explanations. Inside string values, never use double quotes." }] },
@@ -1278,6 +1301,7 @@ async function callGeminiCalendar(apiKey) {
     const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
     if (parts) { for (const part of parts) { if (part.text) textContent += part.text; } }
     if (!textContent) { lastErr = "No text content"; continue; }
+    lastText = textContent;
     try {
       const result = parseGeminiJson(textContent);
       if (!Array.isArray(result.events)) result.events = [];
@@ -1285,6 +1309,11 @@ async function callGeminiCalendar(apiKey) {
       return result;
     } catch (e) { lastErr = e.message; }
   }
+  // 폴백: 깨진 텍스트에서 이벤트 객체(date+name)만 개별 추출
+  try {
+    const evs = salvageObjects(lastText, o => o && o.date && o.name);
+    if (evs.length) return { events: evs.slice(0, 20), timestamp: new Date().toISOString() };
+  } catch (e) { /* 무시 */ }
   throw new Error("Calendar JSON parse failed: " + lastErr);
 }
 
@@ -1351,6 +1380,13 @@ JSON 스키마:
 function parseGeminiJson(textContent) {
   let jsonStr = textContent.trim();
   if (jsonStr.startsWith("```")) jsonStr = jsonStr.replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
+  // grounding이 JSON 앞뒤에 붙이는 prose/인용 제거: 첫 { 또는 [ 부터 마지막 } 또는 ] 까지 슬라이스
+  { const fb = jsonStr.indexOf("{"), fbk = jsonStr.indexOf("[");
+    let st = (fb >= 0 && fbk >= 0) ? Math.min(fb, fbk) : Math.max(fb, fbk);
+    if (st > 0) jsonStr = jsonStr.substring(st);
+    const lb = jsonStr.lastIndexOf("}"), lbk = jsonStr.lastIndexOf("]");
+    const en = Math.max(lb, lbk);
+    if (en >= 0 && en < jsonStr.length - 1) jsonStr = jsonStr.substring(0, en + 1); }
   // 문자열 값 안의 raw 제어문자(줄바꿈/탭 등)로 인한 파싱 실패 방지 — JSON 구조 공백은 무해
   jsonStr = jsonStr.replace(/[\u0000-\u001F]/g, " ");
   try {
@@ -1400,6 +1436,25 @@ function salvageItems(text) {
   const seen = new Set(); const out = [];
   for (const it of found) { const k = it.title; if (!seen.has(k)) { seen.add(k); out.push(it); } }
   return out;
+}
+
+// 깨진 JSON에서 조건(pred)을 만족하는 객체만 개별 추출 (범용)
+function salvageObjects(text, pred) {
+  const found = []; const stack = []; let inStr = false, esc = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === "{") stack.push(i);
+    else if (c === "}") {
+      const s = stack.pop();
+      if (s != null) {
+        const chunk = text.substring(s, i + 1).replace(/[ -]/g, " ");
+        try { const o = JSON.parse(chunk); if (pred(o)) found.push(o); } catch (e) { /* 무시 */ }
+      }
+    }
+  }
+  return found;
 }
 
 async function callGeminiHotIssues(apiKey, symbols = []) {

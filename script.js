@@ -1289,9 +1289,10 @@ function initApp() {
         var cachedWeekly = loadWeeklyFromCache();
         if (cachedWeekly) renderWeeklyReport(cachedWeekly);
 
-        // 7. 핫이슈 캐시 로드 (30분 TTL, 없으면 버튼 대기)
+        // 7. 핫이슈: 캐시(30분) 신선하면 사용, 아니면 자동으로 최신 로드 (서버 KV라 즉시 응답)
         var cachedHot = loadHotFromCache();
         if (cachedHot) renderHotIssues(cachedHot);
+        else startHotIssues();
 
         // 8. 종목·시장 뉴스 캐시 로드 (1시간 TTL, 없으면 버튼 대기)
         var cachedStockNews = loadStockNewsFromCache();
