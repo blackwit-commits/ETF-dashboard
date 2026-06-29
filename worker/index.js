@@ -123,12 +123,8 @@ export default {
         // 5. ATR 14 (Average True Range) - 새로 추가됨!
         const atr = calculateATR(validData, 14);
 
-        // 프리/애프터장 (정규장 종가 대비)
-        const mstate = quote.meta.marketState || "REGULAR";
-        let extPrice = null;
-        if (mstate === "PRE" && quote.meta.preMarketPrice != null) extPrice = quote.meta.preMarketPrice;
-        else if ((mstate === "POST" || mstate === "POSTPOST") && quote.meta.postMarketPrice != null) extPrice = quote.meta.postMarketPrice;
-        const extChg = (extPrice != null && currentPrice) ? ((extPrice - currentPrice) / currentPrice) * 100 : null;
+        // 프리/애프터장 실시간가 (분봉 기반) — 별도 호출
+        const lq = await fetchLiveQuote(ticker);
 
         const result = {
           symbol: ticker,
@@ -138,9 +134,9 @@ export default {
           ema8: ema8 || currentPrice,
           rsi: rsi || 50,
           atr: atr, // 계산된 ATR 값 응답에 포함
-          marketState: mstate,
-          extPrice: extPrice,
-          extChg: extChg
+          marketState: lq ? lq.marketState : "REGULAR",
+          extPrice: lq ? lq.extPrice : null,
+          extChg: lq ? lq.extChg : null
         };
 
         return new Response(JSON.stringify(result), {
@@ -518,24 +514,26 @@ export default {
       const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
       const ticker = url.searchParams.get("ticker");
       const range = url.searchParams.get("range") || "1y";
+      const ivReq = (url.searchParams.get("interval") || "1d").toLowerCase();
+      const interval = (ivReq === "1wk" || ivReq === "1mo") ? ivReq : "1d";   // 일/주/월봉만 허용
       if (!ticker) return new Response(JSON.stringify({ error: "ticker required" }), { status: 400, headers: jsonHeaders });
       try {
-        const yurl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=${encodeURIComponent(range)}`;
+        const yurl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${encodeURIComponent(range)}`;
         const resp = await fetch(yurl, { headers: { "User-Agent": "Mozilla/5.0" } });
         const data = await resp.json();
         const r = data.chart && data.chart.result && data.chart.result[0];
         if (!r) throw new Error("No data");
         const ts = r.timestamp || [];
         const q0 = (r.indicators && r.indicators.quote && r.indicators.quote[0]) || {};
-        const cl = q0.close || [], op = q0.open || [], hi = q0.high || [], lo = q0.low || [];
+        const cl = q0.close || [], op = q0.open || [], hi = q0.high || [], lo = q0.low || [], vol = q0.volume || [];
         const out = [];
         for (let i = 0; i < ts.length; i++) {
           if (cl[i] == null) continue;
           const d = new Date(ts[i] * 1000);
           const time = d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
-          out.push({ time, open: (op[i] != null ? op[i] : cl[i]), high: (hi[i] != null ? hi[i] : cl[i]), low: (lo[i] != null ? lo[i] : cl[i]), close: cl[i] });
+          out.push({ time, open: (op[i] != null ? op[i] : cl[i]), high: (hi[i] != null ? hi[i] : cl[i]), low: (lo[i] != null ? lo[i] : cl[i]), close: cl[i], volume: (vol[i] != null ? vol[i] : 0) });
         }
-        return new Response(JSON.stringify({ ticker, series: out }), { headers: jsonHeaders });
+        return new Response(JSON.stringify({ ticker, interval, series: out }), { headers: jsonHeaders });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
       }
@@ -771,6 +769,32 @@ async function fetchQuoteSimple(symbol) {
     const extChg = (extPrice != null && price) ? ((extPrice - price) / price) * 100 : null;
     const live = extPrice != null ? extPrice : price;   // 알림용 실시간가(프리/애프터 우선)
     return { price, chg, marketState: state, extPrice, extChg, live };
+  } catch (e) { return null; }
+}
+
+// 프리/애프터장 실시간가 — 분봉(includePrePost) 마지막 캔들 + currentTradingPeriod로 세션 판정
+async function fetchLiveQuote(symbol) {
+  try {
+    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=5m&range=1d&includePrePost=true`, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const d = await r.json();
+    const res = d.chart.result[0];
+    const meta = res.meta;
+    const ts = res.timestamp || [];
+    const cl = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []);
+    let live = null, lastTs = null;
+    for (let i = cl.length - 1; i >= 0; i--) { if (cl[i] != null) { live = cl[i]; lastTs = ts[i]; break; } }
+    const reg = meta.regularMarketPrice != null ? meta.regularMarketPrice : live;          // 직전 정규장가
+    const prevClose = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
+    const ctp = meta.currentTradingPeriod || {};
+    let state = "REGULAR";
+    if (lastTs != null && ctp.regular) {
+      if (lastTs < ctp.regular.start) state = "PRE";
+      else if (lastTs >= ctp.regular.end) state = "POST";
+    }
+    const extPrice = (state === "PRE" || state === "POST") ? live : null;                  // 연장거래가
+    const extChg = (extPrice != null && reg) ? ((extPrice - reg) / reg) * 100 : null;
+    const chg = (prevClose && reg) ? ((reg - prevClose) / prevClose) * 100 : 0;
+    return { price: reg, chg, marketState: state, extPrice, extChg, live: (live != null ? live : reg) };
   } catch (e) { return null; }
 }
 
@@ -1041,10 +1065,10 @@ async function checkTargetsAndAlert(env) {
   const msgs = [];
   for (const pos of positions) {
     if (!pos || !pos.sym) continue;
-    const q = await fetchQuoteSimple(pos.sym);
-    if (!q || q.price == null) continue;
+    const q = (await fetchLiveQuote(pos.sym)) || (await fetchQuoteSimple(pos.sym));
+    if (!q || (q.live == null && q.price == null)) continue;
     const cur = (q.live != null ? q.live : q.price);   // 프리/애프터장 우선
-    const sess = q.marketState === "PRE" ? " (프리장)" : ((q.marketState === "POST" || q.marketState === "POSTPOST") ? " (애프터장)" : "");
+    const sess = q.marketState === "PRE" ? " (프리장)" : (q.marketState === "POST" ? " (애프터장)" : "");
     // 익절 목표 도달
     (pos.targets || []).forEach((t) => {
       if (t && t.price > 0 && cur >= t.price) {

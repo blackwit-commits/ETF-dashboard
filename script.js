@@ -2972,54 +2972,50 @@ function openSectorChart(sym, name) {
 }
 
 // 주요 지수 클릭 → /ohlc + Lightweight 차트 (코스피/코스닥 포함 모든 지수 안정적, TradingView 심볼 제약 회피)
+// 주요 지수 클릭 → 자체 캔들 차트 (/ohlc): 캔들 + 거래량 + 20일선, 일봉/주봉 토글
+// (모든 지수를 자체 차트로 통일 — TradingView 한국지수 심볼 제약 회피)
 var _indexChart = null;
 var _indexResizeObs = null;
-// 미국 지수는 TradingView 무료 임베드 가능 → ETF 차트와 동일한 위젯. 한국 지수/환율은 자체 차트(/ohlc)
-var INDEX_TV_MAP = { '^GSPC': 'TVC:SPX', '^IXIC': 'TVC:IXIC', '^DJI': 'TVC:DJI' };
-async function openIndexChart(sym, name) {
+var _idxCtx = null;          // { sym, name }
+var _indexInterval = '1d';   // 1d=일봉, 1wk=주봉
+function openIndexChart(sym, name) {
     var modal = document.getElementById('macroChartModal');
     var titleEl = document.getElementById('macroChartTitle');
-    var detail = document.getElementById('macroChartDetail');
-    var cont = document.getElementById('macroChartContainer');
-    if (!modal || !cont) return;
+    if (!modal) return;
+    _idxCtx = { sym: sym, name: name };
+    _indexInterval = '1d';
     if (titleEl) titleEl.innerText = name;
-    var q = INDEX_QUOTE_MAP[sym] || {};
-    var dec = (sym === 'KRW=X' || sym === '^KS11' || sym === '^KQ11') ? 2 : 0;
-    if (detail) {
-        detail.innerHTML = (q.price != null)
-            ? '<div class="flex items-baseline gap-2"><span class="text-xl font-black text-white">' + fmtNum(q.price, dec) + '</span><span class="text-sm font-bold ' + ((q.chg >= 0) ? 'text-red-400' : 'text-blue-400') + '">' + fmtChgPct(q.chg) + '</span></div>'
-            : '';
-    }
     modal.classList.remove('hidden'); modal.classList.add('flex');
-    // 미국 지수 → TradingView 위젯 (ETF 차트와 동일)
-    var tv = INDEX_TV_MAP[sym];
-    if (tv && typeof TradingView !== 'undefined') {
-        if (_indexChart) { try { _indexChart.remove(); } catch (e) {} _indexChart = null; }
-        if (_indexResizeObs) { try { _indexResizeObs.disconnect(); } catch (e) {} _indexResizeObs = null; }
-        cont.innerHTML = '';
-        setTimeout(function () {
-            try {
-                _macroChartWidget = new TradingView.widget({
-                    "autosize": true, "symbol": tv, "interval": "D", "timezone": "Etc/UTC", "theme": "dark",
-                    "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false,
-                    "hide_top_toolbar": false, "hide_side_toolbar": true, "allow_symbol_change": false,
-                    "container_id": "macroChartContainer", "studies": ["MASimple@tv-basicstudies"]
-                });
-            } catch (e) { cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">차트를 불러올 수 없습니다.</div>'; }
-        }, 50);
-        return;
-    }
-    // 한국 지수/환율 → 자체 캔들 차트
+    _renderIndexDetail();
+    _drawIndexChart();
+}
+function setIndexChartInterval(iv) { _indexInterval = iv; _renderIndexDetail(); _drawIndexChart(); }
+function _renderIndexDetail() {
+    var detail = document.getElementById('macroChartDetail');
+    if (!detail || !_idxCtx) return;
+    var sym = _idxCtx.sym, q = INDEX_QUOTE_MAP[sym] || {};
+    var dec = (sym === 'KRW=X' || sym === '^KS11' || sym === '^KQ11') ? 2 : 0;
+    var val = (q.price != null)
+        ? '<div class="flex items-baseline gap-2"><span class="text-xl font-black text-white">' + fmtNum(q.price, dec) + '</span><span class="text-sm font-bold ' + ((q.chg >= 0) ? 'text-red-400' : 'text-blue-400') + '">' + fmtChgPct(q.chg) + '</span></div>'
+        : '';
+    function btn(iv, label) { return '<button type="button" onclick="setIndexChartInterval(\'' + iv + '\')" class="px-3 py-1 rounded-lg text-[11px] font-bold ' + (_indexInterval === iv ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400') + '">' + label + '</button>'; }
+    detail.innerHTML = val + '<div class="flex gap-1.5 mt-2">' + btn('1d', '일봉') + btn('1wk', '주봉') + '</div>';
+}
+async function _drawIndexChart() {
+    var cont = document.getElementById('macroChartContainer');
+    if (!cont || !_idxCtx) return;
+    var sym = _idxCtx.sym;
+    var range = (_indexInterval === '1wk') ? '2y' : '6mo';
     cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>차트 불러오는 중...</div>';
     try {
-        var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(sym) + '&range=6mo');
+        var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(sym) + '&range=' + range + '&interval=' + _indexInterval);
         var j = await r.json();
         var s = (j.series || []).filter(function (p) { return p.close != null; });
         if (s.length < 2 || typeof LightweightCharts === 'undefined') { cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">차트 데이터를 불러올 수 없습니다.</div>'; return; }
         cont.innerHTML = '';
         if (_indexChart) { try { _indexChart.remove(); } catch (e) {} _indexChart = null; }
         var W = cont.clientWidth || 320;
-        var H = cont.clientHeight || Math.round(window.innerHeight * 0.45);   // 모달 컨테이너(45vh) 꽉 채우기
+        var H = cont.clientHeight || Math.round(window.innerHeight * 0.45);
         var chart = LightweightCharts.createChart(cont, {
             width: W, height: H,
             layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontSize: 11 },
@@ -3028,21 +3024,23 @@ async function openIndexChart(sym, name) {
             timeScale: { borderColor: 'rgba(148,163,184,0.15)', timeVisible: false },
             crosshair: { mode: 1 }
         });
-        // ETF 차트처럼 캔들 + 20일 이동평균 (상승 빨강 / 하락 파랑, 한국식)
+        // 캔들 (상승 빨강 / 하락 파랑, 한국식) — 위 70%
         var cs = chart.addCandlestickSeries({ upColor: '#ef4444', downColor: '#3b82f6', borderUpColor: '#ef4444', borderDownColor: '#3b82f6', wickUpColor: '#ef4444', wickDownColor: '#3b82f6' });
+        cs.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: 0.26 } });
         cs.setData(s.map(function (p) { return { time: p.time, open: p.open, high: p.high, low: p.low, close: p.close }; }));
+        // 거래량 히스토그램 — 아래 20%
+        var vs = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+        chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+        vs.setData(s.map(function (p) { return { time: p.time, value: p.volume || 0, color: (p.close >= p.open) ? 'rgba(239,68,68,0.45)' : 'rgba(59,130,246,0.45)' }; }));
+        // 20기간 이동평균
         if (s.length >= 20) {
             var ma = [];
-            for (var i = 19; i < s.length; i++) {
-                var sum = 0; for (var k = i - 19; k <= i; k++) sum += s[k].close;
-                ma.push({ time: s[i].time, value: sum / 20 });
-            }
+            for (var i = 19; i < s.length; i++) { var sum = 0; for (var k = i - 19; k <= i; k++) sum += s[k].close; ma.push({ time: s[i].time, value: sum / 20 }); }
             var maSeries = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
             maSeries.setData(ma);
         }
         chart.timeScale().fitContent();
         _indexChart = chart;
-        // 모달 리사이즈 대응
         try { if (_indexResizeObs) _indexResizeObs.disconnect(); _indexResizeObs = new ResizeObserver(function () { try { chart.resize(cont.clientWidth, cont.clientHeight); } catch (e) {} }); _indexResizeObs.observe(cont); } catch (e) {}
     } catch (e) {
         cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">차트를 불러올 수 없습니다.</div>';
