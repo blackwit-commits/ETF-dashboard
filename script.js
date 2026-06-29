@@ -1273,6 +1273,11 @@ function initApp() {
         startSectorRotation();
         syncPositionsToWorker();
         fetchMarketDataInBackground();
+        // 종목 시세 주기 갱신 (90초) — 전략탭/ETF카드 가격이 멈추지 않도록
+        if (window._mktLoopTimer) clearInterval(window._mktLoopTimer);
+        window._mktLoopTimer = setInterval(function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); } catch (e) {} } }, 90000);
+        // 앱 복귀 시 즉시 시세 갱신
+        if (!window._mktVisHooked) { window._mktVisHooked = true; document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); } catch (e) {} } }); }
         fetchMacroIndicatorsLive();
         fetchLiveFxRate();
 
