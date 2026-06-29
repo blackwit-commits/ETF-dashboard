@@ -491,7 +491,7 @@ export default {
       try {
         // 가벼운 알림 형식 테스트 (?type=alert) — Gemini 호출 없이 즉시 발송
         if (url.searchParams.get("type") === "alert") {
-          const tg = await sendTelegram(env, "📢 <b>매매 알림 테스트</b>\n\n🎯 <b>SOXL</b> 1차 목표가 도달! (예시)\n목표 $242.50 (순익 +6.2%) · 현재 $243.10\n→ 매도 비중 50% 검토\n\n⚠️ <b>UGL</b> MA200 이탈! (예시)\n→ 부분 매도 검토\n\n<i>알림 연결 테스트입니다. 실제 도달 시 이렇게 전송됩니다.</i>");
+          const tg = await sendTelegram(env, "📢 <b>매매 알림 테스트</b>\n\n🔵 <b>TQQQ</b> 2차 매수가 도달! (예시)\n계획가 $78.40 · 현재 $78.10\n→ 2차 분할매수 검토\n\n🎯 <b>SOXL</b> 1차 목표가 도달! (예시)\n목표 $242.50 (순익 +6.2%) · 현재 $243.10\n→ 매도 비중 50% 검토\n\n⚠️ <b>UGL</b> MA200 이탈! (예시)\n→ 부분 매도 검토\n\n<i>알림 연결 테스트입니다. 실제 도달 시 이렇게 전송됩니다.</i>");
           return new Response(JSON.stringify({ ok: tg.ok, desc: tg.description || "" }), { headers: jsonHeaders });
         }
         const symbols = parseBriefSymbols(url.searchParams.get("symbols") || env.WATCH_TICKERS);
@@ -1036,6 +1036,16 @@ async function checkTargetsAndAlert(env) {
         }
       }
     });
+    // 매수 단계 도달 (가격 하락 → 계획 매수가 이하)
+    (pos.buyStages || []).forEach((b) => {
+      if (b && b.price > 0 && cur <= b.price) {
+        const key = pos.sym + ":B" + b.n + ":" + Number(b.price).toFixed(2);
+        if (!alerted[key]) {
+          msgs.push(`🔵 <b>${pos.sym}</b> ${b.n}차 매수가 도달!\n계획가 $${Number(b.price).toFixed(2)} · 현재 $${cur.toFixed(2)}\n→ ${b.n}차 분할매수 검토`);
+          next[key] = Date.now();
+        }
+      }
+    });
     // MA200 이탈 (회복 시 리셋)
     if (pos.ma200 > 0) {
       const tKey = pos.sym + ":TREND";
@@ -1108,7 +1118,34 @@ async function pushBriefing(env, symbols) {
   const { text, chartUrl, sectorChartUrl } = await buildMarketBriefing(env, symbols);
   if (chartUrl) await sendTelegramPhoto(env, chartUrl, "📊 <b>시장 스냅샷</b> · 당일 등락률");
   if (sectorChartUrl) await sendTelegramPhoto(env, sectorChartUrl, "🗺️ <b>섹터 히트맵</b> · 전체 시장 폭");
-  return await sendTelegramChunks(env, text);
+  let fullText = text;
+  try { const ev = await buildTodayEventsSection(env); if (ev) fullText += "\n\n" + ev; } catch (e) { /* 일정 섹션 실패는 무시 */ }
+  return await sendTelegramChunks(env, fullText);
+}
+
+// 오늘(KST) 발표 예정 주요 경제지표 — 브리핑에 첨부 (econ_calendar KV 재사용)
+function _sameMonthDay(a, md) {
+  const pa = String(a || "").split("/"), pb = md.split("/");
+  return pa.length === 2 && pb.length === 2 && parseInt(pa[0], 10) === parseInt(pb[0], 10) && parseInt(pa[1], 10) === parseInt(pb[1], 10);
+}
+async function buildTodayEventsSection(env) {
+  if (!env.UMT_KV) return "";
+  const cal = await env.UMT_KV.get("econ_calendar", "json");
+  const events = (cal && Array.isArray(cal.events)) ? cal.events : [];
+  if (!events.length) return "";
+  const nowKst = new Date(Date.now() + 9 * 3600 * 1000); // UTC→KST
+  const md = (nowKst.getUTCMonth() + 1) + "/" + nowKst.getUTCDate();
+  const today = events.filter((e) => e && _sameMonthDay(e.date, md) && (e.importance === "high" || e.importance === "medium"));
+  if (!today.length) return "";
+  const impIcon = { high: "🔴", medium: "🟠", low: "⚪" };
+  let t = "📅 <b>오늘 주요 경제지표</b>\n\n";
+  today.slice(0, 8).forEach((e) => {
+    const parts = [impIcon[e.importance] || "⚪", tgEscape(e.time || ""), tgEscape(e.country || ""), tgEscape(e.name || "")].filter(Boolean);
+    t += parts.join(" ").replace(/\s+/g, " ").trim();
+    if (e.forecast) t += ` (예상 ${tgEscape(e.forecast)})`;
+    t += "\n";
+  });
+  return t.trim();
 }
 
 // --- Gemini Flash 2.5 매크로 분석 ---

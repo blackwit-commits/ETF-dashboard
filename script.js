@@ -6130,18 +6130,41 @@ async function doSyncPositions() {
         var positions = [];
         Object.keys(portfolios || {}).forEach(function (sym) {
             var d = portfolios[sym];
-            if (!d || (d.qty || 0) <= 0 || !(d.avgPrice > 0)) return;
-            var plans = (d.config && d.config.sellPlans) || [];
-            var targets = [];
-            for (var i = 0; i < 3; i++) {
-                var p = plans[i] || {};
-                var pct = parseFloat(p.targetPct);
-                if (!pct || pct <= 0) continue;
-                targets.push({ n: i + 1, price: calcSellTargetPrice(d.avgPrice, pct), pct: pct, ratio: (p.sellRatio != null ? p.sellRatio : 50) });
-            }
+            if (!d || !d.config) return;
             var mdp = MARKET_SNAPSHOT[sym] || {};
             var ma200 = (mdp.ma200 > 0) ? mdp.ma200 : ((d.marketData && d.marketData.ma200) || 0);
-            positions.push({ sym: sym, avgPrice: d.avgPrice, qty: d.qty, ma200: ma200, targets: targets });
+
+            // 매도 목표 (보유 중일 때만)
+            var targets = [];
+            if ((d.qty || 0) > 0 && d.avgPrice > 0) {
+                var plans = d.config.sellPlans || [];
+                for (var i = 0; i < 3; i++) {
+                    var p = plans[i] || {};
+                    var pct = parseFloat(p.targetPct);
+                    if (!pct || pct <= 0) continue;
+                    targets.push({ n: i + 1, price: calcSellTargetPrice(d.avgPrice, pct), pct: pct, ratio: (p.sellRatio != null ? p.sellRatio : 50) });
+                }
+            }
+
+            // 매수 단계 (계획가 설정 시 — 아직 안 산 단계, 미보유/보유 무관)
+            var buyStages = [];
+            var base = parseFloat(d.config.basePrice) || 0;
+            var drops = d.config.drops;
+            var stages = parseInt(d.config.stages) || (Array.isArray(drops) ? drops.length : 0);
+            if (base > 0 && Array.isArray(drops) && stages > 0) {
+                var prog = buyStageProgress(d);            // {done, total}
+                var done = (prog && prog.done) || 0;
+                for (var s = done + 1; s <= stages; s++) {
+                    var dr = parseFloat(drops[s - 1]);
+                    if (isNaN(dr)) continue;
+                    var bp = base * (1 + dr / 100);
+                    if (bp > 0) buyStages.push({ n: s, price: bp });
+                }
+            }
+
+            if (targets.length || buyStages.length || (d.qty || 0) > 0) {
+                positions.push({ sym: sym, avgPrice: d.avgPrice || 0, qty: d.qty || 0, ma200: ma200, targets: targets, buyStages: buyStages });
+            }
         });
         await fetch(API_BASE_URL + '/positions', {
             method: 'POST',
