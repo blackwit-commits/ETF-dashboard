@@ -1,3 +1,7 @@
+# Node 의존성
+node_modules/
+worker/node_modules/
+
 # Cloudflare Worker 빌드/로컬 산출물
 worker/dist/
 worker/.wrangler/
