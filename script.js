@@ -1824,10 +1824,10 @@ function renderInitialMarketList() {
         };
         var barColor = barColors[sector] || 'bg-slate-500';
         var isCurrent = (sector === currentQuadSector);
-        var quadBadge = isCurrent ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-bold ml-2 animate-pulse">현재 Quad</span>' : '';
+        var quadBadge = isCurrent ? '<span class="text-[9px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-bold ml-2">현재 Quad</span>' : '';
         var tickerPreview = groups[sector].map(function(e){return e.sym;}).join(' · ');
         return `<div class="mt-3 first:mt-0">
-            <button type="button" onclick="toggleEtfSector('${sectorId}')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border ${st.bg} hover:brightness-110 transition ${isCurrent?'ring-1 ring-blue-500/50':''} relative overflow-hidden">
+            <button type="button" onclick="toggleEtfSector('${sectorId}')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border bg-slate-800/40 border-slate-700 hover:bg-slate-800/70 transition ${isCurrent?'ring-1 ring-blue-500/40':''} relative overflow-hidden">
                 <div class="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl ${barColor}"></div>
                 <div class="flex items-center gap-2.5 pl-1.5">
                     <i class="fa-solid ${st.icon} ${st.color} text-sm w-5 text-center"></i>
@@ -1900,7 +1900,7 @@ function updateRecommendationsUI() {
             var modeColors = {aggressive:'text-red-400', balanced:'text-yellow-400', defensive:'text-blue-400'};
             var price = md.price ? '$'+md.price.toFixed(2) : '--';
 
-            return '<div class="glass-panel p-3 rounded-xl border-l-4 border-purple-500 cursor-pointer mb-2 active:bg-slate-800 transition" onclick="openAnalysisModal(\''+rec.ticker+'\')">'
+            return '<div class="glass-panel p-3 rounded-xl border border-slate-700/70 cursor-pointer mb-2 active:bg-slate-800 transition" onclick="openAnalysisModal(\''+rec.ticker+'\')">'
                 + '<div class="flex justify-between items-start">'
                 + '<div>'
                 + '<div class="flex items-center gap-2"><span class="font-black text-white">'+rec.ticker+'</span><span class="text-[10px] px-1.5 py-0.5 rounded font-bold '+badge+'">'+(meta.lev||'')+'</span>'
@@ -1909,7 +1909,7 @@ function updateRecommendationsUI() {
                 + renderSignalDots(sig)
                 + '</div>'
                 + '<div class="text-right shrink-0"><div class="text-sm font-bold text-white">'+price+'</div>'
-                + '<div class="text-[9px] text-purple-400 font-bold">Quad '+quadNow+' 수혜</div></div>'
+                + '<div class="text-[9px] text-slate-500 font-bold">Quad '+quadNow+' 수혜</div></div>'
                 + '</div></div>';
         }).join('');
         return;
