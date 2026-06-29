@@ -2971,14 +2971,9 @@ function openSectorChart(sym, name) {
     }, 50);
 }
 
-// 주요 지수 클릭 → TradingView 차트 모달 (개별 지수)
-var INDEX_TV_MAP = {
-    '^KS11': 'KRX:KOSPI', '^KQ11': 'KRX:KOSDAQ',
-    '^GSPC': 'SP:SPX', '^IXIC': 'NASDAQ:IXIC', '^DJI': 'DJ:DJI',
-    'KRW=X': 'FX_IDC:USDKRW'
-};
-function openIndexChart(sym, name) {
-    var tv = INDEX_TV_MAP[sym]; if (!tv) return;
+// 주요 지수 클릭 → /ohlc + Lightweight 차트 (코스피/코스닥 포함 모든 지수 안정적, TradingView 심볼 제약 회피)
+var _indexChart = null;
+async function openIndexChart(sym, name) {
     var modal = document.getElementById('macroChartModal');
     var titleEl = document.getElementById('macroChartTitle');
     var detail = document.getElementById('macroChartDetail');
@@ -2986,27 +2981,38 @@ function openIndexChart(sym, name) {
     if (!modal || !cont) return;
     if (titleEl) titleEl.innerText = name;
     var q = INDEX_QUOTE_MAP[sym] || {};
+    var dec = (sym === 'KRW=X' || sym === '^KS11' || sym === '^KQ11') ? 2 : 0;
     if (detail) {
-        if (q.price != null) {
-            var dec = (sym === 'KRW=X' || sym === '^KS11' || sym === '^KQ11') ? 2 : 0;
-            var col = (q.chg >= 0) ? 'text-red-400' : 'text-blue-400';
-            detail.innerHTML = '<div class="flex items-baseline gap-2"><span class="text-xl font-black text-white">' + fmtNum(q.price, dec) + '</span><span class="text-sm font-bold ' + col + '">' + fmtChgPct(q.chg) + '</span></div>';
-        } else detail.innerHTML = '';
+        detail.innerHTML = (q.price != null)
+            ? '<div class="flex items-baseline gap-2"><span class="text-xl font-black text-white">' + fmtNum(q.price, dec) + '</span><span class="text-sm font-bold ' + ((q.chg >= 0) ? 'text-red-400' : 'text-blue-400') + '">' + fmtChgPct(q.chg) + '</span></div>'
+            : '';
     }
     modal.classList.remove('hidden'); modal.classList.add('flex');
-    cont.innerHTML = '';
-    setTimeout(function () {
-        try {
-            _macroChartWidget = new TradingView.widget({
-                "autosize": true, "symbol": tv, "interval": "D", "timezone": "Etc/UTC", "theme": "dark",
-                "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false,
-                "hide_top_toolbar": false, "hide_side_toolbar": true, "allow_symbol_change": false,
-                "container_id": "macroChartContainer", "studies": ["MASimple@tv-basicstudies"]
-            });
-        } catch (e) {
-            if (cont) cont.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">차트를 불러올 수 없습니다.</div>';
-        }
-    }, 50);
+    cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>차트 불러오는 중...</div>';
+    try {
+        var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(sym) + '&range=6mo');
+        var j = await r.json();
+        var s = (j.series || []).filter(function (p) { return p.close != null; });
+        if (s.length < 2 || typeof LightweightCharts === 'undefined') { cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">차트 데이터를 불러올 수 없습니다.</div>'; return; }
+        cont.innerHTML = '';
+        if (_indexChart) { try { _indexChart.remove(); } catch (e) {} _indexChart = null; }
+        var up = s[s.length - 1].close >= s[0].close;
+        var col = up ? '#f87171' : '#60a5fa';
+        var chart = LightweightCharts.createChart(cont, {
+            width: cont.clientWidth || 320, height: 320,
+            layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
+            grid: { vertLines: { color: 'rgba(148,163,184,0.08)' }, horzLines: { color: 'rgba(148,163,184,0.08)' } },
+            rightPriceScale: { borderColor: 'rgba(148,163,184,0.2)' },
+            timeScale: { borderColor: 'rgba(148,163,184,0.2)' },
+            crosshair: { mode: 0 }
+        });
+        var series = chart.addAreaSeries({ lineColor: col, lineWidth: 2, topColor: up ? 'rgba(248,113,113,0.25)' : 'rgba(96,165,250,0.25)', bottomColor: 'rgba(0,0,0,0)' });
+        series.setData(s.map(function (p) { return { time: p.time, value: p.close }; }));
+        chart.timeScale().fitContent();
+        _indexChart = chart;
+    } catch (e) {
+        cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">차트를 불러올 수 없습니다.</div>';
+    }
 }
 
 // ==========================================
@@ -3100,7 +3106,15 @@ function updateStrategyDataUI(sym) {
         var _scEl = document.getElementById('stratActiveChg');
         if (_scEl) {
             var _chg = (md.change != null && !isNaN(md.change)) ? md.change : null;
-            _scEl.innerText = (_chg != null && !md.error) ? ((_chg > 0 ? '+' : '') + _chg.toFixed(1) + '%') : '';
+            var _base = (_chg != null && !md.error) ? ((_chg > 0 ? '+' : '') + _chg.toFixed(1) + '%') : '';
+            var _isExt = (md.extPrice != null) && (md.marketState === 'PRE' || md.marketState === 'POST' || md.marketState === 'POSTPOST');
+            if (_isExt) {
+                var _lbl = (md.marketState === 'PRE') ? '프리장' : '애프터장';
+                var _ec = md.extChg;
+                _scEl.innerHTML = _base + ' <span class="' + chgClass(_ec) + '">· ' + _lbl + ' $' + md.extPrice.toFixed(2) + ' ' + (_ec >= 0 ? '+' : '') + (_ec != null ? _ec.toFixed(1) : '0') + '%</span>';
+            } else {
+                _scEl.innerText = _base;
+            }
             _scEl.className = 'text-[11px] font-bold ml-1 ' + chgClass(_chg);
         }
     }

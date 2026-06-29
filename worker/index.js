@@ -21,7 +21,8 @@ export default {
       if (!syms.length) return new Response("[]", { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const results = await Promise.all(syms.map(async (s) => {
         const q = await fetchQuoteSimple(s);
-        return { symbol: s, price: (q && q.price != null) ? q.price : null, chg: (q && q.chg != null) ? q.chg : null };
+        return { symbol: s, price: (q && q.price != null) ? q.price : null, chg: (q && q.chg != null) ? q.chg : null,
+                 state: q ? q.marketState : null, extPrice: q ? q.extPrice : null, extChg: q ? q.extChg : null };
       }));
       return new Response(JSON.stringify(results), {
         headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=30" }
@@ -64,7 +65,7 @@ export default {
 
       try {
         // 야후 파이낸스 차트 API 호출 (300일치, 일봉)
-        const yahooUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=300d`;
+        const yahooUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=300d&includePrePost=true`;
         const resp = await fetch(yahooUrl, {
             headers: { "User-Agent": "Mozilla/5.0" } // 차단 방지용 UA
         });
@@ -122,6 +123,13 @@ export default {
         // 5. ATR 14 (Average True Range) - 새로 추가됨!
         const atr = calculateATR(validData, 14);
 
+        // 프리/애프터장 (정규장 종가 대비)
+        const mstate = quote.meta.marketState || "REGULAR";
+        let extPrice = null;
+        if (mstate === "PRE" && quote.meta.preMarketPrice != null) extPrice = quote.meta.preMarketPrice;
+        else if ((mstate === "POST" || mstate === "POSTPOST") && quote.meta.postMarketPrice != null) extPrice = quote.meta.postMarketPrice;
+        const extChg = (extPrice != null && currentPrice) ? ((extPrice - currentPrice) / currentPrice) * 100 : null;
+
         const result = {
           symbol: ticker,
           price: currentPrice,
@@ -129,7 +137,10 @@ export default {
           ma200: ma200 || currentPrice, // 데이터 부족시 현재가
           ema8: ema8 || currentPrice,
           rsi: rsi || 50,
-          atr: atr // 계산된 ATR 값 응답에 포함
+          atr: atr, // 계산된 ATR 값 응답에 포함
+          marketState: mstate,
+          extPrice: extPrice,
+          extChg: extChg
         };
 
         return new Response(JSON.stringify(result), {
@@ -693,8 +704,8 @@ export default {
         } catch (e) { /* 실패는 조용히 무시 — 다음 트리거에 재시도 */ }
       })());
     }
-    // 장중 목표가 도달 / MA200 이탈 체크 (20분마다)
-    if (cron === "*/20 13-21 * * 1-5") {
+    // 목표가/매수가 도달 / MA200 이탈 체크 (20분마다, 프리장~애프터장 포함 08~23 UTC)
+    if (cron === "*/20 8-23 * * 1-5") {
       ctx.waitUntil((async () => {
         try { await checkTargetsAndAlert(env); } catch (e) { /* 무시 */ }
       })());
@@ -743,7 +754,7 @@ async function fetchQuoteBrief(symbol) {
 // 전광판/지수 모달용 시세 — 종가 배열 기반 등락률(선물 연속계약 chartPreviousClose 오류 방지)
 async function fetchQuoteSimple(symbol) {
   try {
-    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=7d`, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=7d&includePrePost=true`, { headers: { "User-Agent": "Mozilla/5.0" } });
     const d = await r.json();
     const res = d.chart.result[0];
     const meta = res.meta;
@@ -752,7 +763,14 @@ async function fetchQuoteSimple(symbol) {
     let prev = closes.length >= 2 ? closes[closes.length - 2] : null;
     if (prev == null) prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
     const chg = (prev && price) ? ((price - prev) / prev) * 100 : 0;
-    return { price, chg };
+    // 프리/애프터장 (정규장 종가 대비 등락)
+    const state = meta.marketState || "REGULAR";
+    let extPrice = null;
+    if (state === "PRE" && meta.preMarketPrice != null) extPrice = meta.preMarketPrice;
+    else if ((state === "POST" || state === "POSTPOST") && meta.postMarketPrice != null) extPrice = meta.postMarketPrice;
+    const extChg = (extPrice != null && price) ? ((extPrice - price) / price) * 100 : null;
+    const live = extPrice != null ? extPrice : price;   // 알림용 실시간가(프리/애프터 우선)
+    return { price, chg, marketState: state, extPrice, extChg, live };
   } catch (e) { return null; }
 }
 
@@ -1025,13 +1043,14 @@ async function checkTargetsAndAlert(env) {
     if (!pos || !pos.sym) continue;
     const q = await fetchQuoteSimple(pos.sym);
     if (!q || q.price == null) continue;
-    const cur = q.price;
+    const cur = (q.live != null ? q.live : q.price);   // 프리/애프터장 우선
+    const sess = q.marketState === "PRE" ? " (프리장)" : ((q.marketState === "POST" || q.marketState === "POSTPOST") ? " (애프터장)" : "");
     // 익절 목표 도달
     (pos.targets || []).forEach((t) => {
       if (t && t.price > 0 && cur >= t.price) {
         const key = pos.sym + ":T" + t.n + ":" + Number(t.price).toFixed(2);
         if (!alerted[key]) {
-          msgs.push(`🎯 <b>${pos.sym}</b> ${t.n}차 목표가 도달!\n목표 $${Number(t.price).toFixed(2)} (순익 +${t.pct}%) · 현재 $${cur.toFixed(2)}\n→ 매도 비중 ${t.ratio}% 검토`);
+          msgs.push(`🎯 <b>${pos.sym}</b> ${t.n}차 목표가 도달!${sess}\n목표 $${Number(t.price).toFixed(2)} (순익 +${t.pct}%) · 현재 $${cur.toFixed(2)}\n→ 매도 비중 ${t.ratio}% 검토`);
           next[key] = Date.now();
         }
       }
@@ -1041,7 +1060,7 @@ async function checkTargetsAndAlert(env) {
       if (b && b.price > 0 && cur <= b.price) {
         const key = pos.sym + ":B" + b.n + ":" + Number(b.price).toFixed(2);
         if (!alerted[key]) {
-          msgs.push(`🔵 <b>${pos.sym}</b> ${b.n}차 매수가 도달!\n계획가 $${Number(b.price).toFixed(2)} · 현재 $${cur.toFixed(2)}\n→ ${b.n}차 분할매수 검토`);
+          msgs.push(`🔵 <b>${pos.sym}</b> ${b.n}차 매수가 도달!${sess}\n계획가 $${Number(b.price).toFixed(2)} · 현재 $${cur.toFixed(2)}\n→ ${b.n}차 분할매수 검토`);
           next[key] = Date.now();
         }
       }
@@ -1051,7 +1070,7 @@ async function checkTargetsAndAlert(env) {
       const tKey = pos.sym + ":TREND";
       if (cur < pos.ma200) {
         if (!alerted[tKey]) {
-          msgs.push(`⚠️ <b>${pos.sym}</b> MA200 이탈!\nMA200 $${Number(pos.ma200).toFixed(2)} · 현재 $${cur.toFixed(2)}\n→ 부분 매도(추세 이탈) 검토`);
+          msgs.push(`⚠️ <b>${pos.sym}</b> MA200 이탈!${sess}\nMA200 $${Number(pos.ma200).toFixed(2)} · 현재 $${cur.toFixed(2)}\n→ 부분 매도(추세 이탈) 검토`);
           next[tKey] = Date.now();
         }
       } else {
