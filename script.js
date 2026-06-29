@@ -3222,19 +3222,8 @@ function updateStrategyDataUI(sym) {
         }
     }
 
-    // 추가 현황: 평가금액 / 오늘 손익 / 다음 매수가·목표가
+    // 다음 매수가(단계 표시) / 1차 목표가
     var _cur = md.price || 0;
-    var _valEl = document.getElementById('myValue');
-    if (_valEl) _valEl.innerText = (d.qty > 0 && _cur > 0) ? '$' + Math.round(d.qty * _cur).toLocaleString() : '--';
-    var _dayEl = document.getElementById('myDayPnL');
-    if (_dayEl) {
-        if (d.qty > 0 && _cur > 0 && md.change != null && !md.error) {
-            var _prev = _cur / (1 + md.change / 100);
-            var _day = (_cur - _prev) * d.qty;
-            _dayEl.innerHTML = (_day >= 0 ? '+$' : '-$') + Math.abs(_day).toFixed(0) + ' <span class="text-[10px]">(' + (md.change >= 0 ? '+' : '') + md.change.toFixed(1) + '%)</span>';
-            _dayEl.className = 'text-base font-black leading-tight ' + (_day >= 0 ? 'text-red-400' : 'text-blue-400');
-        } else { _dayEl.innerText = '--'; _dayEl.className = 'text-base font-black text-slate-500'; }
-    }
     var _nbEl = document.getElementById('myNextBuy');
     if (_nbEl) {
         var _nb = '--';
@@ -3243,7 +3232,7 @@ function updateStrategyDataUI(sym) {
         var _stages = (d.config && parseInt(d.config.stages)) || (Array.isArray(_drops) ? _drops.length : 0);
         if (_base > 0 && Array.isArray(_drops) && _stages > 0) {
             var _prog = buyStageProgress(d); var _done = (_prog && _prog.done) || 0;
-            if (_done < _stages) { var _dr = parseFloat(_drops[_done]); if (!isNaN(_dr)) _nb = '$' + (_base * (1 + _dr / 100)).toFixed(2); }
+            if (_done < _stages) { var _dr = parseFloat(_drops[_done]); if (!isNaN(_dr)) _nb = (_done + 1) + '차 $' + (_base * (1 + _dr / 100)).toFixed(2); }
             else _nb = '완료';
         }
         _nbEl.innerText = _nb;
@@ -3252,15 +3241,8 @@ function updateStrategyDataUI(sym) {
     if (_nsEl) {
         var _ns = '--';
         var _plans = (d.config && d.config.sellPlans) || [];
-        if (d.qty > 0 && d.avgPrice > 0) {
-            var _prices = [];
-            for (var _i = 0; _i < _plans.length; _i++) { var _p = _plans[_i] || {}; var _pct = parseFloat(_p.targetPct); if (_pct > 0) _prices.push(calcSellTargetPrice(d.avgPrice, _pct)); }
-            _prices.sort(function (a, b) { return a - b; });
-            var _nextT = null;
-            for (var _j = 0; _j < _prices.length; _j++) { if (_prices[_j] > _cur) { _nextT = _prices[_j]; break; } }
-            if (_nextT == null && _prices.length) _nextT = _prices[_prices.length - 1];
-            if (_nextT != null) _ns = '$' + _nextT.toFixed(2);
-        }
+        var _p1 = parseFloat(_plans[0] && _plans[0].targetPct);
+        if (d.avgPrice > 0 && _p1 > 0) _ns = '$' + calcSellTargetPrice(d.avgPrice, _p1).toFixed(2);
         _nsEl.innerText = _ns;
     }
 
