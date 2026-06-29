@@ -2626,23 +2626,67 @@ var HOME_INDICES = [
     { sym: '^DJI',  label: '다우',   dec: 0 },
     { sym: 'KRW=X', label: '원/달러', dec: 2 }
 ];
-async function renderIndexGrid() {
+var INDEX_QUOTE_MAP = {};      // 최신 시세 (price/chg)
+var SPARK_CACHE = {};          // 심볼별 최근 종가 배열 (추세선용)
+var _sparkTs = 0;
+
+// 가벼운 SVG 스파크라인 (상승=빨강 / 하락=파랑, 한국식)
+function sparkSvg(closes, w, h) {
+    if (!closes || closes.length < 2) return '';
+    var min = Math.min.apply(null, closes), max = Math.max.apply(null, closes);
+    var range = (max - min) || 1, n = closes.length;
+    var pts = closes.map(function (c, i) {
+        var x = (i / (n - 1)) * w;
+        var y = h - ((c - min) / range) * (h - 2) - 1;
+        return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    var up = closes[n - 1] >= closes[0];
+    var col = up ? '#f87171' : '#60a5fa';
+    return '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" class="block">'
+        + '<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>';
+}
+
+function renderIndexGrid() {
     var box = document.getElementById('indexGrid');
     if (!box) return;
+    box.innerHTML = HOME_INDICES.map(function (t) {
+        var q = INDEX_QUOTE_MAP[t.sym] || {};
+        return '<div class="glass-panel rounded-xl p-2 cursor-pointer hover:bg-slate-800/70 transition" onclick="openGlobalMarketsModal()">'
+            + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold">' + t.label + '</span><span class="text-[9px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</span></div>'
+            + '<div class="text-xs font-black text-white mt-0.5">' + fmtNum(q.price, t.dec) + '</div>'
+            + '<div class="mt-1 h-5">' + (SPARK_CACHE[t.sym] ? sparkSvg(SPARK_CACHE[t.sym], 60, 20) : '') + '</div>'
+            + '</div>';
+    }).join('');
+}
+
+// 시세(price/chg) 갱신 — 60초마다
+async function refreshIndexQuotes() {
+    if (!document.getElementById('indexGrid')) return;
     try {
         var syms = HOME_INDICES.map(function (t) { return t.sym; }).join(',');
         var res = await fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(syms));
         var data = await res.json();
-        var map = {}; (data || []).forEach(function (q) { map[q.symbol] = q; });
-        box.innerHTML = HOME_INDICES.map(function (t) {
-            var q = map[t.sym] || {};
-            return '<div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openGlobalMarketsModal()">'
-                + '<div class="text-[9px] text-slate-400 font-bold leading-none">' + t.label + '</div>'
-                + '<div class="text-xs font-black text-white mt-1">' + fmtNum(q.price, t.dec) + '</div>'
-                + '<div class="text-[9px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</div>'
-                + '</div>';
-        }).join('');
-    } catch (e) { /* 플레이스홀더 유지 */ }
+        (data || []).forEach(function (q) { INDEX_QUOTE_MAP[q.symbol] = q; });
+        renderIndexGrid();
+    } catch (e) { /* 유지 */ }
+}
+
+// 추세선 데이터(최근 1개월 종가) — 30분 캐시
+async function ensureIndexSparklines() {
+    if (!document.getElementById('indexGrid')) return;
+    if (Object.keys(SPARK_CACHE).length && Date.now() - _sparkTs < 30 * 60 * 1000) return;
+    try {
+        await Promise.all(HOME_INDICES.map(async function (t) {
+            try {
+                var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(t.sym) + '&range=1mo');
+                var j = await r.json();
+                var s = (j.series || []).map(function (p) { return p.close; }).filter(function (c) { return c != null; });
+                if (s.length >= 2) SPARK_CACHE[t.sym] = s.slice(-30);
+            } catch (e) { /* 개별 실패 무시 */ }
+        }));
+        _sparkTs = Date.now();
+        renderIndexGrid();
+    } catch (e) { /* 무시 */ }
 }
 
 function tickerItemHtml(label, price, chg, dec) {
@@ -2655,9 +2699,10 @@ function tickerItemHtml(label, price, chg, dec) {
 
 function startPriceTicker() {
     refreshPriceTicker();
-    renderIndexGrid();
+    refreshIndexQuotes();
+    ensureIndexSparklines();
     if (_tickerTimer) clearInterval(_tickerTimer);
-    _tickerTimer = setInterval(function () { if (!document.hidden) { refreshPriceTicker(); renderIndexGrid(); } }, 60000);
+    _tickerTimer = setInterval(function () { if (!document.hidden) { refreshPriceTicker(); refreshIndexQuotes(); ensureIndexSparklines(); } }, 60000);
 }
 
 async function refreshPriceTicker() {
@@ -2928,7 +2973,7 @@ function switchTab(id) {
     if(id==='news') { setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); var _ao=document.getElementById('alertOwnerToggle'); if(_ao) _ao.checked = localStorage.getItem('umt_alert_owner')==='1'; }
-    if(id==='home') { try { renderIndexGrid(); } catch(e) {} }
+    if(id==='home') { try { refreshIndexQuotes(); ensureIndexSparklines(); } catch(e) {} }
     if(id==='strategy') { try { renderBenchmark(); } catch(e) {} try { renderHoldingStatus(); } catch(e) {} }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }
