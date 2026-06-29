@@ -440,6 +440,17 @@ function renderHotIssues(data) {
     var list = document.getElementById('hotIssuesList');
     if (!list) return;
     var items = (data && Array.isArray(data.items)) ? data.items : [];
+    // 오래된 항목 방어 필터 — 핫이슈는 최근(약 36h 이내)만 (hours_ago 또는 time 문자열 기준)
+    var _isOldHot = function(it){
+        var h = Number(it && it.hours_ago);
+        if (!isNaN(h) && h > 36) return true;
+        var t = String((it && it.time) || '');
+        if (/(주\s*전|지난주|이틀|사흘|그제|그저께)/.test(t)) return true;
+        var m = t.match(/(\d+)\s*일\s*전/); if (m && parseInt(m[1], 10) >= 2) return true;
+        return false;
+    };
+    items = items.filter(function(it){ return !_isOldHot(it); });
+    items = items.slice().sort(function(a, b){ var ha = Number(a.hours_ago), hb = Number(b.hours_ago); if (isNaN(ha)) ha = 999; if (isNaN(hb)) hb = 999; return ha - hb; });
     if (!items.length) {
         list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">표시할 핫이슈가 없습니다</div>';
         return;
