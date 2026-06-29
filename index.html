@@ -19,7 +19,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260630m">
+    <link rel="stylesheet" href="style.css?v=20260630n">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -62,37 +62,6 @@
                     <button onclick="dismissInstall()" class="text-slate-500 hover:text-white px-2 py-1.5"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
-            <!-- ■ 1. Quad 대시보드 -->
-            <div class="glass-panel rounded-2xl p-4 relative overflow-hidden" id="quadDashboardCard">
-                <!-- 헤더 -->
-                <div class="flex items-center justify-between mb-1">
-                    <div class="flex items-center gap-2">
-                        <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Quad Dashboard</h2>
-                        <span class="text-[9px] text-slate-600" id="quadUpdateTime"></span>
-                    </div>
-                    <button onclick="startMacroAnalysis()" class="w-7 h-7 flex items-center justify-center bg-slate-800/60 rounded-full text-slate-500 hover:text-white text-[10px] transition" title="매크로 데이터 새로고침"><i class="fa-solid fa-arrows-rotate"></i></button>
-                </div>
-                <!-- Quad 국면 목록 (현재 강조 + 나머지) -->
-                <div id="quadList"></div>
-
-                <!-- Quad 전환 리스크 바 -->
-                <div id="quadTransitionBar" class="hidden mt-2.5 pt-2.5 border-t border-slate-700/50">
-                    <div class="text-[9px] text-slate-500 font-bold mb-2 uppercase tracking-wider">다음 국면 전환 가능성</div>
-                    <div class="space-y-1.5" id="quadTransitionGrid"></div>
-                </div>
-                <!-- 이벤트 오버레이 -->
-                <div id="eventOverlayArea" class="hidden mt-3 pt-2.5 border-t border-slate-700/50">
-                    <div class="text-[9px] text-slate-500 font-bold mb-2 uppercase tracking-wider">주요 이벤트</div>
-                    <div class="space-y-1.5" id="eventOverlayBadges"></div>
-                </div>
-            </div>
-
-            <!-- 시장 요약 (Gemini 핫이슈 overview 재활용 — 새 API 불필요) -->
-            <div id="marketSummaryCard" class="hidden glass-panel rounded-2xl p-3 border border-slate-700">
-                <div class="text-[11px] font-bold text-slate-400 mb-1"><i class="fa-solid fa-circle-info mr-1 text-cyan-400"></i>시장 요약 <span id="marketSummaryTime" class="text-[9px] text-slate-600 font-normal"></span></div>
-                <div id="marketSummaryText" class="text-[12px] text-slate-300 leading-relaxed"></div>
-            </div>
-
             <!-- ■ 1.5 주요 지수 (국내+해외 — 일반 주식앱식 한눈에) -->
             <div>
                 <div class="flex justify-between items-center px-1 mb-1.5">
@@ -113,6 +82,38 @@
                 <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('dxy')" title="달러 인덱스 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">DXY</div><div class="text-[8px] text-slate-300 leading-none mt-0.5">달러</div><div class="text-xs font-black text-white mt-0.5" id="mkDxy">--</div><div class="text-[9px] font-bold" id="mkDxyChg">--</div></div>
                 <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('us10y')" title="미국 10년물 국채금리 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">US10Y</div><div class="text-[8px] text-slate-300 leading-none mt-0.5">美10년</div><div class="text-xs font-black text-white mt-0.5" id="mkUs10y">--</div><div class="text-[9px] font-bold" id="mkUs10yChg">--</div></div>
                 <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('vix')" title="변동성지수(공포지수) 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">VIX</div><div class="text-[8px] text-slate-300 leading-none mt-0.5">변동성</div><div class="text-xs font-black text-white mt-0.5" id="mkVix">--</div><div class="text-[9px] font-bold" id="mkVixChg">--</div></div>
+            </div>
+
+            <!-- 시장 요약 (Gemini 핫이슈 overview 재활용 — 새 API 불필요) -->
+            <div id="marketSummaryCard" class="hidden glass-panel rounded-2xl p-3 border border-slate-700">
+                <div class="text-[11px] font-bold text-slate-400 mb-1"><i class="fa-solid fa-circle-info mr-1 text-cyan-400"></i>시장 요약 <span id="marketSummaryTime" class="text-[9px] text-slate-600 font-normal"></span></div>
+                <div id="marketSummaryText" class="text-[12px] text-slate-300 leading-relaxed"></div>
+            </div>
+
+            <!-- ■ Quad 대시보드 (하루 1회 갱신 — 기본 접힘, 탭하여 펼침) -->
+            <div class="glass-panel rounded-2xl p-4 relative overflow-hidden" id="quadDashboardCard">
+                <div class="flex items-center justify-between gap-2 cursor-pointer" onclick="toggleQuadDetail()">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Quad</h2>
+                        <span id="quadCompact" class="text-[13px] font-black text-white truncate">분석 대기</span>
+                        <span class="text-[9px] text-slate-600 shrink-0" id="quadUpdateTime"></span>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                        <button onclick="event.stopPropagation();startMacroAnalysis()" class="w-7 h-7 flex items-center justify-center bg-slate-800/60 rounded-full text-slate-500 hover:text-white text-[10px] transition" title="매크로 데이터 새로고침"><i class="fa-solid fa-arrows-rotate"></i></button>
+                        <i class="fa-solid fa-chevron-down text-[11px] text-slate-500 transition-transform" id="quadChev" style="transform:rotate(-90deg)"></i>
+                    </div>
+                </div>
+                <div id="quadDetail" class="hidden mt-3">
+                    <div id="quadList"></div>
+                    <div id="quadTransitionBar" class="hidden mt-2.5 pt-2.5 border-t border-slate-700/50">
+                        <div class="text-[9px] text-slate-500 font-bold mb-2 uppercase tracking-wider">다음 국면 전환 가능성</div>
+                        <div class="space-y-1.5" id="quadTransitionGrid"></div>
+                    </div>
+                    <div id="eventOverlayArea" class="hidden mt-3 pt-2.5 border-t border-slate-700/50">
+                        <div class="text-[9px] text-slate-500 font-bold mb-2 uppercase tracking-wider">주요 이벤트</div>
+                        <div class="space-y-1.5" id="eventOverlayBadges"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- ■ 2.3 섹터 로테이션 (어느 섹터가 강한지 · 1일/1주/1개월) -->
@@ -918,7 +919,7 @@
             <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20260630m"></script>
+    <script src="script.js?v=20260630n"></script>
     <script>
     if('serviceWorker' in navigator){
         window.addEventListener('load',function(){

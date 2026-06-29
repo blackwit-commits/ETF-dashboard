@@ -2108,6 +2108,21 @@ function renderQuadMatrix(quad) {
     html += '</div>';
 
     box.innerHTML = html;
+
+    // 접힘 헤더용 컴팩트 요약 (Q2 과열 · 확신 85%)
+    var cmp = document.getElementById('quadCompact');
+    if (cmp) {
+        cmp.innerHTML = '<i class="fa-solid ' + (mc.icon || '') + ' ' + (mc.txt || '') + ' mr-1"></i>Q' + cur + ' ' + (quad.name || mc.name || '') + ' <span class="text-slate-500 text-[11px] font-bold">· 확신 ' + conf + '%</span>';
+        cmp.className = 'text-[13px] font-black truncate ' + (mc.txt || 'text-white');
+    }
+}
+
+function toggleQuadDetail() {
+    var d = document.getElementById('quadDetail');
+    var c = document.getElementById('quadChev');
+    if (!d) return;
+    var nowHidden = d.classList.toggle('hidden');
+    if (c) c.style.transform = nowHidden ? 'rotate(-90deg)' : '';
 }
 
 function updateMacroDashboard() {
