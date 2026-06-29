@@ -740,11 +740,15 @@ function fmtChg(c) {
 
 async function fetchQuoteBrief(symbol) {
   try {
-    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=7d`, { headers: { "User-Agent": "Mozilla/5.0" } });
     const d = await r.json();
-    const meta = d.chart.result[0].meta;
-    const price = meta.regularMarketPrice;
-    const prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
+    const res = d.chart.result[0];
+    const meta = res.meta;
+    // chartPreviousClose가 엉터리 값일 때가 있어 종가 배열 기준으로 등락 계산 (전광판과 동일 방식)
+    const closes = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []).filter(v => v != null);
+    const price = meta.regularMarketPrice != null ? meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
+    let prev = closes.length >= 2 ? closes[closes.length - 2] : null;
+    if (prev == null) prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
     const chg = (prev && price) ? ((price - prev) / prev) * 100 : 0;
     return { price, chg };
   } catch (e) { return null; }
