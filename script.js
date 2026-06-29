@@ -2973,6 +2973,7 @@ function openSectorChart(sym, name) {
 
 // 주요 지수 클릭 → /ohlc + Lightweight 차트 (코스피/코스닥 포함 모든 지수 안정적, TradingView 심볼 제약 회피)
 var _indexChart = null;
+var _indexResizeObs = null;
 async function openIndexChart(sym, name) {
     var modal = document.getElementById('macroChartModal');
     var titleEl = document.getElementById('macroChartTitle');
@@ -2996,20 +2997,32 @@ async function openIndexChart(sym, name) {
         if (s.length < 2 || typeof LightweightCharts === 'undefined') { cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">차트 데이터를 불러올 수 없습니다.</div>'; return; }
         cont.innerHTML = '';
         if (_indexChart) { try { _indexChart.remove(); } catch (e) {} _indexChart = null; }
-        var up = s[s.length - 1].close >= s[0].close;
-        var col = up ? '#f87171' : '#60a5fa';
+        var W = cont.clientWidth || 320;
+        var H = cont.clientHeight || Math.round(window.innerHeight * 0.45);   // 모달 컨테이너(45vh) 꽉 채우기
         var chart = LightweightCharts.createChart(cont, {
-            width: cont.clientWidth || 320, height: 320,
-            layout: { background: { color: 'transparent' }, textColor: '#94a3b8' },
-            grid: { vertLines: { color: 'rgba(148,163,184,0.08)' }, horzLines: { color: 'rgba(148,163,184,0.08)' } },
-            rightPriceScale: { borderColor: 'rgba(148,163,184,0.2)' },
-            timeScale: { borderColor: 'rgba(148,163,184,0.2)' },
-            crosshair: { mode: 0 }
+            width: W, height: H,
+            layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontSize: 11 },
+            grid: { vertLines: { color: 'rgba(148,163,184,0.06)' }, horzLines: { color: 'rgba(148,163,184,0.06)' } },
+            rightPriceScale: { borderColor: 'rgba(148,163,184,0.15)' },
+            timeScale: { borderColor: 'rgba(148,163,184,0.15)', timeVisible: false },
+            crosshair: { mode: 1 }
         });
-        var series = chart.addAreaSeries({ lineColor: col, lineWidth: 2, topColor: up ? 'rgba(248,113,113,0.25)' : 'rgba(96,165,250,0.25)', bottomColor: 'rgba(0,0,0,0)' });
-        series.setData(s.map(function (p) { return { time: p.time, value: p.close }; }));
+        // ETF 차트처럼 캔들 + 20일 이동평균 (상승 빨강 / 하락 파랑, 한국식)
+        var cs = chart.addCandlestickSeries({ upColor: '#ef4444', downColor: '#3b82f6', borderUpColor: '#ef4444', borderDownColor: '#3b82f6', wickUpColor: '#ef4444', wickDownColor: '#3b82f6' });
+        cs.setData(s.map(function (p) { return { time: p.time, open: p.open, high: p.high, low: p.low, close: p.close }; }));
+        if (s.length >= 20) {
+            var ma = [];
+            for (var i = 19; i < s.length; i++) {
+                var sum = 0; for (var k = i - 19; k <= i; k++) sum += s[k].close;
+                ma.push({ time: s[i].time, value: sum / 20 });
+            }
+            var maSeries = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+            maSeries.setData(ma);
+        }
         chart.timeScale().fitContent();
         _indexChart = chart;
+        // 모달 리사이즈 대응
+        try { if (_indexResizeObs) _indexResizeObs.disconnect(); _indexResizeObs = new ResizeObserver(function () { try { chart.resize(cont.clientWidth, cont.clientHeight); } catch (e) {} }); _indexResizeObs.observe(cont); } catch (e) {}
     } catch (e) {
         cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">차트를 불러올 수 없습니다.</div>';
     }
