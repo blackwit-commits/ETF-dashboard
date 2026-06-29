@@ -19,7 +19,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260630i">
+    <link rel="stylesheet" href="style.css?v=20260630j">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -415,6 +415,15 @@
                     <div class="text-center"><span class="text-[10px] text-slate-500 block">평단가</span><span class="text-lg font-black text-blue-400" id="myAvg">$0.00</span></div>
                     <div class="w-px h-8 bg-slate-700"></div>
                     <div class="text-center"><span class="text-[10px] text-slate-500 block">수익금</span><span class="text-lg font-black text-slate-500" id="myPnL">$0.00</span></div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 mt-2">
+                    <div class="bg-slate-800 p-2.5 rounded-xl border border-slate-700/50 text-center"><span class="text-[10px] text-slate-500 block">평가금액</span><span class="text-base font-black text-white" id="myValue">$0.00</span></div>
+                    <div class="bg-slate-800 p-2.5 rounded-xl border border-slate-700/50 text-center"><span class="text-[10px] text-slate-500 block">오늘 손익</span><span class="text-base font-black text-slate-500" id="myDayPnL">--</span></div>
+                </div>
+                <div class="flex items-center justify-center gap-4 mt-2 bg-slate-800/60 rounded-xl py-2 text-[11px] border border-slate-700/50">
+                    <span class="text-slate-400"><i class="fa-solid fa-arrow-down text-blue-400 text-[9px] mr-1"></i>다음 매수 <span class="font-bold text-blue-300" id="myNextBuy">--</span></span>
+                    <span class="w-px h-3 bg-slate-700"></span>
+                    <span class="text-slate-400"><i class="fa-solid fa-arrow-up text-red-400 text-[9px] mr-1"></i>다음 목표 <span class="font-bold text-red-300" id="myNextSell">--</span></span>
                 </div>
             </div>
 
@@ -914,7 +923,7 @@
             <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20260630i"></script>
+    <script src="script.js?v=20260630j"></script>
     <script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}</script>
 </body>
 </html>
