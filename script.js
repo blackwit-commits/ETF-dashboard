@@ -2664,7 +2664,7 @@ function renderIndexGrid() {
     if (!box) return;
     box.innerHTML = HOME_INDICES.map(function (t) {
         var q = INDEX_QUOTE_MAP[t.sym] || {};
-        return '<div class="glass-panel rounded-xl p-2 cursor-pointer hover:bg-slate-800/70 transition" onclick="openGlobalMarketsModal()">'
+        return '<div class="glass-panel rounded-xl p-2 cursor-pointer hover:bg-slate-800/70 transition" onclick="openIndexChart(\'' + t.sym + '\',\'' + t.label + '\')">'
             + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold">' + t.label + '</span><span class="text-[9px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</span></div>'
             + '<div class="text-xs font-black text-white mt-0.5">' + fmtNum(q.price, t.dec) + '</div>'
             + '<div class="mt-1 h-5">' + (SPARK_CACHE[t.sym] ? sparkSvg(SPARK_CACHE[t.sym], 60, 20) : '') + '</div>'
@@ -2681,6 +2681,7 @@ async function refreshIndexQuotes() {
         var data = await res.json();
         (data || []).forEach(function (q) { INDEX_QUOTE_MAP[q.symbol] = q; });
         renderIndexGrid();
+        renderMarketSummary(); // 분위기 배지(등락 기반) 갱신
     } catch (e) { /* 유지 */ }
 }
 
@@ -2702,18 +2703,39 @@ async function ensureIndexSparklines() {
     } catch (e) { /* 무시 */ }
 }
 
-// 홈 시장 요약 한 줄 (핫이슈 overview 재활용 — 새 API 불필요)
+// 첫 문장만 추출 (한국어 종결 '다.'/'요.' 우선, 없으면 길이 컷)
+function _firstSentence(s) {
+    var m = String(s || '').match(/^[\s\S]*?[다요][.。]/);
+    return m ? m[0].trim() : (s.length > 90 ? s.slice(0, 88) + '…' : s);
+}
+// 시장 분위기 (주요 지수 등락 폭 기반) — 한눈에 위험선호/혼조/위험회피
+function _marketMood() {
+    var ups = 0, downs = 0, tot = 0;
+    ['^KS11', '^KQ11', '^GSPC', '^IXIC', '^DJI'].forEach(function (s) {
+        var q = INDEX_QUOTE_MAP[s];
+        if (q && q.chg != null) { tot++; if (q.chg >= 0) ups++; else downs++; }
+    });
+    if (tot < 3) return null;
+    if (ups >= Math.ceil(tot * 0.6)) return { icon: '🔴', label: '위험 선호', cls: 'text-red-400', sub: '주요지수 ' + ups + '/' + tot + ' 상승' };
+    if (downs >= Math.ceil(tot * 0.6)) return { icon: '🔵', label: '위험 회피', cls: 'text-blue-400', sub: '주요지수 ' + downs + '/' + tot + ' 하락' };
+    return { icon: '🟡', label: '혼조', cls: 'text-yellow-400', sub: ups + '↑ ' + downs + '↓' };
+}
+// 홈 시장 요약 (분위기 배지 + 첫 문장 + 자세히) — 핫이슈 overview 재활용
 function renderMarketSummary() {
     var card = document.getElementById('marketSummaryCard');
     var txt = document.getElementById('marketSummaryText');
     if (!card || !txt) return;
     var hot = null; try { hot = JSON.parse(localStorage.getItem(HOT_CACHE_KEY) || 'null'); } catch (e) {}
     var summary = hot && (hot.overview || (hot.quad && hot.quad.summary));
-    if (!summary) { card.classList.add('hidden'); return; }
+    var mood = _marketMood();
+    if (!summary && !mood) { card.classList.add('hidden'); return; }
     card.classList.remove('hidden');
-    txt.innerText = summary.length > 160 ? (summary.slice(0, 158) + '…') : summary;
+    var moodHtml = mood ? '<span class="' + mood.cls + ' font-black">' + mood.icon + ' ' + mood.label + '</span> <span class="text-slate-500">· ' + mood.sub + '</span>' : '';
+    var sentence = summary ? _firstSentence(summary) : '';
+    txt.innerHTML = (moodHtml ? '<div class="mb-1 text-[12px]">' + moodHtml + '</div>' : '')
+        + (sentence ? '<span class="text-slate-300">' + escapeHtml(sentence) + '</span> <button onclick="switchTab(\'news\')" class="text-cyan-400 text-[11px] font-bold whitespace-nowrap">자세히 ›</button>' : '');
     var te = document.getElementById('marketSummaryTime');
-    if (te && hot._cachedAt) { var m = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = '· ' + (m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전'); }
+    if (te && hot && hot._cachedAt) { var m = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = '· ' + (m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전'); }
 }
 
 function tickerItemHtml(label, price, chg, dec) {
@@ -2949,10 +2971,48 @@ function openSectorChart(sym, name) {
     }, 50);
 }
 
+// 주요 지수 클릭 → TradingView 차트 모달 (개별 지수)
+var INDEX_TV_MAP = {
+    '^KS11': 'KRX:KOSPI', '^KQ11': 'KRX:KOSDAQ',
+    '^GSPC': 'SP:SPX', '^IXIC': 'NASDAQ:IXIC', '^DJI': 'DJ:DJI',
+    'KRW=X': 'FX_IDC:USDKRW'
+};
+function openIndexChart(sym, name) {
+    var tv = INDEX_TV_MAP[sym]; if (!tv) return;
+    var modal = document.getElementById('macroChartModal');
+    var titleEl = document.getElementById('macroChartTitle');
+    var detail = document.getElementById('macroChartDetail');
+    var cont = document.getElementById('macroChartContainer');
+    if (!modal || !cont) return;
+    if (titleEl) titleEl.innerText = name;
+    var q = INDEX_QUOTE_MAP[sym] || {};
+    if (detail) {
+        if (q.price != null) {
+            var dec = (sym === 'KRW=X' || sym === '^KS11' || sym === '^KQ11') ? 2 : 0;
+            var col = (q.chg >= 0) ? 'text-red-400' : 'text-blue-400';
+            detail.innerHTML = '<div class="flex items-baseline gap-2"><span class="text-xl font-black text-white">' + fmtNum(q.price, dec) + '</span><span class="text-sm font-bold ' + col + '">' + fmtChgPct(q.chg) + '</span></div>';
+        } else detail.innerHTML = '';
+    }
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+    cont.innerHTML = '';
+    setTimeout(function () {
+        try {
+            _macroChartWidget = new TradingView.widget({
+                "autosize": true, "symbol": tv, "interval": "D", "timezone": "Etc/UTC", "theme": "dark",
+                "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false,
+                "hide_top_toolbar": false, "hide_side_toolbar": true, "allow_symbol_change": false,
+                "container_id": "macroChartContainer", "studies": ["MASimple@tv-basicstudies"]
+            });
+        } catch (e) {
+            if (cont) cont.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">차트를 불러올 수 없습니다.</div>';
+        }
+    }, 50);
+}
+
 // ==========================================
 // 전략 탭 기능
 // ==========================================
-function selectTicker(sym) { 
+function selectTicker(sym) {
     activeTicker = sym; 
     localStorage.setItem('umt_last_ticker', sym); 
     
