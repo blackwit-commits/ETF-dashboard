@@ -2727,14 +2727,25 @@ function renderMarketSummary() {
     var txt = document.getElementById('marketSummaryText');
     if (!card || !txt) return;
     var hot = null; try { hot = JSON.parse(localStorage.getItem(HOT_CACHE_KEY) || 'null'); } catch (e) {}
-    var summary = hot && (hot.overview || (hot.quad && hot.quad.summary));
     var mood = _marketMood();
-    if (!summary && !mood) { card.classList.add('hidden'); return; }
+    var mk = hot && hot.markets;
+    var overview = hot && (hot.overview || (hot.quad && hot.quad.summary));
+    if (!mood && !mk && !overview) { card.classList.add('hidden'); return; }
     card.classList.remove('hidden');
-    var moodHtml = mood ? '<span class="' + mood.cls + ' font-black">' + mood.icon + ' ' + mood.label + '</span> <span class="text-slate-500">· ' + mood.sub + '</span>' : '';
-    var sentence = summary ? _firstSentence(summary) : '';
-    txt.innerHTML = (moodHtml ? '<div class="mb-1 text-[12px]">' + moodHtml + '</div>' : '')
-        + (sentence ? '<span class="text-slate-300">' + escapeHtml(sentence) + '</span> <button onclick="switchTab(\'news\')" class="text-cyan-400 text-[11px] font-bold whitespace-nowrap">자세히 ›</button>' : '');
+    var html = '';
+    if (mood) html += '<div class="mb-1.5 text-[12px]"><span class="' + mood.cls + ' font-black">' + mood.icon + ' ' + mood.label + '</span> <span class="text-slate-500">· ' + mood.sub + '</span></div>';
+    function mkLine(flag, label, m) {
+        if (!m || !m.reason) return '';
+        var ar = (m.dir === 'up') ? '<span class="text-red-400 font-bold">▲</span>' : ((m.dir === 'down') ? '<span class="text-blue-400 font-bold">▼</span>' : '<span class="text-slate-400">—</span>');
+        return '<div class="text-[12px] leading-relaxed mb-0.5"><span class="font-bold text-slate-200">' + flag + ' ' + label + '</span> ' + ar + ' <span class="text-slate-400">' + escapeHtml(m.reason) + '</span></div>';
+    }
+    if (mk && (mk.us || mk.kr)) {
+        html += mkLine('🇺🇸', '미국', mk.us) + mkLine('🇰🇷', '한국', mk.kr);
+    } else if (overview) {
+        // 아직 markets 데이터가 없으면(구버전 캐시) 첫 문장 폴백
+        html += '<span class="text-slate-300 text-[12px]">' + escapeHtml(_firstSentence(overview)) + '</span>';
+    }
+    txt.innerHTML = html;
     var te = document.getElementById('marketSummaryTime');
     if (te && hot && hot._cachedAt) { var m = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = '· ' + (m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전'); }
 }

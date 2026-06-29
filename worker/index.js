@@ -374,9 +374,10 @@ export default {
           status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
+      const hotForce = url.searchParams.get("force") === "1";
       try {
         // KV 캐시 우선 — 있으면 즉시 반환, 만료됐으면 백그라운드 갱신(stale-while-revalidate)
-        if (env.UMT_KV) {
+        if (!hotForce && env.UMT_KV) {
           const cached = await env.UMT_KV.get(HOT_KV_KEY, "json");
           if (cached && cached._cachedAt) {
             if (Date.now() - cached._cachedAt > HOT_KV_TTL_MS) {
@@ -1450,9 +1451,9 @@ const HOT_PROMPT = `당신은 글로벌 매크로/시장 속보 큐레이터입�
 CRITICAL: 오직 유효한 JSON만 출력하세요. 마크다운/설명/사과 없이 { 로 시작해 } 로 끝나야 합니다.
 
 JSON 스키마:
-{"quad":{"current":<1-4>,"name":"<골디락스|과열|스태그플레이션|침체>","summary":"<현재 성장·인플레 국면을 1문장으로>"},"overview":"<오늘 시장 전반의 흐름을 꿰는 3~4문장 내러티브. 개별 뉴스 나열이 아니라 '무엇이 시장을 주도하고 있고(주도 테마), 위험 요인은 무엇이며, 투자자 분위기(위험선호/회피)는 어떤지'를 이야기하듯 연결해서 서술. 지수 방향과 금리·유가·달러 등 매크로 맥락 포함>","upcoming":[{"date":"<M/D>","name":"<이벤트명, 예: 미 CPI 발표 / FOMC / 엔비디아 실적>","importance":"<high|medium|low>"}],"items":[{"category":"<trump|fed|geopolitics|market|earnings|policy>","source":"<출처 매체/인물>","time":"<상대 시간, 예: 2시간 전 / 오늘 오전>","severity":"<high|medium|low>","title":"<한글 제목>","summary":"<한글 2~3문장 상세 요약, 배경과 영향까지>","quote":"<핵심 원문 발언 한 줄, 없으면 빈 문자열>","tickers":["<영향 받는 미국 티커>"],"direction":"<bullish|bearish|neutral>","url":"<실제 출처 URL>"}],"timestamp":"<ISO8601>"}
+{"quad":{"current":<1-4>,"name":"<골디락스|과열|스태그플레이션|침체>","summary":"<현재 성장·인플레 국면을 1문장으로>"},"overview":"<오늘 시장 전반의 흐름을 꿰는 3~4문장 내러티브. 개별 뉴스 나열이 아니라 '무엇이 시장을 주도하고 있고(주도 테마), 위험 요인은 무엇이며, 투자자 분위기(위험선호/회피)는 어떤지'를 이야기하듯 연결해서 서술. 지수 방향과 금리·유가·달러 등 매크로 맥락 포함>","markets":{"us":{"dir":"<up|down|mixed>","reason":"<미국 증시(S&P500/나스닥/다우) 최근 거래일 등락의 핵심 이유를 1문장 한국어로>"},"kr":{"dir":"<up|down|mixed>","reason":"<한국 증시(코스피/코스닥) 최근 거래일 등락의 핵심 이유를 1문장 한국어로>"}},"upcoming":[{"date":"<M/D>","name":"<이벤트명, 예: 미 CPI 발표 / FOMC / 엔비디아 실적>","importance":"<high|medium|low>"}],"items":[{"category":"<trump|fed|geopolitics|market|earnings|policy>","source":"<출처 매체/인물>","time":"<상대 시간, 예: 2시간 전 / 오늘 오전>","severity":"<high|medium|low>","title":"<한글 제목>","summary":"<한글 2~3문장 상세 요약, 배경과 영향까지>","quote":"<핵심 원문 발언 한 줄, 없으면 빈 문자열>","tickers":["<영향 받는 미국 티커>"],"direction":"<bullish|bearish|neutral>","url":"<실제 출처 URL>"}],"timestamp":"<ISO8601>"}
 
-규칙: quad는 Hedgeye식 4국면 판정(1=골디락스 성장↑인플레↓, 2=과열 성장↑인플레↑, 3=스태그 성장↓인플레↑, 4=침체 성장↓인플레↓). overview는 반드시 채울 것(전체를 꿰는 내러티브). upcoming은 향후 7일 내 핵심 경제지표·실적·정책 일정 3~5개(없으면 빈 배열). items 6~8개, 최근 24시간 우선, severity 높은 순+최신 순 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.
+규칙: quad는 Hedgeye식 4국면 판정(1=골디락스 성장↑인플레↓, 2=과열 성장↑인플레↑, 3=스태그 성장↓인플레↑, 4=침체 성장↓인플레↓). overview는 반드시 채울 것(전체를 꿰는 내러티브). markets.us/kr는 각 시장의 최근 등락 핵심 이유를 1문장으로(dir=방향), 둘 다 반드시 채울 것. upcoming은 향후 7일 내 핵심 경제지표·실적·정책 일정 3~5개(없으면 빈 배열). items 6~8개, 최근 24시간 우선, severity 높은 순+최신 순 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.
 
 매우 중요(JSON 안정성): 문자열 값 안에서는 절대 큰따옴표(")를 쓰지 마세요. 인용·강조가 필요하면 작은따옴표(') 또는 「」 를 사용하세요. 줄바꿈/탭 없이 한 줄 문자열로 작성하세요.`;
 
