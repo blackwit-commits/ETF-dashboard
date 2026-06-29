@@ -428,6 +428,7 @@ function startHotIssues() {
         localStorage.setItem(HOT_CACHE_KEY, JSON.stringify(data));
         renderHotIssues(data);
         renderMarketFlow();
+        renderMarketSummary();
     })
     .catch(function(e) {
         if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i>핫이슈 수집 실패: ' + escapeHtml(e.message).substring(0, 80) + '<br><button onclick="startHotIssues()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
@@ -1293,6 +1294,7 @@ function initApp() {
         var cachedHot = loadHotFromCache();
         if (cachedHot) renderHotIssues(cachedHot);
         else startHotIssues();
+        try { renderMarketSummary(); } catch(e) {}
 
         // 8. 종목·시장 뉴스 캐시 로드 (1시간 TTL, 없으면 버튼 대기)
         var cachedStockNews = loadStockNewsFromCache();
@@ -2629,6 +2631,17 @@ var HOME_INDICES = [
 var INDEX_QUOTE_MAP = {};      // 최신 시세 (price/chg)
 var SPARK_CACHE = {};          // 심볼별 최근 종가 배열 (추세선용)
 var _sparkTs = 0;
+var _indexPeriod = '1mo';      // 추세선 기간 (5d/1mo/3mo)
+
+function setIndexPeriod(p) {
+    _indexPeriod = p;
+    ['5d', '1mo', '3mo'].forEach(function (x) {
+        var b = document.getElementById('idxP_' + x);
+        if (b) b.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (x === p ? 'bg-cyan-600 text-white' : 'text-slate-400');
+    });
+    SPARK_CACHE = {}; _sparkTs = 0;   // 기간 변경 → 추세선 다시 로드
+    ensureIndexSparklines();
+}
 
 // 가벼운 SVG 스파크라인 (상승=빨강 / 하락=파랑, 한국식)
 function sparkSvg(closes, w, h) {
@@ -2678,15 +2691,29 @@ async function ensureIndexSparklines() {
     try {
         await Promise.all(HOME_INDICES.map(async function (t) {
             try {
-                var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(t.sym) + '&range=1mo');
+                var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(t.sym) + '&range=' + _indexPeriod);
                 var j = await r.json();
                 var s = (j.series || []).map(function (p) { return p.close; }).filter(function (c) { return c != null; });
-                if (s.length >= 2) SPARK_CACHE[t.sym] = s.slice(-30);
+                if (s.length >= 2) SPARK_CACHE[t.sym] = s.slice(-90);
             } catch (e) { /* 개별 실패 무시 */ }
         }));
         _sparkTs = Date.now();
         renderIndexGrid();
     } catch (e) { /* 무시 */ }
+}
+
+// 홈 시장 요약 한 줄 (핫이슈 overview 재활용 — 새 API 불필요)
+function renderMarketSummary() {
+    var card = document.getElementById('marketSummaryCard');
+    var txt = document.getElementById('marketSummaryText');
+    if (!card || !txt) return;
+    var hot = null; try { hot = JSON.parse(localStorage.getItem(HOT_CACHE_KEY) || 'null'); } catch (e) {}
+    var summary = hot && (hot.overview || (hot.quad && hot.quad.summary));
+    if (!summary) { card.classList.add('hidden'); return; }
+    card.classList.remove('hidden');
+    txt.innerText = summary.length > 160 ? (summary.slice(0, 158) + '…') : summary;
+    var te = document.getElementById('marketSummaryTime');
+    if (te && hot._cachedAt) { var m = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = '· ' + (m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전'); }
 }
 
 function tickerItemHtml(label, price, chg, dec) {
@@ -2973,7 +3000,7 @@ function switchTab(id) {
     if(id==='news') { setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); var _ao=document.getElementById('alertOwnerToggle'); if(_ao) _ao.checked = localStorage.getItem('umt_alert_owner')==='1'; }
-    if(id==='home') { try { refreshIndexQuotes(); ensureIndexSparklines(); } catch(e) {} }
+    if(id==='home') { try { refreshIndexQuotes(); ensureIndexSparklines(); renderMarketSummary(); } catch(e) {} }
     if(id==='strategy') { try { renderBenchmark(); } catch(e) {} try { renderHoldingStatus(); } catch(e) {} }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }
