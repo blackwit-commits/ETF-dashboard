@@ -3211,8 +3211,9 @@ function updateStrategyDataUI(sym) {
         const pnl = (md.price - d.avgPrice) * d.qty; 
         const pct = (pnl / (d.avgPrice * d.qty)) * 100; 
         if(myPnlEl) {
-            myPnlEl.innerText = (pnl>=0?'+':'') + '$' + pnl.toFixed(2) + ` (${pct.toFixed(1)}%)`; 
-            myPnlEl.className = `text-lg font-black ${pnl>=0?'text-red-400':'text-blue-400'}`; 
+            myPnlEl.innerHTML = (pnl>=0?'+$':'-$') + Math.abs(pnl).toFixed(2)
+                + '<span class="block text-[11px] font-bold mt-0.5">(' + (pct>=0?'+':'') + pct.toFixed(1) + '%)</span>';
+            myPnlEl.className = `text-base font-black leading-tight ${pnl>=0?'text-red-400':'text-blue-400'}`;
         }
     } else { 
         if(myPnlEl) {
