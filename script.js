@@ -2617,6 +2617,34 @@ var TICKER_SYMBOLS = [
 ];
 var _tickerTimer = null;
 
+// 홈 '주요 지수' 그리드 (국내+해외) — /quotes 재사용
+var HOME_INDICES = [
+    { sym: '^KS11', label: '코스피', dec: 2 },
+    { sym: '^KQ11', label: '코스닥', dec: 2 },
+    { sym: '^GSPC', label: 'S&P500', dec: 0 },
+    { sym: '^IXIC', label: '나스닥', dec: 0 },
+    { sym: '^DJI',  label: '다우',   dec: 0 },
+    { sym: 'KRW=X', label: '원/달러', dec: 2 }
+];
+async function renderIndexGrid() {
+    var box = document.getElementById('indexGrid');
+    if (!box) return;
+    try {
+        var syms = HOME_INDICES.map(function (t) { return t.sym; }).join(',');
+        var res = await fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(syms));
+        var data = await res.json();
+        var map = {}; (data || []).forEach(function (q) { map[q.symbol] = q; });
+        box.innerHTML = HOME_INDICES.map(function (t) {
+            var q = map[t.sym] || {};
+            return '<div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openGlobalMarketsModal()">'
+                + '<div class="text-[9px] text-slate-400 font-bold leading-none">' + t.label + '</div>'
+                + '<div class="text-xs font-black text-white mt-1">' + fmtNum(q.price, t.dec) + '</div>'
+                + '<div class="text-[9px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</div>'
+                + '</div>';
+        }).join('');
+    } catch (e) { /* 플레이스홀더 유지 */ }
+}
+
 function tickerItemHtml(label, price, chg, dec) {
     return '<span class="inline-flex items-baseline gap-1.5 px-4">'
         + '<span class="text-[11px] font-bold text-slate-300">' + label + '</span>'
@@ -2627,8 +2655,9 @@ function tickerItemHtml(label, price, chg, dec) {
 
 function startPriceTicker() {
     refreshPriceTicker();
+    renderIndexGrid();
     if (_tickerTimer) clearInterval(_tickerTimer);
-    _tickerTimer = setInterval(function () { if (!document.hidden) refreshPriceTicker(); }, 60000);
+    _tickerTimer = setInterval(function () { if (!document.hidden) { refreshPriceTicker(); renderIndexGrid(); } }, 60000);
 }
 
 async function refreshPriceTicker() {
@@ -2899,7 +2928,8 @@ function switchTab(id) {
     if(id==='news') { setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); var _ao=document.getElementById('alertOwnerToggle'); if(_ao) _ao.checked = localStorage.getItem('umt_alert_owner')==='1'; }
-    if(id==='home') { try { renderBenchmark(); } catch(e) {} }
+    if(id==='home') { try { renderIndexGrid(); } catch(e) {} }
+    if(id==='strategy') { try { renderBenchmark(); } catch(e) {} try { renderHoldingStatus(); } catch(e) {} }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }
 
