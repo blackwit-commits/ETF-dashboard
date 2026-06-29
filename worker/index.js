@@ -1160,8 +1160,8 @@ async function sendTelegramPhoto(env, photoUrl, caption) {
 // 브리핑 빌드 + 전송 (차트 이미지 먼저, 본문은 분할 전송)
 async function pushBriefing(env, symbols) {
   const { text, chartUrl, sectorChartUrl } = await buildMarketBriefing(env, symbols);
-  if (chartUrl) await sendTelegramPhoto(env, chartUrl, "📊 <b>시장 스냅샷</b> · 당일 등락률");
-  if (sectorChartUrl) await sendTelegramPhoto(env, sectorChartUrl, "🗺️ <b>섹터 히트맵</b> · 전체 시장 폭");
+  if (chartUrl) await sendTelegramPhoto(env, chartUrl, "📊 <b>시장 스냅샷</b> · 직전 거래일 마감 기준");
+  if (sectorChartUrl) await sendTelegramPhoto(env, sectorChartUrl, "🗺️ <b>섹터 히트맵</b> · 직전 거래일 마감 기준");
   let fullText = text;
   try { const ev = await buildTodayEventsSection(env); if (ev) fullText += "\n\n" + ev; } catch (e) { /* 일정 섹션 실패는 무시 */ }
   return await sendTelegramChunks(env, fullText);
