@@ -3213,7 +3213,7 @@ function updateStrategyDataUI(sym) {
         if(myPnlEl) {
             myPnlEl.innerHTML = (pnl>=0?'+$':'-$') + Math.abs(pnl).toFixed(2)
                 + '<span class="block text-[11px] font-bold mt-0.5">(' + (pct>=0?'+':'') + pct.toFixed(1) + '%)</span>';
-            myPnlEl.className = `text-base font-black leading-tight ${pnl>=0?'text-red-400':'text-blue-400'}`;
+            myPnlEl.className = `text-lg font-black leading-tight ${pnl>=0?'text-red-400':'text-blue-400'}`;
         }
     } else {
         if(myPnlEl) {
