@@ -1428,6 +1428,7 @@ var _macroChartWidget = null;
 function openMacroChart(key) {
     var m = MACRO_CHART_MAP[key];
     if (!m) return;
+    var _ivBar = document.getElementById('indexIvBar'); if (_ivBar) _ivBar.classList.add('hidden');
     var modal = document.getElementById('macroChartModal');
     var titleEl = document.getElementById('macroChartTitle');
     var detailEl = document.getElementById('macroChartDetail');
@@ -2947,6 +2948,7 @@ function renderSectors() {
 }
 // 섹터 ETF 차트 (기존 매크로 차트 모달 재사용)
 function openSectorChart(sym, name) {
+    var _ivBarS = document.getElementById('indexIvBar'); if (_ivBarS) _ivBarS.classList.add('hidden');
     var modal = document.getElementById('macroChartModal');
     var titleEl = document.getElementById('macroChartTitle');
     var cont = document.getElementById('macroChartContainer');
@@ -2986,20 +2988,27 @@ function openIndexChart(sym, name) {
     _indexInterval = '1d';
     if (titleEl) titleEl.innerText = name;
     modal.classList.remove('hidden'); modal.classList.add('flex');
+    _renderIndexToggle();
     _renderIndexDetail();
     _drawIndexChart();
 }
-function setIndexChartInterval(iv) { _indexInterval = iv; _renderIndexDetail(); _drawIndexChart(); }
+function setIndexChartInterval(iv) { _indexInterval = iv; _renderIndexToggle(); _drawIndexChart(); }
+// 일봉/주봉 토글 — 차트 위쪽 바
+function _renderIndexToggle() {
+    var bar = document.getElementById('indexIvBar');
+    if (!bar) return;
+    bar.classList.remove('hidden');
+    function btn(iv, label) { return '<button type="button" onclick="setIndexChartInterval(\'' + iv + '\')" class="px-3 py-1 rounded-lg text-[11px] font-bold ' + (_indexInterval === iv ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400') + '">' + label + '</button>'; }
+    bar.innerHTML = btn('1d', '일봉') + btn('1wk', '주봉');
+}
 function _renderIndexDetail() {
     var detail = document.getElementById('macroChartDetail');
     if (!detail || !_idxCtx) return;
     var sym = _idxCtx.sym, q = INDEX_QUOTE_MAP[sym] || {};
     var dec = (sym === 'KRW=X' || sym === '^KS11' || sym === '^KQ11') ? 2 : 0;
-    var val = (q.price != null)
+    detail.innerHTML = (q.price != null)
         ? '<div class="flex items-baseline gap-2"><span class="text-xl font-black text-white">' + fmtNum(q.price, dec) + '</span><span class="text-sm font-bold ' + ((q.chg >= 0) ? 'text-red-400' : 'text-blue-400') + '">' + fmtChgPct(q.chg) + '</span></div>'
         : '';
-    function btn(iv, label) { return '<button type="button" onclick="setIndexChartInterval(\'' + iv + '\')" class="px-3 py-1 rounded-lg text-[11px] font-bold ' + (_indexInterval === iv ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400') + '">' + label + '</button>'; }
-    detail.innerHTML = val + '<div class="flex gap-1.5 mt-2">' + btn('1d', '일봉') + btn('1wk', '주봉') + '</div>';
 }
 async function _drawIndexChart() {
     var cont = document.getElementById('macroChartContainer');
