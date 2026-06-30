@@ -2686,7 +2686,7 @@ function _isFut(t) { return !!(t.us && t.fut && !isUSMarketOpen()); }
 var INDEX_QUOTE_MAP = {};      // 최신 시세 (price/chg)
 var SPARK_CACHE = {};          // 심볼별 최근 종가 배열 (추세선용)
 var _sparkTs = 0;
-var _indexPeriod = '5d';      // 추세선 기간 (1d=일/5d=주/1mo=1개월)
+var _indexPeriod = '1d';      // 추세선 기간 (1d=일/5d=주/1mo=1개월)
 // 기간별 야후 range/interval (일=당일 분봉)
 var INDEX_PERIODS = { '1d': { range: '1d', interval: '1m' }, '5d': { range: '5d', interval: '30m' }, '1mo': { range: '1mo', interval: '1d' } };
 
