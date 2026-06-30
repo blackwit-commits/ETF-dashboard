@@ -2656,11 +2656,33 @@ var _tickerTimer = null;
 var HOME_INDICES = [
     { sym: '^KS11', label: '코스피', dec: 2 },
     { sym: '^KQ11', label: '코스닥', dec: 2 },
-    { sym: '^GSPC', label: 'S&P500', dec: 0 },
-    { sym: '^IXIC', label: '나스닥', dec: 0 },
-    { sym: '^DJI',  label: '다우',   dec: 0 },
+    { sym: '^GSPC', fut: 'ES=F', label: 'S&P500', dec: 0, us: true },
+    { sym: '^NDX', fut: 'NQ=F', label: '나스닥100', dec: 0, us: true },
+    { sym: '^DJI',  fut: 'YM=F', label: '다우',   dec: 0, us: true },
     { sym: 'KRW=X', label: '원/달러', dec: 2 }
 ];
+// 미국 정규장 개장 여부 (UTC 기준, DST 자동) — 닫혀있으면 선물 표시
+function _isUsDst(d) {
+    var y = d.getUTCFullYear();
+    var mar1 = new Date(Date.UTC(y, 2, 1)).getUTCDay();
+    var dstStart = Date.UTC(y, 2, 1 + ((7 - mar1) % 7) + 7, 7);   // 3월 둘째 일요일 07:00 UTC
+    var nov1 = new Date(Date.UTC(y, 10, 1)).getUTCDay();
+    var dstEnd = Date.UTC(y, 10, 1 + ((7 - nov1) % 7), 6);        // 11월 첫째 일요일 06:00 UTC
+    var t = d.getTime();
+    return t >= dstStart && t < dstEnd;
+}
+function isUSMarketOpen() {
+    var now = new Date();
+    var day = now.getUTCDay();
+    if (day === 0 || day === 6) return false;
+    var mins = now.getUTCHours() * 60 + now.getUTCMinutes();
+    var dst = _isUsDst(now);
+    var open = dst ? (13 * 60 + 30) : (14 * 60 + 30);
+    var close = dst ? (20 * 60) : (21 * 60);
+    return mins >= open && mins < close;
+}
+function _activeSym(t) { return (t.us && t.fut && !isUSMarketOpen()) ? t.fut : t.sym; }
+function _isFut(t) { return !!(t.us && t.fut && !isUSMarketOpen()); }
 var INDEX_QUOTE_MAP = {};      // 최신 시세 (price/chg)
 var SPARK_CACHE = {};          // 심볼별 최근 종가 배열 (추세선용)
 var _sparkTs = 0;
@@ -2698,11 +2720,13 @@ function renderIndexGrid() {
     var box = document.getElementById('indexGrid');
     if (!box) return;
     box.innerHTML = HOME_INDICES.map(function (t) {
-        var q = INDEX_QUOTE_MAP[t.sym] || {};
-        return '<div class="glass-panel rounded-xl p-2 cursor-pointer hover:bg-slate-800/70 transition" onclick="openIndexChart(\'' + t.sym + '\',\'' + t.label + '\')">'
-            + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold">' + t.label + '</span><span class="text-[9px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</span></div>'
+        var sym = _activeSym(t), fut = _isFut(t);
+        var q = INDEX_QUOTE_MAP[sym] || {};
+        var labelHtml = t.label + (fut ? ' <span class="text-[7px] bg-amber-500/20 text-amber-300 px-1 rounded font-bold align-middle">선물</span>' : '');
+        return '<div class="glass-panel rounded-xl p-2 cursor-pointer hover:bg-slate-800/70 transition" onclick="openIndexChart(\'' + sym + '\',\'' + t.label + (fut ? ' 선물' : '') + '\')">'
+            + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold">' + labelHtml + '</span><span class="text-[9px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</span></div>'
             + '<div class="text-xs font-black text-white mt-0.5">' + fmtNum(q.price, t.dec) + '</div>'
-            + '<div class="mt-1 h-5">' + (SPARK_CACHE[t.sym] ? sparkSvg(SPARK_CACHE[t.sym], 60, 20) : '') + '</div>'
+            + '<div class="mt-1 h-5">' + (SPARK_CACHE[sym] ? sparkSvg(SPARK_CACHE[sym], 60, 20) : '') + '</div>'
             + '</div>';
     }).join('');
 }
@@ -2711,7 +2735,7 @@ function renderIndexGrid() {
 async function refreshIndexQuotes() {
     if (!document.getElementById('indexGrid')) return;
     try {
-        var syms = HOME_INDICES.map(function (t) { return t.sym; }).join(',');
+        var syms = HOME_INDICES.map(_activeSym).join(',');
         var res = await fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(syms));
         var data = await res.json();
         (data || []).forEach(function (q) { INDEX_QUOTE_MAP[q.symbol] = q; });
@@ -2723,15 +2747,18 @@ async function refreshIndexQuotes() {
 // 추세선 데이터(최근 1개월 종가) — 30분 캐시
 async function ensureIndexSparklines() {
     if (!document.getElementById('indexGrid')) return;
-    if (Object.keys(SPARK_CACHE).length && Date.now() - _sparkTs < 30 * 60 * 1000) return;
+    var actives = HOME_INDICES.map(_activeSym);
+    var missing = actives.some(function (s) { return !SPARK_CACHE[s]; });   // 현물↔선물 전환 시 새 심볼 즉시 로드
+    if (!missing && Date.now() - _sparkTs < 30 * 60 * 1000) return;
     try {
         await Promise.all(HOME_INDICES.map(async function (t) {
+            var sym = _activeSym(t);
             try {
                 var _pp = INDEX_PERIODS[_indexPeriod] || INDEX_PERIODS['5d'];
-                var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(t.sym) + '&range=' + _pp.range + '&interval=' + _pp.interval);
+                var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(sym) + '&range=' + _pp.range + '&interval=' + _pp.interval);
                 var j = await r.json();
                 var s = (j.series || []).map(function (p) { return p.close; }).filter(function (c) { return c != null; });
-                if (s.length >= 2) SPARK_CACHE[t.sym] = s.slice(-90);
+                if (s.length >= 2) SPARK_CACHE[sym] = s.slice(-90);
             } catch (e) { /* 개별 실패 무시 */ }
         }));
         _sparkTs = Date.now();
@@ -2747,8 +2774,9 @@ function _firstSentence(s) {
 // 시장 분위기 (주요 지수 등락 폭 기반) — 한눈에 위험선호/혼조/위험회피
 function _marketMood() {
     var ups = 0, downs = 0, tot = 0;
-    ['^KS11', '^KQ11', '^GSPC', '^IXIC', '^DJI'].forEach(function (s) {
-        var q = INDEX_QUOTE_MAP[s];
+    HOME_INDICES.forEach(function (t) {
+        if (t.sym === 'KRW=X') return;               // 환율 제외, 미국은 현물/선물 활성심볼
+        var q = INDEX_QUOTE_MAP[_activeSym(t)];
         if (q && q.chg != null) { tot++; if (q.chg >= 0) ups++; else downs++; }
     });
     if (tot < 3) return null;
