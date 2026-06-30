@@ -2722,10 +2722,10 @@ function renderIndexGrid() {
     box.innerHTML = HOME_INDICES.map(function (t) {
         var sym = _activeSym(t), fut = _isFut(t);
         var q = INDEX_QUOTE_MAP[sym] || {};
-        var labelHtml = t.label + (fut ? ' <span class="text-[7px] bg-amber-500/20 text-amber-300 px-1 rounded font-bold align-middle">선물</span>' : '');
+        var futBadge = fut ? ' <span class="text-[7px] bg-amber-500/20 text-amber-300 px-1 rounded font-bold align-middle whitespace-nowrap">선물</span>' : '';
         return '<div class="glass-panel rounded-xl p-2 cursor-pointer hover:bg-slate-800/70 transition" onclick="openIndexChart(\'' + sym + '\',\'' + t.label + (fut ? ' 선물' : '') + '\')">'
-            + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold">' + labelHtml + '</span><span class="text-[9px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</span></div>'
-            + '<div class="text-xs font-black text-white mt-0.5">' + fmtNum(q.price, t.dec) + '</div>'
+            + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold whitespace-nowrap overflow-hidden text-ellipsis">' + t.label + '</span><span class="text-[9px] font-bold shrink-0 whitespace-nowrap ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</span></div>'
+            + '<div class="text-xs font-black text-white mt-0.5 whitespace-nowrap">' + fmtNum(q.price, t.dec) + futBadge + '</div>'
             + '<div class="mt-1 h-5">' + (SPARK_CACHE[sym] ? sparkSvg(SPARK_CACHE[sym], 60, 20) : '') + '</div>'
             + '</div>';
     }).join('');
