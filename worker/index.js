@@ -570,6 +570,16 @@ export default {
       }
     }
 
+    // 10-b. 경제지표 발표 결과 (/results) - 발표된 실제치 (KV 읽기만, Gemini 호출 없음 → 빠름)
+    if (path === "/results") {
+      const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+      let out = { results: [], ts: 0 };
+      if (env.UMT_KV) {
+        try { const r = await env.UMT_KV.get("econ_results", "json"); if (r) out = r; } catch (e) { /* 무시 */ }
+      }
+      return new Response(JSON.stringify(out), { headers: jsonHeaders });
+    }
+
     // 13. 번역 프록시 (/translate?q=...&pair=en|ko) - mymemory + 이메일(한도상향)을 서버측에서 처리(이메일 비노출)
     if (path === "/translate") {
       const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
@@ -708,6 +718,10 @@ export default {
     if (cron === "*/20 8-23 * * 1-5") {
       ctx.waitUntil((async () => {
         try { await checkTargetsAndAlert(env); } catch (e) { /* 무시 */ }
+      })());
+      // 경제지표 발표 결과 감지 + 알림 (발표 후보 있을 때만 Gemini 호출)
+      ctx.waitUntil((async () => {
+        try { await checkEconResultsAndAlert(env); } catch (e) { /* 무시 */ }
       })());
     }
   },
@@ -1195,6 +1209,142 @@ async function buildTodayEventsSection(env) {
     t += "\n";
   });
   return t.trim();
+}
+
+// ===== 경제지표 발표 "결과" 감지 + 알림 (장중 크론) =====
+// 캘린더의 高/中 중요도 지표 중 발표 시각이 지난 것을 Gemini 그라운딩으로 실제치 확인 →
+// econ_results KV 저장(앱 표시용) + 텔레그램 푸시. 중복 방지: econ_alerted(date|name) 키.
+const ECON_RESULTS_KEY = "econ_results";
+const ECON_ALERTED_KEY = "econ_alerted";
+
+function _kstMd(offsetDays) {
+  const k = new Date(Date.now() + 9 * 3600 * 1000 + (offsetDays || 0) * 86400000);
+  return (k.getUTCMonth() + 1) + "/" + k.getUTCDate();
+}
+// 발표 시각(KST) 파싱 → 분 단위. 못 읽으면 null
+function _parseKstMinutes(timeStr) {
+  const s = String(timeStr || "");
+  let m = s.match(/(\d{1,2})\s*[:시]\s*(\d{1,2})?/);
+  if (!m) return null;
+  let h = parseInt(m[1], 10), min = parseInt(m[2] || "0", 10);
+  if (/오후|pm|PM/.test(s) && h < 12) h += 12;
+  if (/오전|am|AM/.test(s) && h === 12) h = 0;
+  if (h > 23 || min > 59) return null;
+  return h * 60 + min;
+}
+
+async function checkEconResultsAndAlert(env) {
+  if (!env.GEMINI_API_KEY || !env.UMT_KV) return;
+  const cal = await env.UMT_KV.get("econ_calendar", "json");
+  const events = (cal && Array.isArray(cal.events)) ? cal.events : [];
+  if (!events.length) return;
+
+  const todayMd = _kstMd(0), yestMd = _kstMd(-1);
+  const nowKst = new Date(Date.now() + 9 * 3600 * 1000);
+  const nowMin = nowKst.getUTCHours() * 60 + nowKst.getUTCMinutes();
+
+  const alerted = (await env.UMT_KV.get(ECON_ALERTED_KEY, "json")) || {};
+  // 오래된 기록 정리(5일 경과)
+  for (const k in alerted) { if (alerted[k] && alerted[k].ts && Date.now() - alerted[k].ts > 5 * 86400000) delete alerted[k]; }
+
+  // 후보: 高/中 중요도 + 오늘(시각 지남)/어제 + 미완료(attempts<9)
+  const cands = events.filter((e) => {
+    if (!e || !e.name || (e.importance !== "high" && e.importance !== "medium")) return false;
+    const isToday = _sameMonthDay(e.date, todayMd), isYest = _sameMonthDay(e.date, yestMd);
+    if (!isToday && !isYest) return false;
+    if (isToday) { const tm = _parseKstMinutes(e.time); if (tm != null && nowMin < tm) return false; } // 아직 발표 전
+    const key = e.date + "|" + e.name;
+    const a = alerted[key];
+    if (a && (a.done || (a.attempts || 0) >= 9)) return false;
+    return true;
+  }).slice(0, 6);
+  if (!cands.length) return;
+
+  let fetched = [];
+  try { fetched = await callGeminiEconResults(env.GEMINI_API_KEY, cands); } catch (e) { fetched = []; }
+  // Gemini가 name에 '(KR, 7/1)' 접미사를 붙이기도 해서 정규화 포함방식으로 매칭
+  const _nrm = (s) => String(s || "").replace(/\s+/g, "").replace(/[()]/g, "").toLowerCase();
+  const findFetched = (name) => {
+    const n = _nrm(name);
+    for (const r of fetched) { if (!r || !r.name) continue; const rn = _nrm(r.name); if (rn === n || rn.includes(n) || n.includes(rn)) return r; }
+    return null;
+  };
+
+  const store = (await env.UMT_KV.get(ECON_RESULTS_KEY, "json")) || { results: [], ts: 0 };
+  if (!Array.isArray(store.results)) store.results = [];
+  const msgs = [];
+  const impIcon = { high: "🔴", medium: "🟠", low: "⚪" };
+  const flag = { US: "🇺🇸", KR: "🇰🇷" };
+  const surpArrow = { above: "🔺상회", below: "🔻하회", inline: "▪️부합" };
+
+  cands.forEach((e) => {
+    const key = e.date + "|" + e.name;
+    const r = findFetched(e.name);
+    const actual = r && r.actual ? String(r.actual).trim() : "";
+    if (!actual) { // 아직 미발표/미확인 → 재시도 카운트
+      alerted[key] = { ts: Date.now(), attempts: ((alerted[key] && alerted[key].attempts) || 0) + 1, done: false };
+      return;
+    }
+    const rec = {
+      date: e.date, country: e.country || "", name: e.name, importance: e.importance,
+      actual: actual, forecast: e.forecast || "", previous: e.previous || "",
+      surprise: (r.surprise || "").trim(), comment: (r.comment || "").trim(), quad: (r.quad || "").trim(),
+      ts: Date.now()
+    };
+    // 저장(같은 date|name 갱신)
+    store.results = store.results.filter((x) => !(x.date === rec.date && x.name === rec.name));
+    store.results.push(rec);
+    alerted[key] = { ts: Date.now(), attempts: ((alerted[key] && alerted[key].attempts) || 0) + 1, done: true };
+
+    // 텔레그램 본문
+    let body = `${impIcon[e.importance] || "⚪"} ${flag[e.country] || ""} <b>${tgEscape(e.name)}</b>\n실제 <b>${tgEscape(actual)}</b>`;
+    const sub = [];
+    if (e.forecast) sub.push("예상 " + tgEscape(e.forecast));
+    if (e.previous) sub.push("이전 " + tgEscape(e.previous));
+    if (sub.length) body += ` (${sub.join(" · ")})`;
+    const tail = [surpArrow[rec.surprise] || "", rec.quad ? "Quad " + tgEscape(rec.quad) : ""].filter(Boolean);
+    if (tail.length) body += `\n→ ${tail.join(" · ")}`;
+    if (rec.comment) body += `\n${tgEscape(rec.comment)}`;
+    msgs.push(body);
+  });
+
+  // 최근 30개만 유지(최신순)
+  store.results.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  store.results = store.results.slice(0, 30);
+  store.ts = Date.now();
+  await env.UMT_KV.put(ECON_RESULTS_KEY, JSON.stringify(store));
+  await env.UMT_KV.put(ECON_ALERTED_KEY, JSON.stringify(alerted));
+  if (msgs.length) await sendTelegram(env, "📊 <b>경제지표 발표</b>\n\n" + msgs.join("\n\n"));
+}
+
+const ECON_RESULT_PROMPT_HEAD = `당신은 경제지표 발표 결과 확인 전문가입니다. Google 검색으로 아래 지표들의 "실제 발표치(actual)"를 확인하세요.
+아직 발표되지 않았거나 확실하지 않으면 actual을 빈 문자열("")로 두세요(추측 금지).
+각 항목에 대해: 실제치(actual), 예상 대비(surprise: above=예상상회 / below=예상하회 / inline=부합 / 빈문자열=모름), 한 줄 시장 해석(comment, 한국어 40자 이내), Quad 영향(quad, 예: '인플레↑' '성장↓' '중립').
+CRITICAL: 오직 유효한 JSON만. 마크다운/설명 없이 { 로 시작해 } 로 끝. 문자열 안에서 큰따옴표 금지.
+JSON: {"results":[{"name":"<입력 이름 그대로>","actual":"<실제치 또는 빈문자열>","surprise":"above|below|inline|","comment":"<한국어 해석>","quad":"<Quad 영향>"}]}
+
+확인할 지표(이름은 그대로 사용):`;
+
+async function callGeminiEconResults(apiKey, events) {
+  const list = events.map((e) => `- ${e.name} (${e.country || ""}, ${e.date}${e.forecast ? ", 예상 " + e.forecast : ""}${e.previous ? ", 이전 " + e.previous : ""})`).join("\n");
+  const prompt = ECON_RESULT_PROMPT_HEAD + "\n" + list;
+  const data = await callGeminiWithFallback(apiKey, {
+    system_instruction: { parts: [{ text: "You are a JSON API. Output ONLY valid JSON. Never use double quotes inside string values." }] },
+    contents: [{ parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.1, maxOutputTokens: 3000 },
+  });
+  let textContent = "";
+  const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+  if (parts) { for (const part of parts) { if (part.text) textContent += part.text; } }
+  if (!textContent) return [];
+  try {
+    const res = parseGeminiJson(textContent);
+    if (Array.isArray(res.results)) return res.results;
+  } catch (e) {
+    try { return salvageObjects(textContent, (o) => o && o.name); } catch (_) { /* 무시 */ }
+  }
+  return [];
 }
 
 // --- Gemini Flash 2.5 매크로 분석 ---
