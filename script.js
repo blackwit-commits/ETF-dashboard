@@ -2688,7 +2688,7 @@ var SPARK_CACHE = {};          // 심볼별 최근 종가 배열 (추세선용)
 var _sparkTs = 0;
 var _indexPeriod = '5d';      // 추세선 기간 (1d=일/5d=주/1mo=1개월)
 // 기간별 야후 range/interval (일=당일 분봉)
-var INDEX_PERIODS = { '1d': { range: '1d', interval: '5m' }, '5d': { range: '5d', interval: '1d' }, '1mo': { range: '1mo', interval: '1d' } };
+var INDEX_PERIODS = { '1d': { range: '1d', interval: '1m' }, '5d': { range: '5d', interval: '30m' }, '1mo': { range: '1mo', interval: '1d' } };
 
 function setIndexPeriod(p) {
     _indexPeriod = p;
@@ -2758,7 +2758,8 @@ async function ensureIndexSparklines() {
                 var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(sym) + '&range=' + _pp.range + '&interval=' + _pp.interval);
                 var j = await r.json();
                 var s = (j.series || []).map(function (p) { return p.close; }).filter(function (c) { return c != null; });
-                if (s.length >= 2) SPARK_CACHE[sym] = s.slice(-90);
+                var cap = (_indexPeriod === '1d') ? 400 : ((_indexPeriod === '5d') ? 80 : 90);
+                if (s.length >= 2) SPARK_CACHE[sym] = s.slice(-cap);
             } catch (e) { /* 개별 실패 무시 */ }
         }));
         _sparkTs = Date.now();
