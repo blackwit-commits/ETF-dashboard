@@ -5125,26 +5125,29 @@ function calculatePlanVsResult(trade) {
 
 function enrichTradesWithReturn(trades) {
     if (!trades || !portfolios) return trades;
-    var bySym = {};
-    trades.forEach(function(t) { if (!bySym[t.sym]) bySym[t.sym] = []; bySym[t.sym].push(t); });
-    Object.keys(bySym).forEach(function(sym) {
-        var list = bySym[sym].slice().sort(function(a, b) { return new Date(a.date) - new Date(b.date); });
-        var q = 0, totalCost = 0;
-        list.forEach(function(h) {
-            if (h.type === 'BUY') {
-                totalCost += (h.total != null ? h.total : h.price * h.qty);
-                q += (h.qty || 0);
-            } else if (h.type === 'SELL' && q > 0) {
-                var avgPrice = totalCost / q;
-                var costOfSold = avgPrice * (h.qty || 0);
-                var profit = (h.total != null ? h.total : (h.price * h.qty)) - costOfSold;
-                var returnPct = costOfSold ? (profit / costOfSold) * 100 : 0;
-                h.returnPct = returnPct;
-                h.realizedUSD = profit;
-                totalCost -= costOfSold;
-                q -= (h.qty || 0);
-            }
-        });
+    // 사이클(종목+cycleId)별 전체 평균 매수가 = '내 평단' 기준
+    var keyOf = function(t) { return t.sym + '#' + (t.cycleId != null ? t.cycleId : '0'); };
+    var cycleBuy = {};
+    trades.forEach(function(t) {
+        if (t.type === 'BUY') {
+            var k = keyOf(t);
+            if (!cycleBuy[k]) cycleBuy[k] = { cost: 0, qty: 0 };
+            cycleBuy[k].cost += (t.total != null ? t.total : t.price * t.qty);
+            cycleBuy[k].qty += (t.qty || 0);
+        }
+    });
+    trades.forEach(function(t) {
+        if (t.type !== 'SELL') return;
+        var cb = cycleBuy[keyOf(t)];
+        if (cb && cb.qty > 0) {
+            var cycleAvg = cb.cost / cb.qty;             // 사이클 전체 평단
+            var costOfSold = cycleAvg * (t.qty || 0);
+            var proceeds = (t.total != null ? t.total : t.price * t.qty);
+            var profit = proceeds - costOfSold;
+            t.returnPct = costOfSold ? (profit / costOfSold) * 100 : 0;
+            t.realizedUSD = profit;
+            t.cycleAvgBuy = cycleAvg;                    // 상세뷰 표시용
+        }
     });
     return trades;
 }
@@ -5689,8 +5692,11 @@ function showTradeDetail(idx) {
     h += row('수량', (r.qty != null ? r.qty + '주' : '—'));
     if (num(r.fee, 2)) h += row('수수료', '$' + num(r.fee, 2));
     h += row(isSell ? '정산 금액' : '매수 금액', num(r.total, 2) ? '$' + Number(r.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');
+    if (isSell && r.cycleAvgBuy != null) {
+        h += row('평단 (사이클)', '$' + Number(r.cycleAvgBuy).toFixed(2));
+    }
     if (isSell && r.returnPct != null && !isNaN(r.returnPct)) {
-        h += row('실현 수익률', (r.returnPct >= 0 ? '+' : '') + r.returnPct.toFixed(2) + '%', r.returnPct >= 0 ? 'text-red-400' : 'text-blue-400');
+        h += row('실현 수익률', (r.returnPct >= 0 ? '+' : '') + r.returnPct.toFixed(2) + '% <span class="text-[9px] text-slate-500">(평단대비)</span>', r.returnPct >= 0 ? 'text-red-400' : 'text-blue-400');
     }
     h += '</div>';
 
