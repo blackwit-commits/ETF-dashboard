@@ -516,7 +516,8 @@ export default {
       const ticker = url.searchParams.get("ticker");
       const range = url.searchParams.get("range") || "1y";
       const ivReq = (url.searchParams.get("interval") || "1d").toLowerCase();
-      const interval = (ivReq === "1wk" || ivReq === "1mo") ? ivReq : "1d";   // 일/주/월봉만 허용
+      const IV_OK = ["1m", "2m", "5m", "15m", "30m", "60m", "90m", "1h", "1d", "1wk", "1mo"];
+      const interval = IV_OK.indexOf(ivReq) >= 0 ? ivReq : "1d";   // 분봉(일중)~월봉 허용
       if (!ticker) return new Response(JSON.stringify({ error: "ticker required" }), { status: 400, headers: jsonHeaders });
       try {
         const yurl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=${interval}&range=${encodeURIComponent(range)}`;

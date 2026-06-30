@@ -2664,11 +2664,13 @@ var HOME_INDICES = [
 var INDEX_QUOTE_MAP = {};      // 최신 시세 (price/chg)
 var SPARK_CACHE = {};          // 심볼별 최근 종가 배열 (추세선용)
 var _sparkTs = 0;
-var _indexPeriod = '1mo';      // 추세선 기간 (5d/1mo/3mo)
+var _indexPeriod = '5d';      // 추세선 기간 (1d=일/5d=주/1mo=1개월)
+// 기간별 야후 range/interval (일=당일 분봉)
+var INDEX_PERIODS = { '1d': { range: '1d', interval: '5m' }, '5d': { range: '5d', interval: '1d' }, '1mo': { range: '1mo', interval: '1d' } };
 
 function setIndexPeriod(p) {
     _indexPeriod = p;
-    ['5d', '1mo', '3mo'].forEach(function (x) {
+    ['1d', '5d', '1mo'].forEach(function (x) {
         var b = document.getElementById('idxP_' + x);
         if (b) b.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (x === p ? 'bg-cyan-600 text-white' : 'text-slate-400');
     });
@@ -2697,11 +2699,10 @@ function renderIndexGrid() {
     if (!box) return;
     box.innerHTML = HOME_INDICES.map(function (t) {
         var q = INDEX_QUOTE_MAP[t.sym] || {};
-        var _ar = (q.chg == null || isNaN(q.chg)) ? '' : (q.chg >= 0 ? '▲ ' : '▼ ');
         return '<div class="glass-panel rounded-xl p-2 cursor-pointer hover:bg-slate-800/70 transition" onclick="openIndexChart(\'' + t.sym + '\',\'' + t.label + '\')">'
-            + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold">' + t.label + '</span><span class="text-[10px] text-slate-400 font-bold">' + fmtNum(q.price, t.dec) + '</span></div>'
-            + '<div class="text-sm font-black mt-0.5 leading-none ' + chgClass(q.chg) + '">' + _ar + (fmtChgPct(q.chg) || '--').replace(/^[+\-]/, '') + '</div>'
-            + '<div class="mt-1.5 h-4">' + (SPARK_CACHE[t.sym] ? sparkSvg(SPARK_CACHE[t.sym], 60, 16) : '') + '</div>'
+            + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold">' + t.label + '</span><span class="text-[9px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</span></div>'
+            + '<div class="text-xs font-black text-white mt-0.5">' + fmtNum(q.price, t.dec) + '</div>'
+            + '<div class="mt-1 h-5">' + (SPARK_CACHE[t.sym] ? sparkSvg(SPARK_CACHE[t.sym], 60, 20) : '') + '</div>'
             + '</div>';
     }).join('');
 }
@@ -2726,7 +2727,8 @@ async function ensureIndexSparklines() {
     try {
         await Promise.all(HOME_INDICES.map(async function (t) {
             try {
-                var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(t.sym) + '&range=' + _indexPeriod);
+                var _pp = INDEX_PERIODS[_indexPeriod] || INDEX_PERIODS['5d'];
+                var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(t.sym) + '&range=' + _pp.range + '&interval=' + _pp.interval);
                 var j = await r.json();
                 var s = (j.series || []).map(function (p) { return p.close; }).filter(function (c) { return c != null; });
                 if (s.length >= 2) SPARK_CACHE[t.sym] = s.slice(-90);
