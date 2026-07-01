@@ -2870,8 +2870,13 @@ async function refreshIndexQuotes() {
         (data || []).forEach(function (q) { INDEX_QUOTE_MAP[q.symbol] = q; });
         renderIndexGrid();
         renderMarketSummary(); // 분위기 배지(등락 기반) 갱신
+        _setUpdTime('indexUpdateTime');
     } catch (e) { /* 유지 */ }
 }
+
+// 갱신 시각 표시 (HH:MM:SS 기준)
+function _clockTime(d) { var p = function (n) { return (n < 10 ? '0' : '') + n; }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
+function _setUpdTime(id) { var el = document.getElementById(id); if (el) el.innerText = '· ' + _clockTime(new Date()) + ' 기준'; }
 
 // 시계열을 날짜(time 문자열 앞 10자) 기준으로 거래일별 분리
 function _splitDays(series) {
@@ -3097,6 +3102,7 @@ async function refreshWatchQuotes() {
         var data = await res.json();
         (data || []).forEach(function (q) { if (q && q.symbol) { WATCH_QUOTES[q.symbol] = q; INDEX_QUOTE_MAP[q.symbol] = q; } });
         renderWatchlist();
+        _setUpdTime('watchUpdateTime');
     } catch (e) { /* 유지 */ }
 }
 
@@ -3125,7 +3131,7 @@ function openWatchAddModal() {
     var m = document.getElementById('watchAddModal'); if (!m) return;
     m.classList.remove('hidden'); m.classList.add('flex');
     var inp = document.getElementById('watchSearchInput'); if (inp) inp.value = '';
-    _watchSearchSeq++;
+    _watchSearchSeq++; _lastWatchQuery = null;
     renderWatchSearchLocal(ETF_DB);   // 기본: 등록 ETF 유니버스 제안
 }
 function closeWatchAddModal() { var m = document.getElementById('watchAddModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
@@ -3141,8 +3147,12 @@ function renderWatchSearchLocal(list) {
     var g = document.getElementById('watchSearchGrid'); if (!g) return;
     g.innerHTML = list.map(function (e) { return _watchRow(e.sym, e.name || e.desc, e.desc || e.name || '', 'US', e.lev || 'ETF', 'ETF'); }).join('');
 }
+var _lastWatchQuery = null;
 function filterWatchSearch() {
     var raw = document.getElementById('watchSearchInput').value;
+    // 한글 IME: '추가' 탭 시 조합확정으로 값이 같은 input이 재발생 → 목록 재생성(버튼 사라짐) 방지
+    if (raw === _lastWatchQuery) return;
+    _lastWatchQuery = raw;
     var q = raw.toUpperCase();
     renderWatchSearchLocal(ETF_DB.filter(function (e) { return e.sym.includes(q) || (e.desc || '').includes(q) || (e.name || '').toUpperCase().includes(q); }));
     clearTimeout(_watchSearchTimer);
@@ -3188,7 +3198,7 @@ function addToWatch(sym, name, market, type) {
     saveWatchlist();
     WATCH_SPARK[sym] = null; _watchSparkTs = 0;
     renderWatchlist(); refreshWatchlist();
-    try { filterWatchSearch(); } catch (e) {}
+    try { _lastWatchQuery = null; filterWatchSearch(); } catch (e) {}   // 담김 표시 갱신(가드 우회)
     showToast('⭐ ' + sym + ' 관심목록에 추가');
 }
 function removeFromWatch(sym) {
@@ -3371,6 +3381,7 @@ async function loadSectorRotation() {
         (ext || []).forEach(function (e) { if (e && map[e.symbol]) { map[e.symbol].state = e.state; map[e.symbol].extChg = e.extChg; } });
         _sectorData = map;
         renderSectors();
+        _setUpdTime('sectorUpdateTime');
     } catch (e) {
         if (!_sectorData && box) box.innerHTML = '<div class="text-center text-slate-500 text-xs py-3">섹터 데이터를 불러오지 못했습니다</div>';
     }
