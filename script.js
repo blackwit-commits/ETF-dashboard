@@ -6318,7 +6318,18 @@ function updateGlobalCalc() {
         if(cCanvas && typeof Chart !== 'undefined') {
             const ctx = cCanvas.getContext('2d'); 
             portfolioChart = new Chart(ctx, { type: 'doughnut', data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth:0 }] }, options: { responsive:true, cutout:'70%', plugins:{legend:{display:false}} } }); 
-            const plEl = document.getElementById('portfolioLegend'); if(plEl) plEl.innerHTML = labels.map((l,i)=>`<div class="flex justify-between items-start"><span style="color:${colors[i]}">● ${l}</span><span class="text-right">$${Math.round(data[i]).toLocaleString()}<div class="text-slate-500 text-[9px]">${formatKrw(data[i])}</div></span></div>`).join(''); 
+            const plEl = document.getElementById('portfolioLegend'); if(plEl) plEl.innerHTML = labels.map((l,i)=>{
+                let retHtml = '';
+                const p = portfolios[l];
+                if (p && (p.qty||0) > 0 && p.avgPrice > 0) {
+                    const price = (p.marketData && p.marketData.price > 0) ? p.marketData.price : p.avgPrice;
+                    const pct = (price - p.avgPrice) / p.avgPrice * 100;
+                    const pnl = p.qty * (price - p.avgPrice);
+                    const cls = pct >= 0 ? 'text-red-400' : 'text-blue-400';
+                    retHtml = `<div class="text-[9px] font-bold ${cls} mt-0.5">${pct>=0?'+':''}${pct.toFixed(1)}% (${pnl>=0?'+':'-'}$${Math.abs(Math.round(pnl)).toLocaleString()})</div>`;
+                }
+                return `<div class="flex justify-between items-start"><div class="min-w-0"><span style="color:${colors[i]}">● ${l}</span>${retHtml}</div><span class="text-right shrink-0">$${Math.round(data[i]).toLocaleString()}<div class="text-slate-500 text-[9px]">${formatKrw(data[i])}</div></span></div>`;
+            }).join('');
         }
     } catch (e) { console.error("Calc Error", e); } 
 }
