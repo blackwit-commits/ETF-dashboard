@@ -2831,12 +2831,13 @@ function sparkSvg(closes, w, h, base) {
     return svg;
 }
 
-// 스파크라인 기준선: 일=전일 종가(전일↔당일 경계), 주/1개월=기간 시작가
+// 스파크라인 기준선: 일=전일 종가(등락률 배지와 동일한 기준으로 통일 → 색 일치), 주/1개월=기간 시작가
 function _indexBase(sym, q) {
-    if (SPARK_BASE[sym] != null) return SPARK_BASE[sym];
+    // 일봉은 배지(q.chg)가 쓰는 전일종가를 역산해 기준선으로 사용해야 색이 배지와 항상 일치
     if (_indexPeriod === '1d' && q && q.price != null && q.chg != null && (1 + q.chg / 100) !== 0) {
         return q.price / (1 + q.chg / 100);
     }
+    if (SPARK_BASE[sym] != null) return SPARK_BASE[sym];
     var s = SPARK_CACHE[sym];
     return (s && s.length) ? s[0] : undefined;
 }
