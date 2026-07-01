@@ -3370,6 +3370,47 @@ var SECTOR_LIST = [
 var _sectorData = null;       // {sym: {price, chg1d, chg1w, chg1m}}
 var _sectorPeriod = 'chg1d';
 
+// 섹터별 특징 + Quad 궁합 + 대표 종목(라이브 시세) — 차트 하단 표시
+var SECTOR_INFO = {
+    XLK:  { desc: '반도체·소프트웨어·하드웨어 등 기술주. 금리 하락과 성장 가속에 민감하게 반응하는 대표 성장 섹터.', quad: 'Q1 골디락스 (성장↑·금리↓ 수혜)', top: [{ s: 'NVDA', n: '엔비디아' }, { s: 'MSFT', n: '마이크로소프트' }, { s: 'AAPL', n: '애플' }, { s: 'AVGO', n: '브로드컴' }, { s: 'CRM', n: '세일즈포스' }] },
+    XLF:  { desc: '은행·보험·자산운용 등 금융주. 금리 상승과 경기 회복 국면에서 순이자마진 개선으로 강세.', quad: 'Q2 과열 (금리↑·경기확장 수혜)', top: [{ s: 'BRK-B', n: '버크셔' }, { s: 'JPM', n: 'JP모건' }, { s: 'V', n: '비자' }, { s: 'MA', n: '마스터카드' }, { s: 'BAC', n: '뱅크오브아메리카' }] },
+    XLE:  { desc: '석유·가스 등 에너지주. 유가·인플레이션 상승 국면에서 강세를 보이는 대표 인플레 헤지 섹터.', quad: 'Q2·Q3 (유가·인플레↑ 수혜)', top: [{ s: 'XOM', n: '엑슨모빌' }, { s: 'CVX', n: '셰브론' }, { s: 'COP', n: '코노코필립스' }, { s: 'WMB', n: '윌리엄스' }, { s: 'EOG', n: 'EOG리소스' }] },
+    XLV:  { desc: '제약·바이오·의료기기 등 헬스케어. 경기 방어적 성격으로 둔화 국면에서 상대적 강세.', quad: 'Q3·Q4 (경기둔화 방어)', top: [{ s: 'LLY', n: '일라이릴리' }, { s: 'JNJ', n: '존슨앤존슨' }, { s: 'UNH', n: '유나이티드헬스' }, { s: 'ABBV', n: '애브비' }, { s: 'MRK', n: '머크' }] },
+    XLY:  { desc: '자동차·유통·여행 등 임의소비재. 소비 확장·경기 회복 국면에서 강세.', quad: 'Q1·Q2 (경기확장 수혜)', top: [{ s: 'AMZN', n: '아마존' }, { s: 'TSLA', n: '테슬라' }, { s: 'HD', n: '홈디포' }, { s: 'MCD', n: '맥도날드' }, { s: 'BKNG', n: '부킹' }] },
+    XLP:  { desc: '식음료·생활필수품 등 필수소비재. 경기와 무관한 수요로 둔화·침체 국면 방어주.', quad: 'Q3·Q4 (방어주)', top: [{ s: 'COST', n: '코스트코' }, { s: 'PG', n: 'P&G' }, { s: 'WMT', n: '월마트' }, { s: 'KO', n: '코카콜라' }, { s: 'PEP', n: '펩시' }] },
+    XLI:  { desc: '기계·항공·운송 등 산업재. 경기 사이클에 민감, 확장 초·중기 강세.', quad: 'Q1·Q2 (경기민감)', top: [{ s: 'GE', n: 'GE에어로' }, { s: 'CAT', n: '캐터필러' }, { s: 'RTX', n: 'RTX' }, { s: 'HON', n: '허니웰' }, { s: 'UBER', n: '우버' }] },
+    XLB:  { desc: '화학·금속·건자재 등 소재. 원자재 가격·인플레 상승 국면 수혜.', quad: 'Q2 (원자재·인플레↑)', top: [{ s: 'LIN', n: '린데' }, { s: 'SHW', n: '셔윈윌리엄스' }, { s: 'FCX', n: '프리포트' }, { s: 'ECL', n: '에코랩' }, { s: 'APD', n: '에어프로덕츠' }] },
+    XLU:  { desc: '전력·수도 등 유틸리티. 배당 매력·금리 하락 수혜, 침체 방어주.', quad: 'Q4 (방어·금리↓ 수혜)', top: [{ s: 'NEE', n: '넥스트에라' }, { s: 'SO', n: '서던' }, { s: 'DUK', n: '듀크에너지' }, { s: 'CEG', n: '콘스텔레이션' }, { s: 'AEP', n: '아메리칸일렉' }] },
+    XLRE: { desc: '리츠·부동산. 금리에 매우 민감 — 금리 하락 국면에서 강세.', quad: 'Q1 (금리↓ 수혜)', top: [{ s: 'PLD', n: '프로로지스' }, { s: 'AMT', n: '아메리칸타워' }, { s: 'EQIX', n: '에퀴닉스' }, { s: 'WELL', n: '웰타워' }, { s: 'DLR', n: '디지털리얼티' }] },
+    XLC:  { desc: '미디어·통신·플랫폼 등 커뮤니케이션. 광고·플랫폼 성장주, 성장 국면 강세.', quad: 'Q1·Q2 (성장 수혜)', top: [{ s: 'META', n: '메타' }, { s: 'GOOGL', n: '알파벳' }, { s: 'NFLX', n: '넷플릭스' }, { s: 'DIS', n: '디즈니' }, { s: 'TMUS', n: 'T모바일' }] }
+};
+
+function _renderSectorInfo(sym) {
+    var detail = document.getElementById('macroChartDetail');
+    if (!detail) return;
+    var info = SECTOR_INFO[sym];
+    if (!info) { detail.innerHTML = ''; return; }
+    var topHtml = info.top.map(function (h) {
+        return '<div class="flex justify-between items-center py-1 border-b border-slate-800 last:border-0">'
+            + '<span class="text-[12px]"><span class="font-bold text-white">' + h.s + '</span> <span class="text-slate-400 text-[10px]">' + h.n + '</span></span>'
+            + '<span class="text-[11px] font-bold text-slate-500" data-h="' + h.s + '">…</span></div>';
+    }).join('');
+    detail.innerHTML =
+        '<div class="text-[12px] text-slate-300 leading-relaxed">' + info.desc + '</div>'
+        + '<div class="text-[11px] mt-1"><span class="text-slate-500">Quad 궁합</span> <span class="text-amber-300 font-bold">' + info.quad + '</span></div>'
+        + '<div class="pt-2 mt-1 border-t border-slate-700/60"><div class="text-[10px] font-bold text-slate-500 mb-1">대표 종목 (실시간)</div>' + topHtml + '</div>';
+    // 대표 종목 라이브 시세 채우기
+    var syms = info.top.map(function (h) { return h.s; }).join(',');
+    fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(syms)).then(function (r) { return r.json(); }).then(function (data) {
+        var map = {}; (data || []).forEach(function (q) { map[q.symbol] = q; });
+        detail.querySelectorAll('[data-h]').forEach(function (el) {
+            var q = map[el.getAttribute('data-h')];
+            if (q && q.chg != null) { el.className = 'text-[11px] font-bold ' + chgClass(q.chg); el.textContent = (q.price != null ? '$' + fmtNum(q.price, 2) + '  ' : '') + fmtChgPct(q.chg); }
+            else { el.textContent = '—'; }
+        });
+    }).catch(function () {});
+}
+
 function startSectorRotation() {
     loadSectorRotation();
     if (window._sectorTimer) clearInterval(window._sectorTimer);
@@ -3450,7 +3491,7 @@ function openSectorChart(sym, name) {
     var detail = document.getElementById('macroChartDetail');
     if (!modal || !cont) return;
     if (titleEl) titleEl.innerText = name + ' 섹터 (' + sym + ')';
-    if (detail) detail.innerHTML = '';
+    _renderSectorInfo(sym);   // 차트 아래: 섹터 특징 + Quad 궁합 + 대표 종목(실시간)
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     cont.innerHTML = '';
