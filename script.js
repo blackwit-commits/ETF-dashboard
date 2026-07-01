@@ -2810,19 +2810,33 @@ function setIndexPeriod(p) {
 }
 
 // 가벼운 SVG 스파크라인 (상승=빨강 / 하락=파랑, 한국식)
-function sparkSvg(closes, w, h) {
+function sparkSvg(closes, w, h, base) {
     if (!closes || closes.length < 2) return '';
+    var hasBase = (typeof base === 'number' && isFinite(base));
     var min = Math.min.apply(null, closes), max = Math.max.apply(null, closes);
+    if (hasBase) { min = Math.min(min, base); max = Math.max(max, base); }   // 기준선도 항상 보이게 범위 확장
     var range = (max - min) || 1, n = closes.length;
-    var pts = closes.map(function (c, i) {
-        var x = (i / (n - 1)) * w;
-        var y = h - ((c - min) / range) * (h - 2) - 1;
-        return x.toFixed(1) + ',' + y.toFixed(1);
-    }).join(' ');
-    var up = closes[n - 1] >= closes[0];
+    var yOf = function (c) { return h - ((c - min) / range) * (h - 2) - 1; };
+    var pts = closes.map(function (c, i) { return ((i / (n - 1)) * w).toFixed(1) + ',' + yOf(c).toFixed(1); }).join(' ');
+    var ref = hasBase ? base : closes[0];
+    var up = closes[n - 1] >= ref;
     var col = up ? '#f87171' : '#60a5fa';
-    return '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" class="block">'
-        + '<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>';
+    var svg = '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" class="block">';
+    if (hasBase) {   // 전일 종가/기간 시작 기준선 (점선) — 미래에셋식 상승/하락 구분
+        var by = yOf(base).toFixed(1);
+        svg += '<line x1="0" y1="' + by + '" x2="' + w + '" y2="' + by + '" stroke="#64748b" stroke-width="0.6" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>';
+    }
+    svg += '<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>';
+    return svg;
+}
+
+// 스파크라인 기준선: 일(1d)=전일 종가(등락률 역산), 주/1개월=기간 시작가
+function _indexBase(sym, q) {
+    if (_indexPeriod === '1d' && q && q.price != null && q.chg != null && (1 + q.chg / 100) !== 0) {
+        return q.price / (1 + q.chg / 100);
+    }
+    var s = SPARK_CACHE[sym];
+    return (s && s.length) ? s[0] : undefined;
 }
 
 function renderIndexGrid() {
@@ -2835,7 +2849,7 @@ function renderIndexGrid() {
         return '<div class="glass-panel rounded-xl p-2 cursor-pointer hover:bg-slate-800/70 transition" onclick="openIndexChart(\'' + sym + '\',\'' + t.label + (fut ? ' 선물' : '') + '\')">'
             + '<div class="flex justify-between items-baseline gap-1"><span class="text-[9px] text-slate-400 font-bold whitespace-nowrap overflow-hidden text-ellipsis">' + t.label + '</span><span class="text-[9px] font-bold shrink-0 whitespace-nowrap ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</span></div>'
             + '<div class="text-xs font-black text-white mt-0.5 whitespace-nowrap">' + fmtNum(q.price, t.dec) + futBadge + '</div>'
-            + '<div class="mt-1 h-5">' + (SPARK_CACHE[sym] ? sparkSvg(SPARK_CACHE[sym], 60, 20) : '') + '</div>'
+            + '<div class="mt-1 h-5">' + (SPARK_CACHE[sym] ? sparkSvg(SPARK_CACHE[sym], 60, 20, _indexBase(sym, q)) : '') + '</div>'
             + '</div>';
     }).join('');
 }
