@@ -2794,6 +2794,7 @@ function _activeSym(t) { return (t.us && t.fut && !isUSMarketOpen()) ? t.fut : t
 function _isFut(t) { return !!(t.us && t.fut && !isUSMarketOpen()); }
 var INDEX_QUOTE_MAP = {};      // 최신 시세 (price/chg)
 var SPARK_CACHE = {};          // 심볼별 최근 종가 배열 (추세선용)
+var SPARK_BASE = {};           // 심볼별 기준선 값 (일=전일 종가 / 그외=기간 시작가)
 var _sparkTs = 0;
 var _indexPeriod = '1d';      // 추세선 기간 (1d=일/5d=주/1mo=1개월)
 // 기간별 야후 range/interval (일=당일 분봉)
@@ -2805,7 +2806,7 @@ function setIndexPeriod(p) {
         var b = document.getElementById('idxP_' + x);
         if (b) b.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (x === p ? 'bg-cyan-600 text-white' : 'text-slate-400');
     });
-    SPARK_CACHE = {}; _sparkTs = 0;   // 기간 변경 → 추세선 다시 로드
+    SPARK_CACHE = {}; SPARK_BASE = {}; _sparkTs = 0;   // 기간 변경 → 추세선 다시 로드
     ensureIndexSparklines();
 }
 
@@ -2830,8 +2831,9 @@ function sparkSvg(closes, w, h, base) {
     return svg;
 }
 
-// 스파크라인 기준선: 일(1d)=전일 종가(등락률 역산), 주/1개월=기간 시작가
+// 스파크라인 기준선: 일=전일 종가(전일↔당일 경계), 주/1개월=기간 시작가
 function _indexBase(sym, q) {
+    if (SPARK_BASE[sym] != null) return SPARK_BASE[sym];
     if (_indexPeriod === '1d' && q && q.price != null && q.chg != null && (1 + q.chg / 100) !== 0) {
         return q.price / (1 + q.chg / 100);
     }
@@ -2867,7 +2869,19 @@ async function refreshIndexQuotes() {
     } catch (e) { /* 유지 */ }
 }
 
-// 추세선 데이터(최근 1개월 종가) — 30분 캐시
+// 시계열을 날짜(time 문자열 앞 10자) 기준으로 거래일별 분리
+function _splitDays(series) {
+    var days = [], cur = [series[0]], curDay = String(series[0].time).slice(0, 10);
+    for (var i = 1; i < series.length; i++) {
+        var d = String(series[i].time).slice(0, 10);
+        if (d !== curDay) { days.push(cur); cur = [series[i]]; curDay = d; }
+        else cur.push(series[i]);
+    }
+    days.push(cur);
+    return days;
+}
+
+// 추세선 데이터 — 30분 캐시. 일(1d)은 전일 끝 ~30%까지 함께 그려 기준선을 자연스럽게 배치
 async function ensureIndexSparklines() {
     if (!document.getElementById('indexGrid')) return;
     var actives = HOME_INDICES.map(_activeSym);
@@ -2877,12 +2891,28 @@ async function ensureIndexSparklines() {
         await Promise.all(HOME_INDICES.map(async function (t) {
             var sym = _activeSym(t);
             try {
-                var _pp = INDEX_PERIODS[_indexPeriod] || INDEX_PERIODS['5d'];
-                var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(sym) + '&range=' + _pp.range + '&interval=' + _pp.interval);
+                var isDay = (_indexPeriod === '1d');
+                // 일봉은 전일 일부까지 필요 → 5일치 5분봉 요청 후 '전일 30% + 당일'만 사용
+                var range = isDay ? '5d' : ((INDEX_PERIODS[_indexPeriod] || INDEX_PERIODS['5d']).range);
+                var interval = isDay ? '5m' : ((INDEX_PERIODS[_indexPeriod] || INDEX_PERIODS['5d']).interval);
+                var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(sym) + '&range=' + range + '&interval=' + interval);
                 var j = await r.json();
-                var s = (j.series || []).map(function (p) { return p.close; }).filter(function (c) { return c != null; });
-                var cap = (_indexPeriod === '1d') ? 400 : ((_indexPeriod === '5d') ? 80 : 90);
-                if (s.length >= 2) SPARK_CACHE[sym] = s.slice(-cap);
+                var series = (j.series || []).filter(function (p) { return p && p.close != null && p.time != null; });
+                if (series.length < 2) return;
+                if (isDay) {
+                    var days = _splitDays(series);
+                    var today = days[days.length - 1];
+                    var prior = days.length >= 2 ? days[days.length - 2] : [];
+                    var base = prior.length ? prior[prior.length - 1].close : today[0].close;
+                    var priorTail = prior.slice(-Math.max(1, Math.ceil(prior.length * 0.3)));   // 전일 끝 ~30%
+                    var disp = priorTail.concat(today).map(function (p) { return p.close; });
+                    if (disp.length >= 2) { SPARK_CACHE[sym] = disp; SPARK_BASE[sym] = base; }
+                } else {
+                    var closes = series.map(function (p) { return p.close; });
+                    var cap = (_indexPeriod === '5d') ? 80 : 90;
+                    SPARK_CACHE[sym] = closes.slice(-cap);
+                    SPARK_BASE[sym] = SPARK_CACHE[sym][0];
+                }
             } catch (e) { /* 개별 실패 무시 */ }
         }));
         _sparkTs = Date.now();
