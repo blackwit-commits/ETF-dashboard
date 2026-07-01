@@ -3021,51 +3021,77 @@ function toggleWatchEdit() {
     renderWatchlist();
 }
 
+// 종목 유형: 저장값 우선, 없으면 등록 ETF면 ETF, 그 외 개별종목
+function _watchType(w) {
+    if (w.type === 'ETF' || w.type === 'STOCK') return w.type;
+    return ETF_DB.some(function (e) { return e.sym === w.sym; }) ? 'ETF' : 'STOCK';
+}
+var WATCH_GROUPS = [
+    { key: 'US_ETF', label: '🇺🇸 미국 ETF', market: 'US', type: 'ETF' },
+    { key: 'US_STOCK', label: '🇺🇸 미국 개별종목', market: 'US', type: 'STOCK' },
+    { key: 'KR_ETF', label: '🇰🇷 국내 ETF', market: 'KR', type: 'ETF' },
+    { key: 'KR_STOCK', label: '🇰🇷 국내 개별종목', market: 'KR', type: 'STOCK' }
+];
+
+function _watchRowHtml(w) {
+    var q = WATCH_QUOTES[w.sym] || {};
+    var dec = (w.market === 'KR') ? 0 : 2;
+    // 프리/애프터장이면 연장거래가 우선 표시
+    var isExt = (q.state === 'PRE' || q.state === 'POST') && q.extPrice != null;
+    var showPrice = isExt ? q.extPrice : q.price;
+    var showChg = isExt ? q.extChg : q.chg;
+    var extTag = isExt ? '<span class="text-[8px] bg-indigo-500/20 text-indigo-300 px-1 rounded font-bold ml-1 align-middle">' + (q.state === 'PRE' ? '프리' : '애프터') + '</span>' : '';
+    var priceStr = (showPrice != null) ? fmtNum(showPrice, dec) : '—';
+    var dot = (showChg == null) ? 'text-slate-500' : (showChg >= 0 ? 'text-red-400' : 'text-blue-400');
+    var base = (q.price != null && q.chg != null && (1 + q.chg / 100) !== 0) ? q.price / (1 + q.chg / 100) : undefined;
+    var spark = WATCH_SPARK[w.sym] ? '<span class="inline-block align-middle" style="width:54px;height:13px">' + sparkSvg(WATCH_SPARK[w.sym], 54, 13, base) + '</span>' : '';
+    var del = _watchEdit ? '<button onclick="event.stopPropagation();removeFromWatch(\'' + w.sym + '\')" class="w-6 h-6 flex items-center justify-center bg-red-500/20 text-red-400 rounded-full text-[11px] shrink-0"><i class="fa-solid fa-minus"></i></button>' : '';
+    return '<div class="py-2 flex items-center gap-2 cursor-pointer active:bg-slate-800/40" onclick="openIndexChart(\'' + w.sym + '\',\'' + escapeHtml(w.name || w.sym).replace(/'/g, '') + '\')">'
+        + del
+        + '<div class="flex-1 min-w-0">'
+        + '<div class="flex items-baseline gap-1.5"><span class="' + dot + ' text-[8px]">●</span>'
+        + '<span class="text-[13px] font-black text-white">' + escapeHtml(w.sym) + '</span>'
+        + '<span class="text-[10px] text-slate-400 truncate">' + escapeHtml(w.name || '') + '</span></div>'
+        + '<div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">거래량 ' + fmtVolume(q.volume) + (spark ? ' · ' + spark : '') + '</div>'
+        + '</div>'
+        + '<div class="text-right shrink-0"><div class="text-[13px] font-black text-white">' + priceStr + extTag + '</div>'
+        + '<div class="text-[11px] font-bold ' + chgClass(showChg) + '">' + fmtChgPct(showChg) + '</div></div>'
+        + '</div>';
+}
+
 function renderWatchlist() {
     var box = document.getElementById('watchList');
     if (!box) return;
-    var items = watchlist.filter(function (w) { return _watchFilter === 'all' || w.market === _watchFilter; });
     if (!watchlist.length) {
         box.innerHTML = '<div class="py-6 text-center text-slate-500 text-xs">관심목록이 비어있어요.<br><span class="text-slate-600">우측 상단 <i class="fa-solid fa-plus"></i> 로 종목을 담아보세요.</span></div>';
         return;
     }
-    if (!items.length) { box.innerHTML = '<div class="py-6 text-center text-slate-500 text-xs">해당 시장에 담은 종목이 없어요.</div>'; return; }
-    // 정렬
-    items = items.slice().sort(function (a, b) {
+    var sortFn = function (a, b) {
         var qa = WATCH_QUOTES[a.sym] || {}, qb = WATCH_QUOTES[b.sym] || {};
         if (_watchSort === 'chg') return (qb.chg != null ? qb.chg : -999) - (qa.chg != null ? qa.chg : -999);
         if (_watchSort === 'volume') return (qb.volume || 0) - (qa.volume || 0);
         if (_watchSort === 'name') return String(a.name || a.sym).localeCompare(String(b.name || b.sym));
-        return 0; // added = 원래 순서
+        return 0;
+    };
+    // 필터(시장) → 유형별 섹션 그룹 (미국 ETF / 미국 개별종목 / 국내 …)
+    var groups = WATCH_GROUPS.filter(function (g) { return _watchFilter === 'all' || g.market === _watchFilter; });
+    var html = '', shown = 0;
+    groups.forEach(function (g) {
+        var items = watchlist.filter(function (w) { return w.market === g.market && _watchType(w) === g.type; }).slice().sort(sortFn);
+        if (!items.length) return;
+        shown += items.length;
+        html += '<div class="pt-2 first:pt-0"><div class="text-[10px] font-bold text-slate-500 px-0.5 pb-1">' + g.label + ' <span class="text-slate-600">' + items.length + '</span></div>'
+            + '<div class="divide-y divide-slate-700/50">' + items.map(_watchRowHtml).join('') + '</div></div>';
     });
-    var flag = { KR: '🇰🇷', US: '🇺🇸' };
-    box.innerHTML = items.map(function (w) {
-        var q = WATCH_QUOTES[w.sym] || {};
-        var dec = (w.market === 'KR') ? 0 : 2;
-        var priceStr = (q.price != null) ? fmtNum(q.price, dec) : '—';
-        var dot = (q.chg == null) ? 'text-slate-500' : (q.chg >= 0 ? 'text-red-400' : 'text-blue-400');
-        var base = (q.price != null && q.chg != null && (1 + q.chg / 100) !== 0) ? q.price / (1 + q.chg / 100) : undefined;
-        var spark = WATCH_SPARK[w.sym] ? '<span class="inline-block align-middle" style="width:54px;height:13px">' + sparkSvg(WATCH_SPARK[w.sym], 54, 13, base) + '</span>' : '';
-        var del = _watchEdit ? '<button onclick="event.stopPropagation();removeFromWatch(\'' + w.sym + '\')" class="w-6 h-6 flex items-center justify-center bg-red-500/20 text-red-400 rounded-full text-[11px] shrink-0"><i class="fa-solid fa-minus"></i></button>' : '';
-        return '<div class="py-2 flex items-center gap-2 cursor-pointer active:bg-slate-800/40" onclick="openIndexChart(\'' + w.sym + '\',\'' + escapeHtml(w.name || w.sym).replace(/'/g, '') + '\')">'
-            + del
-            + '<div class="flex-1 min-w-0">'
-            + '<div class="flex items-baseline gap-1.5"><span class="' + dot + ' text-[8px]">●</span>'
-            + '<span class="text-[13px] font-black text-white">' + escapeHtml(w.sym) + '</span>'
-            + '<span class="text-[10px] text-slate-400 truncate">' + (flag[w.market] || '') + ' ' + escapeHtml(w.name || '') + '</span></div>'
-            + '<div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">거래량 ' + fmtVolume(q.volume) + (spark ? ' · ' + spark : '') + '</div>'
-            + '</div>'
-            + '<div class="text-right shrink-0"><div class="text-[13px] font-black text-white">' + priceStr + '</div>'
-            + '<div class="text-[11px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</div></div>'
-            + '</div>';
-    }).join('');
+    if (!shown) { box.innerHTML = '<div class="py-6 text-center text-slate-500 text-xs">해당 조건에 담은 종목이 없어요.</div>'; return; }
+    box.innerHTML = html;
 }
 
 async function refreshWatchQuotes() {
     if (!watchlist.length || !document.getElementById('watchList')) return;
     try {
         var syms = watchlist.map(function (w) { return w.sym; }).join(',');
-        var res = await fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(syms));
+        var res = await fetch(API_BASE_URL + '/quotes?ext=1&symbols=' + encodeURIComponent(syms));
         var data = await res.json();
         (data || []).forEach(function (q) { if (q && q.symbol) { WATCH_QUOTES[q.symbol] = q; INDEX_QUOTE_MAP[q.symbol] = q; } });
         renderWatchlist();
@@ -3102,16 +3128,16 @@ function openWatchAddModal() {
 }
 function closeWatchAddModal() { var m = document.getElementById('watchAddModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
 
-function _watchRow(sym, name, sub, market, badge) {
+function _watchRow(sym, name, sub, market, badge, type) {
     var inList = watchlist.some(function (w) { return w.sym === sym; });
     var btn = inList
         ? '<span class="text-emerald-400 text-xs font-bold px-3 py-1"><i class="fa-solid fa-check"></i> 담김</span>'
-        : '<button onclick="addToWatch(\'' + sym + '\',\'' + escapeHtml(name || '').replace(/'/g, '') + '\',\'' + market + '\')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg text-xs font-bold shrink-0">추가</button>';
+        : '<button onclick="addToWatch(\'' + sym + '\',\'' + escapeHtml(name || '').replace(/'/g, '') + '\',\'' + market + '\',\'' + (type || '') + '\')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg text-xs font-bold shrink-0">추가</button>';
     return '<div class="bg-slate-800 p-3 rounded-xl flex justify-between items-center"><div class="min-w-0 pr-2"><span class="font-bold text-white">' + escapeHtml(sym) + '</span> <span class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-slate-600 text-slate-200">' + badge + '</span><div class="text-xs text-slate-400 truncate">' + escapeHtml(sub || '') + '</div></div>' + btn + '</div>';
 }
 function renderWatchSearchLocal(list) {
     var g = document.getElementById('watchSearchGrid'); if (!g) return;
-    g.innerHTML = list.map(function (e) { return _watchRow(e.sym, e.name || e.desc, e.desc || e.name || '', 'US', e.lev || 'ETF'); }).join('');
+    g.innerHTML = list.map(function (e) { return _watchRow(e.sym, e.name || e.desc, e.desc || e.name || '', 'US', e.lev || 'ETF', 'ETF'); }).join('');
 }
 function filterWatchSearch() {
     var raw = document.getElementById('watchSearchInput').value;
@@ -3120,33 +3146,43 @@ function filterWatchSearch() {
     clearTimeout(_watchSearchTimer);
     var term = raw.trim();
     if (term.length < 1) { _watchSearchSeq++; return; }
+    // 검색 중 표시 (한글 등 원격 결과 대기)
+    var g0 = document.getElementById('watchSearchGrid');
+    if (g0 && !g0.innerHTML.trim()) g0.innerHTML = '<div class="col-span-full text-center text-slate-500 text-xs py-3"><i class="fa-solid fa-spinner fa-spin mr-1"></i>검색 중...</div>';
     _watchSearchTimer = setTimeout(function () { fetchWatchSuggestions(term); }, 250);
 }
 async function fetchWatchSuggestions(term) {
     var seq = ++_watchSearchSeq;
+    var q = String(term || '').toUpperCase();
     var list = [];
     try { var res = await fetch(API_BASE_URL + '/search?q=' + encodeURIComponent(term)); if (res.ok) { var d = await res.json(); if (Array.isArray(d)) list = d; } } catch (e) {}
     if (seq !== _watchSearchSeq) return;
     var g = document.getElementById('watchSearchGrid'); if (!g) return;
+    var loadingEl = g.querySelector('.fa-spinner'); if (loadingEl) g.innerHTML = '';   // 검색중 표시 제거
     var old = document.getElementById('watchRemoteSection'); if (old) old.remove();
-    var filtered = (list || []).filter(function (x) { return x.symbol && !ETF_DB.some(function (e) { return e.sym === x.symbol; }); }).slice(0, 12);
+    var filtered = (list || []).filter(function (x) { return x.symbol && !ETF_DB.some(function (e) { return e.sym === x.symbol; }); }).slice(0, 15);
     var wrap = document.createElement('div'); wrap.id = 'watchRemoteSection'; wrap.className = 'space-y-2 col-span-full';
     if (filtered.length) {
         wrap.innerHTML = '<div class="text-[10px] text-slate-500 font-bold px-1 pt-1">🔎 검색 결과</div>' + filtered.map(function (x) {
             var mkt = _watchMarket(x.symbol, x.exchange);
+            var type = (x.type === 'ETF') ? 'ETF' : 'STOCK';
             var sub = [(x.name || '').slice(0, 32), x.exchange].filter(Boolean).join(' · ');
-            return _watchRow(x.symbol, x.name || x.symbol, sub, mkt, x.type === 'ETF' ? 'ETF' : (mkt === 'KR' ? '🇰🇷' : '주식'));
+            return _watchRow(x.symbol, x.name || x.symbol, sub, mkt, x.type === 'ETF' ? 'ETF' : (mkt === 'KR' ? '🇰🇷 주식' : '주식'), type);
         }).join('');
     } else if (q && isValidTickerSymbol(q) && !ETF_DB.some(function (e) { return e.sym === q; })) {
-        wrap.innerHTML = _watchRow(q, q, '검색 결과 없음 — 심볼로 직접 추가', _watchMarket(q, ''), '직접');
-    } else { return; }
+        wrap.innerHTML = _watchRow(q, q, '검색 결과 없음 — 심볼로 직접 추가', _watchMarket(q, ''), '직접', 'STOCK');
+    } else {
+        wrap.innerHTML = '<div class="col-span-full text-center text-slate-500 text-xs py-3">검색 결과가 없어요.</div>';
+    }
     g.appendChild(wrap);
 }
-function addToWatch(sym, name, market) {
+function addToWatch(sym, name, market, type) {
     sym = (sym || '').trim().toUpperCase();
     if (!sym) return;
     if (watchlist.some(function (w) { return w.sym === sym; })) { showToast('이미 관심목록에 있어요'); return; }
-    watchlist.push({ sym: sym, name: name || sym, market: market || _watchMarket(sym, '') });
+    var mkt = market || _watchMarket(sym, '');
+    var typ = (type === 'ETF' || type === 'STOCK') ? type : (ETF_DB.some(function (e) { return e.sym === sym; }) ? 'ETF' : 'STOCK');
+    watchlist.push({ sym: sym, name: name || sym, market: mkt, type: typ });
     saveWatchlist();
     WATCH_SPARK[sym] = null; _watchSparkTs = 0;
     renderWatchlist(); refreshWatchlist();

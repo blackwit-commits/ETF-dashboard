@@ -19,11 +19,16 @@ export default {
       const raw = (url.searchParams.get("symbols") || "").trim();
       const syms = raw.split(",").map(s => s.trim()).filter(Boolean).slice(0, 30);
       if (!syms.length) return new Response("[]", { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const wantExt = url.searchParams.get("ext") === "1";   // 프리/애프터장가 병합(분봉 기반) — 관심목록용
       const results = await Promise.all(syms.map(async (s) => {
         const q = await fetchQuoteSimple(s);
+        let st = q ? q.marketState : null, exP = q ? q.extPrice : null, exC = q ? q.extChg : null;
+        if (wantExt) {   // 정규장 등락·거래량은 fetchQuoteSimple(정확), 프리/애프터가만 분봉에서
+          const lq = await fetchLiveQuote(s);
+          if (lq) { st = lq.marketState; exP = lq.extPrice; exC = lq.extChg; }
+        }
         return { symbol: s, price: (q && q.price != null) ? q.price : null, chg: (q && q.chg != null) ? q.chg : null,
-                 state: q ? q.marketState : null, extPrice: q ? q.extPrice : null, extChg: q ? q.extChg : null,
-                 volume: q && q.volume != null ? q.volume : null };
+                 state: st, extPrice: exP, extChg: exC, volume: q && q.volume != null ? q.volume : null };
       }));
       return new Response(JSON.stringify(results), {
         headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=30" }
