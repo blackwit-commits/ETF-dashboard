@@ -1397,6 +1397,9 @@ function initApp() {
         if (!window._mktVisHooked) { window._mktVisHooked = true; document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); } catch (e) {} } }); }
         fetchMacroIndicatorsLive();
         fetchLiveFxRate();
+        // 관심목록 로드 + 초기 시세/추세선
+        loadWatchlist();
+        refreshWatchlist();
         // 경제지표 발표결과 — 초기 1회 + 10분 주기(배지 갱신)
         ensureEconResults();
         if (!window._econLoopTimer) window._econLoopTimer = setInterval(function () { if (!document.hidden) { try { ensureEconResults(); } catch (e) {} } }, 10 * 60000);
@@ -2970,6 +2973,192 @@ function renderMarketSummary() {
     if (te && hot && hot._cachedAt) { var m = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = '· ' + (m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전'); }
 }
 
+// ==========================================
+// 관심목록 (Watchlist) — 미국/국내 · 정렬 · 거래량
+// ==========================================
+var WATCHLIST_KEY = 'umt_watchlist';
+var watchlist = [];              // [{sym,name,market}]
+var _watchFilter = 'all';
+var _watchSort = 'chg';
+var _watchEdit = false;
+var WATCH_QUOTES = {};           // sym -> {price,chg,volume,...}
+var WATCH_SPARK = {};            // sym -> 종가 배열
+var _watchSparkTs = 0;
+var _watchSearchSeq = 0, _watchSearchTimer = null;
+
+function loadWatchlist() {
+    try { var a = JSON.parse(localStorage.getItem(WATCHLIST_KEY) || '[]'); if (Array.isArray(a)) watchlist = a; } catch (e) { watchlist = []; }
+}
+function saveWatchlist() { try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist)); } catch (e) {} }
+
+function _watchMarket(sym, exchange) {
+    var s = String(sym || '').toUpperCase();
+    if (/\.(KS|KQ)$/.test(s) || s === '^KS11' || s === '^KQ11') return 'KR';
+    if (/KOE|KSC|KRX|KOSDAQ|KOSPI/i.test(exchange || '')) return 'KR';
+    return 'US';
+}
+function fmtVolume(v) {
+    if (v == null) return '-';
+    if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+    if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+    return String(Math.round(v));
+}
+
+function setWatchFilter(f) {
+    _watchFilter = f;
+    ['all', 'KR', 'US'].forEach(function (x) {
+        var b = document.getElementById('watchF_' + x);
+        if (b) b.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (x === f ? 'bg-cyan-600 text-white' : 'text-slate-400');
+    });
+    renderWatchlist();
+}
+function setWatchSort(s) { _watchSort = s; renderWatchlist(); }
+function toggleWatchEdit() {
+    _watchEdit = !_watchEdit;
+    var b = document.getElementById('watchEditBtn');
+    if (b) b.className = 'w-7 h-7 flex items-center justify-center rounded-full text-[11px] ' + (_watchEdit ? 'bg-amber-500 text-white' : 'bg-slate-800 text-slate-400 hover:text-white');
+    renderWatchlist();
+}
+
+function renderWatchlist() {
+    var box = document.getElementById('watchList');
+    if (!box) return;
+    var items = watchlist.filter(function (w) { return _watchFilter === 'all' || w.market === _watchFilter; });
+    if (!watchlist.length) {
+        box.innerHTML = '<div class="py-6 text-center text-slate-500 text-xs">관심목록이 비어있어요.<br><span class="text-slate-600">우측 상단 <i class="fa-solid fa-plus"></i> 로 종목을 담아보세요.</span></div>';
+        return;
+    }
+    if (!items.length) { box.innerHTML = '<div class="py-6 text-center text-slate-500 text-xs">해당 시장에 담은 종목이 없어요.</div>'; return; }
+    // 정렬
+    items = items.slice().sort(function (a, b) {
+        var qa = WATCH_QUOTES[a.sym] || {}, qb = WATCH_QUOTES[b.sym] || {};
+        if (_watchSort === 'chg') return (qb.chg != null ? qb.chg : -999) - (qa.chg != null ? qa.chg : -999);
+        if (_watchSort === 'volume') return (qb.volume || 0) - (qa.volume || 0);
+        if (_watchSort === 'name') return String(a.name || a.sym).localeCompare(String(b.name || b.sym));
+        return 0; // added = 원래 순서
+    });
+    var flag = { KR: '🇰🇷', US: '🇺🇸' };
+    box.innerHTML = items.map(function (w) {
+        var q = WATCH_QUOTES[w.sym] || {};
+        var dec = (w.market === 'KR') ? 0 : 2;
+        var priceStr = (q.price != null) ? fmtNum(q.price, dec) : '—';
+        var dot = (q.chg == null) ? 'text-slate-500' : (q.chg >= 0 ? 'text-red-400' : 'text-blue-400');
+        var base = (q.price != null && q.chg != null && (1 + q.chg / 100) !== 0) ? q.price / (1 + q.chg / 100) : undefined;
+        var spark = WATCH_SPARK[w.sym] ? '<span class="inline-block align-middle" style="width:54px;height:13px">' + sparkSvg(WATCH_SPARK[w.sym], 54, 13, base) + '</span>' : '';
+        var del = _watchEdit ? '<button onclick="event.stopPropagation();removeFromWatch(\'' + w.sym + '\')" class="w-6 h-6 flex items-center justify-center bg-red-500/20 text-red-400 rounded-full text-[11px] shrink-0"><i class="fa-solid fa-minus"></i></button>' : '';
+        return '<div class="py-2 flex items-center gap-2 cursor-pointer active:bg-slate-800/40" onclick="openIndexChart(\'' + w.sym + '\',\'' + escapeHtml(w.name || w.sym).replace(/'/g, '') + '\')">'
+            + del
+            + '<div class="flex-1 min-w-0">'
+            + '<div class="flex items-baseline gap-1.5"><span class="' + dot + ' text-[8px]">●</span>'
+            + '<span class="text-[13px] font-black text-white">' + escapeHtml(w.sym) + '</span>'
+            + '<span class="text-[10px] text-slate-400 truncate">' + (flag[w.market] || '') + ' ' + escapeHtml(w.name || '') + '</span></div>'
+            + '<div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">거래량 ' + fmtVolume(q.volume) + (spark ? ' · ' + spark : '') + '</div>'
+            + '</div>'
+            + '<div class="text-right shrink-0"><div class="text-[13px] font-black text-white">' + priceStr + '</div>'
+            + '<div class="text-[11px] font-bold ' + chgClass(q.chg) + '">' + fmtChgPct(q.chg) + '</div></div>'
+            + '</div>';
+    }).join('');
+}
+
+async function refreshWatchQuotes() {
+    if (!watchlist.length || !document.getElementById('watchList')) return;
+    try {
+        var syms = watchlist.map(function (w) { return w.sym; }).join(',');
+        var res = await fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(syms));
+        var data = await res.json();
+        (data || []).forEach(function (q) { if (q && q.symbol) { WATCH_QUOTES[q.symbol] = q; INDEX_QUOTE_MAP[q.symbol] = q; } });
+        renderWatchlist();
+    } catch (e) { /* 유지 */ }
+}
+
+async function ensureWatchSparklines() {
+    if (!watchlist.length || !document.getElementById('watchList')) return;
+    var missing = watchlist.some(function (w) { return !WATCH_SPARK[w.sym]; });
+    if (!missing && Date.now() - _watchSparkTs < 30 * 60 * 1000) return;
+    try {
+        await Promise.all(watchlist.map(async function (w) {
+            try {
+                var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(w.sym) + '&range=5d&interval=30m');
+                var j = await r.json();
+                var s = (j.series || []).map(function (p) { return p.close; }).filter(function (c) { return c != null; });
+                if (s.length >= 2) WATCH_SPARK[w.sym] = s.slice(-60);
+            } catch (e) {}
+        }));
+        _watchSparkTs = Date.now();
+        renderWatchlist();
+    } catch (e) {}
+}
+
+function refreshWatchlist() { refreshWatchQuotes(); ensureWatchSparklines(); }
+
+// --- 추가(검색) 모달 ---
+function openWatchAddModal() {
+    var m = document.getElementById('watchAddModal'); if (!m) return;
+    m.classList.remove('hidden'); m.classList.add('flex');
+    var inp = document.getElementById('watchSearchInput'); if (inp) inp.value = '';
+    _watchSearchSeq++;
+    renderWatchSearchLocal(ETF_DB);   // 기본: 등록 ETF 유니버스 제안
+}
+function closeWatchAddModal() { var m = document.getElementById('watchAddModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
+
+function _watchRow(sym, name, sub, market, badge) {
+    var inList = watchlist.some(function (w) { return w.sym === sym; });
+    var btn = inList
+        ? '<span class="text-emerald-400 text-xs font-bold px-3 py-1"><i class="fa-solid fa-check"></i> 담김</span>'
+        : '<button onclick="addToWatch(\'' + sym + '\',\'' + escapeHtml(name || '').replace(/'/g, '') + '\',\'' + market + '\')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded-lg text-xs font-bold shrink-0">추가</button>';
+    return '<div class="bg-slate-800 p-3 rounded-xl flex justify-between items-center"><div class="min-w-0 pr-2"><span class="font-bold text-white">' + escapeHtml(sym) + '</span> <span class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-slate-600 text-slate-200">' + badge + '</span><div class="text-xs text-slate-400 truncate">' + escapeHtml(sub || '') + '</div></div>' + btn + '</div>';
+}
+function renderWatchSearchLocal(list) {
+    var g = document.getElementById('watchSearchGrid'); if (!g) return;
+    g.innerHTML = list.map(function (e) { return _watchRow(e.sym, e.name || e.desc, e.desc || e.name || '', 'US', e.lev || 'ETF'); }).join('');
+}
+function filterWatchSearch() {
+    var raw = document.getElementById('watchSearchInput').value;
+    var q = raw.toUpperCase();
+    renderWatchSearchLocal(ETF_DB.filter(function (e) { return e.sym.includes(q) || (e.desc || '').includes(q) || (e.name || '').toUpperCase().includes(q); }));
+    clearTimeout(_watchSearchTimer);
+    var term = raw.trim();
+    if (term.length < 1) { _watchSearchSeq++; return; }
+    _watchSearchTimer = setTimeout(function () { fetchWatchSuggestions(term); }, 250);
+}
+async function fetchWatchSuggestions(term) {
+    var seq = ++_watchSearchSeq;
+    var list = [];
+    try { var res = await fetch(API_BASE_URL + '/search?q=' + encodeURIComponent(term)); if (res.ok) { var d = await res.json(); if (Array.isArray(d)) list = d; } } catch (e) {}
+    if (seq !== _watchSearchSeq) return;
+    var g = document.getElementById('watchSearchGrid'); if (!g) return;
+    var old = document.getElementById('watchRemoteSection'); if (old) old.remove();
+    var filtered = (list || []).filter(function (x) { return x.symbol && !ETF_DB.some(function (e) { return e.sym === x.symbol; }); }).slice(0, 12);
+    var wrap = document.createElement('div'); wrap.id = 'watchRemoteSection'; wrap.className = 'space-y-2 col-span-full';
+    if (filtered.length) {
+        wrap.innerHTML = '<div class="text-[10px] text-slate-500 font-bold px-1 pt-1">🔎 검색 결과</div>' + filtered.map(function (x) {
+            var mkt = _watchMarket(x.symbol, x.exchange);
+            var sub = [(x.name || '').slice(0, 32), x.exchange].filter(Boolean).join(' · ');
+            return _watchRow(x.symbol, x.name || x.symbol, sub, mkt, x.type === 'ETF' ? 'ETF' : (mkt === 'KR' ? '🇰🇷' : '주식'));
+        }).join('');
+    } else if (q && isValidTickerSymbol(q) && !ETF_DB.some(function (e) { return e.sym === q; })) {
+        wrap.innerHTML = _watchRow(q, q, '검색 결과 없음 — 심볼로 직접 추가', _watchMarket(q, ''), '직접');
+    } else { return; }
+    g.appendChild(wrap);
+}
+function addToWatch(sym, name, market) {
+    sym = (sym || '').trim().toUpperCase();
+    if (!sym) return;
+    if (watchlist.some(function (w) { return w.sym === sym; })) { showToast('이미 관심목록에 있어요'); return; }
+    watchlist.push({ sym: sym, name: name || sym, market: market || _watchMarket(sym, '') });
+    saveWatchlist();
+    WATCH_SPARK[sym] = null; _watchSparkTs = 0;
+    renderWatchlist(); refreshWatchlist();
+    try { filterWatchSearch(); } catch (e) {}
+    showToast('⭐ ' + sym + ' 관심목록에 추가');
+}
+function removeFromWatch(sym) {
+    watchlist = watchlist.filter(function (w) { return w.sym !== sym; });
+    saveWatchlist();
+    renderWatchlist();
+}
+
 function tickerItemHtml(label, price, chg, dec) {
     return '<span class="inline-flex items-baseline gap-1.5 px-4">'
         + '<span class="text-[11px] font-bold text-slate-300">' + label + '</span>'
@@ -2983,7 +3172,7 @@ function startPriceTicker() {
     refreshIndexQuotes();
     ensureIndexSparklines();
     if (_tickerTimer) clearInterval(_tickerTimer);
-    _tickerTimer = setInterval(function () { if (!document.hidden) { refreshPriceTicker(); refreshIndexQuotes(); ensureIndexSparklines(); } }, 60000);
+    _tickerTimer = setInterval(function () { if (!document.hidden) { refreshPriceTicker(); refreshIndexQuotes(); ensureIndexSparklines(); refreshWatchQuotes(); } }, 60000);
 }
 
 async function refreshPriceTicker() {
@@ -3338,7 +3527,7 @@ function switchTab(id) {
     if(id==='news') { setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); ensureEconResults(); markEconResultsSeen(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); var _ao=document.getElementById('alertOwnerToggle'); if(_ao) _ao.checked = localStorage.getItem('umt_alert_owner')==='1'; }
-    if(id==='home') { try { refreshIndexQuotes(); ensureIndexSparklines(); renderMarketSummary(); ensureEconResults(); } catch(e) {} }
+    if(id==='home') { try { refreshIndexQuotes(); ensureIndexSparklines(); renderMarketSummary(); ensureEconResults(); renderWatchlist(); refreshWatchlist(); } catch(e) {} }
     if(id==='strategy') { try { renderBenchmark(); } catch(e) {} try { renderHoldingStatus(); } catch(e) {} }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }

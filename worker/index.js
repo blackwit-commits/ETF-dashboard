@@ -22,7 +22,8 @@ export default {
       const results = await Promise.all(syms.map(async (s) => {
         const q = await fetchQuoteSimple(s);
         return { symbol: s, price: (q && q.price != null) ? q.price : null, chg: (q && q.chg != null) ? q.chg : null,
-                 state: q ? q.marketState : null, extPrice: q ? q.extPrice : null, extChg: q ? q.extChg : null };
+                 state: q ? q.marketState : null, extPrice: q ? q.extPrice : null, extChg: q ? q.extChg : null,
+                 volume: q && q.volume != null ? q.volume : null };
       }));
       return new Response(JSON.stringify(results), {
         headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=30" }
@@ -788,7 +789,8 @@ async function fetchQuoteSimple(symbol) {
     else if ((state === "POST" || state === "POSTPOST") && meta.postMarketPrice != null) extPrice = meta.postMarketPrice;
     const extChg = (extPrice != null && price) ? ((extPrice - price) / price) * 100 : null;
     const live = extPrice != null ? extPrice : price;   // 알림용 실시간가(프리/애프터 우선)
-    return { price, chg, marketState: state, extPrice, extChg, live };
+    const volume = meta.regularMarketVolume != null ? meta.regularMarketVolume : null;
+    return { price, chg, marketState: state, extPrice, extChg, live, volume };
   } catch (e) { return null; }
 }
 
