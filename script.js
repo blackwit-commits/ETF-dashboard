@@ -1400,6 +1400,8 @@ function initApp() {
         // 관심목록 로드 + 초기 시세/추세선
         loadWatchlist();
         refreshWatchlist();
+        // 갱신 시각 라벨 카운트업 (30초마다 — 데이터 갱신과 무관하게 'N분 전' 증가)
+        if (!window._updLabelTimer) window._updLabelTimer = setInterval(_renderUpdTimes, 30000);
         // 경제지표 발표결과 — 초기 1회 + 10분 주기(배지 갱신)
         ensureEconResults();
         if (!window._econLoopTimer) window._econLoopTimer = setInterval(function () { if (!document.hidden) { try { ensureEconResults(); } catch (e) {} } }, 10 * 60000);
@@ -2874,9 +2876,18 @@ async function refreshIndexQuotes() {
     } catch (e) { /* 유지 */ }
 }
 
-// 갱신 시각 표시 (HH:MM:SS 기준)
-function _clockTime(d) { var p = function (n) { return (n < 10 ? '0' : '') + n; }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
-function _setUpdTime(id) { var el = document.getElementById(id); if (el) el.innerText = '· ' + _clockTime(new Date()) + ' 기준'; }
+// 갱신 시각 표시 (상대 시간: 방금 / N분 전 / N시간 전) — 시장 요약과 동일 스타일
+var _updTimes = {};
+function _relTime(ts) {
+    if (!ts) return '';
+    var s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return '방금';
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + '분 전';
+    return Math.floor(m / 60) + '시간 전';
+}
+function _setUpdTime(id) { _updTimes[id] = Date.now(); var el = document.getElementById(id); if (el) el.innerText = '· ' + _relTime(_updTimes[id]); }
+function _renderUpdTimes() { for (var id in _updTimes) { var el = document.getElementById(id); if (el) el.innerText = '· ' + _relTime(_updTimes[id]); } }
 
 // 시계열을 날짜(time 문자열 앞 10자) 기준으로 거래일별 분리
 function _splitDays(series) {
