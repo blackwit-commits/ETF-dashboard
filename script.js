@@ -3044,7 +3044,9 @@ function _watchRowHtml(w) {
     var priceStr = (showPrice != null) ? fmtNum(showPrice, dec) : '—';
     var dot = (showChg == null) ? 'text-slate-500' : (showChg >= 0 ? 'text-red-400' : 'text-blue-400');
     var base = (q.price != null && q.chg != null && (1 + q.chg / 100) !== 0) ? q.price / (1 + q.chg / 100) : undefined;
-    var spark = WATCH_SPARK[w.sym] ? '<span class="inline-block align-middle" style="width:54px;height:13px">' + sparkSvg(WATCH_SPARK[w.sym], 54, 13, base) + '</span>' : '';
+    var sc = WATCH_SPARK[w.sym];
+    if (sc && isExt && q.extPrice != null) sc = sc.concat([q.extPrice]);   // 프리/애프터가를 선 끝에 이어붙임
+    var spark = sc ? '<span class="inline-block align-middle" style="width:54px;height:13px">' + sparkSvg(sc, 54, 13, base) + '</span>' : '';
     var del = _watchEdit ? '<button onclick="event.stopPropagation();removeFromWatch(\'' + w.sym + '\')" class="w-6 h-6 flex items-center justify-center bg-red-500/20 text-red-400 rounded-full text-[11px] shrink-0"><i class="fa-solid fa-minus"></i></button>' : '';
     return '<div class="py-2 flex items-center gap-2 cursor-pointer active:bg-slate-800/40" onclick="openIndexChart(\'' + w.sym + '\',\'' + escapeHtml(w.name || w.sym).replace(/'/g, '') + '\')">'
         + del
@@ -3358,10 +3360,15 @@ async function loadSectorRotation() {
     if (!_sectorData) box.innerHTML = '<div class="text-slate-500 text-xs py-3 text-center"><i class="fa-solid fa-spinner fa-spin mr-1"></i>섹터 데이터 불러오는 중…</div>';
     try {
         var syms = SECTOR_LIST.map(function (s) { return s.sym; }).join(',');
-        var res = await fetch(API_BASE_URL + '/sectors?symbols=' + encodeURIComponent(syms));
-        var data = await res.json();
+        var results = await Promise.all([
+            fetch(API_BASE_URL + '/sectors?symbols=' + encodeURIComponent(syms)).then(function (r) { return r.json(); }),
+            fetch(API_BASE_URL + '/quotes?ext=1&symbols=' + encodeURIComponent(syms)).then(function (r) { return r.json(); }).catch(function () { return null; })
+        ]);
+        var data = results[0], ext = results[1];
         var map = {};
         (data || []).forEach(function (q) { map[q.symbol] = q; });
+        // 프리/애프터장 등락 병합 (1일 뷰에서 활용)
+        (ext || []).forEach(function (e) { if (e && map[e.symbol]) { map[e.symbol].state = e.state; map[e.symbol].extChg = e.extChg; } });
         _sectorData = map;
         renderSectors();
     } catch (e) {
@@ -3380,15 +3387,25 @@ function renderSectors() {
     var box = document.getElementById('sectorRotationList');
     if (!box || !_sectorData) return;
     var key = _sectorPeriod;
+    var isDay = (key === 'chg1d');
     var rows = SECTOR_LIST.map(function (s) {
         var q = _sectorData[s.sym] || {};
-        return { s: s, val: (q[key] != null ? q[key] : null) };
+        // 1일 뷰 + 프리/애프터장이면 연장거래 등락으로 대체
+        var useExt = isDay && (q.state === 'PRE' || q.state === 'POST') && q.extChg != null;
+        return { s: s, val: useExt ? q.extChg : (q[key] != null ? q[key] : null), ext: useExt };
     });
     rows.sort(function (a, b) {
         if (a.val == null) return 1;
         if (b.val == null) return -1;
         return b.val - a.val;
     });
+    // 세션 배지 (프리/애프터장 반영 중)
+    var note = document.getElementById('sectorSessionNote');
+    if (note) {
+        var st = null;
+        SECTOR_LIST.some(function (s) { var q = _sectorData[s.sym] || {}; if (q.state === 'PRE' || q.state === 'POST') { st = q.state; return true; } return false; });
+        note.innerHTML = (isDay && st) ? '<span class="text-indigo-300 font-bold">' + (st === 'PRE' ? '프리장' : '애프터장') + ' 반영 중</span> · ' : '';
+    }
     var maxAbs = Math.max.apply(null, rows.map(function (r) { return r.val != null ? Math.abs(r.val) : 0; }).concat([1]));
     box.innerHTML = rows.map(function (r) {
         var v = r.val;
