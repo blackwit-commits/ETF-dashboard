@@ -19,7 +19,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260702c">
+    <link rel="stylesheet" href="style.css?v=20260702d">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -321,14 +321,32 @@
         <div id="tab-strategy" class="space-y-4 hidden">
             <div id="tickerBar" class="hidden"></div>
 
-            <!-- ■ 내 계좌 요약 (홈에서 이동) -->
+            <!-- ■ 내 계좌 요약 (홈에서 이동) — 총자산·총손익 히어로 -->
             <div class="glass-panel rounded-2xl p-5 border-t-2 border-blue-500 relative overflow-hidden bg-gradient-to-b from-slate-800/50 to-slate-900/50">
-                <h2 class="text-sm font-bold text-white mb-3"><i class="fa-solid fa-wallet text-blue-400 mr-1.5"></i>내 계좌 요약</h2>
-                <div class="grid grid-cols-2 gap-3 text-xs mb-3">
-                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 자산</div><div class="font-black text-white text-base" id="dashTotalAssets">$0</div><div class="text-[11px] text-slate-500" id="dashTotalAssetsKrw">₩0</div></div>
-                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 투자금</div><div class="font-black text-blue-400 text-base" id="dashTotalInvested">$0</div><div class="text-[11px] text-slate-500" id="dashTotalInvestedKrw">₩0</div></div>
-                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">총 현금</div><div class="font-black text-emerald-400 text-base" id="dashTotalCash">$0</div><div class="text-[11px] text-slate-500" id="dashTotalCashKrw">₩0</div></div>
-                    <div class="bg-slate-800/80 p-3 rounded-lg border border-slate-700"><div class="text-[11px] text-slate-400 mb-0.5">전체 집행률</div><div class="font-black text-yellow-400 text-base" id="dashExecutionRate">0%</div></div>
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-sm font-bold text-white"><i class="fa-solid fa-wallet text-blue-400 mr-1.5"></i>내 계좌 요약</h2>
+                    <span id="accountUpdateTime" class="text-[9px] text-slate-500"></span>
+                </div>
+                <!-- 히어로: 총 자산 + 총 손익 -->
+                <div class="bg-slate-950/50 rounded-xl p-4 border border-slate-700 mb-3">
+                    <div class="flex justify-between items-end gap-3">
+                        <div class="min-w-0">
+                            <div class="text-[11px] text-slate-400 mb-1">총 자산</div>
+                            <div class="font-black text-white text-2xl leading-none" id="dashTotalAssets">$0</div>
+                            <div class="text-[11px] text-slate-500 mt-1" id="dashTotalAssetsKrw">₩0</div>
+                        </div>
+                        <div class="text-right shrink-0">
+                            <div class="text-[11px] text-slate-400 mb-1">총 손익</div>
+                            <div class="font-black text-xl leading-none text-slate-300" id="dashTotalPnl">$0</div>
+                            <div class="text-[12px] font-bold mt-1 text-slate-400" id="dashTotalPnlPct">0%</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 보조 지표 3열 -->
+                <div class="grid grid-cols-3 gap-2 text-center mb-3">
+                    <div class="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700"><div class="text-[10px] text-slate-400 mb-0.5">투자금</div><div class="font-bold text-blue-400 text-sm" id="dashTotalInvested">$0</div><div class="text-[9px] text-slate-500" id="dashTotalInvestedKrw">₩0</div></div>
+                    <div class="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700"><div class="text-[10px] text-slate-400 mb-0.5">현금</div><div class="font-bold text-emerald-400 text-sm" id="dashTotalCash">$0</div><div class="text-[9px] text-slate-500" id="dashTotalCashKrw">₩0</div></div>
+                    <div class="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700"><div class="text-[10px] text-slate-400 mb-0.5">집행률</div><div class="font-bold text-yellow-400 text-sm" id="dashExecutionRate">0%</div></div>
                 </div>
                 <div class="text-[11px] text-slate-400 mb-1.5">종목별 할당 / 현재 투자 / 집행률</div>
                 <div class="space-y-1.5 text-xs mb-3" id="dashTickerAllocList"></div>
@@ -336,6 +354,14 @@
                     <div class="w-14 h-14 shrink-0 relative"><canvas id="portfolioChart"></canvas></div>
                     <div class="flex-1 space-y-1 text-[10px]" id="portfolioLegend"></div>
                 </div>
+            </div>
+
+            <!-- 보유 종목 상태 카드 (HOLD/WATCH/EXIT) — 벤치마크 위로 이동 (스크롤 없이 확인) -->
+            <div id="holdingStatusSection" class="hidden">
+                <div class="flex justify-between items-center px-1 mb-2">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-layer-group text-cyan-500"></i> 보유 종목 상태 <span id="holdingUpdateTime" class="text-[9px] text-slate-500 font-normal"></span></h3>
+                </div>
+                <div class="space-y-2" id="holdingStatusList"></div>
             </div>
 
             <!-- 벤치마크 비교 (내 수익률 vs SPY/QQQ) -->
@@ -346,14 +372,6 @@
                 </div>
                 <div id="benchmarkBars" class="space-y-2"></div>
                 <div class="text-[9px] text-slate-600 mt-2">투입원금 대비 누적 손익률 vs 같은 기간 지수 단순보유 수익률 (참고용)</div>
-            </div>
-
-            <!-- 보유 종목 상태 카드 (HOLD/WATCH/EXIT) -->
-            <div id="holdingStatusSection" class="hidden">
-                <div class="flex justify-between items-center px-1 mb-2">
-                    <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-layer-group text-cyan-500"></i> 보유 종목 상태</h3>
-                </div>
-                <div class="space-y-2" id="holdingStatusList"></div>
             </div>
 
             <!-- 포지션 개요 (마스터) -->
@@ -948,7 +966,7 @@
             <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20260702c"></script>
+    <script src="script.js?v=20260702d"></script>
     <script>
     if('serviceWorker' in navigator){
         window.addEventListener('load',function(){

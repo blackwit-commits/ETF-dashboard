@@ -2619,6 +2619,7 @@ function renderHoldingStatus() {
     if (syms.length === 0) { section.classList.add('hidden'); return; }
 
     section.classList.remove('hidden');
+    try { _setUpdTime('holdingUpdateTime'); } catch (e) {}
     var quadNow = getCurrentQuad();
 
     list.innerHTML = syms.map(function(sym) {
@@ -3644,7 +3645,7 @@ function switchTab(id) {
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); var _ao=document.getElementById('alertOwnerToggle'); if(_ao) _ao.checked = localStorage.getItem('umt_alert_owner')==='1'; }
     if(id==='home') { try { refreshIndexQuotes(); ensureIndexSparklines(); renderMarketSummary(); ensureEconResults(); renderWatchlist(); refreshWatchlist(); } catch(e) {} }
-    if(id==='strategy') { try { renderBenchmark(); } catch(e) {} try { renderHoldingStatus(); } catch(e) {} }
+    if(id==='strategy') { try { updateGlobalCalc(); } catch(e) {} try { renderBenchmark(); } catch(e) {} try { renderHoldingStatus(); } catch(e) {} }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }
 
@@ -6420,6 +6421,11 @@ function updateGlobalCalc() {
         let totalUnrealizedPnL = 0; 
         Object.values(portfolios).forEach(p => { if(p.qty > 0) { const currPrice = p.marketData && p.marketData.price > 0 ? p.marketData.price : p.avgPrice; totalUnrealizedPnL += (p.qty * currPrice) - (p.qty * p.avgPrice); } }); 
         const totalPnL = totalRealizedPnL + totalUnrealizedPnL; const pnlEl = document.getElementById('totalProfitDisplay'); if(pnlEl) { pnlEl.innerText = (totalPnL>=0?'+':'') + '$' + totalPnL.toLocaleString(undefined,{maximumFractionDigits:0}); pnlEl.className = `text-lg font-black ${totalPnL>=0?'text-red-400':'text-blue-400'}`; }
+        // 계좌 요약 히어로: 총 손익 + 수익률(투입원금 대비)
+        const pnlPctV = totalInjectedUSD > 0 ? (totalPnL / totalInjectedUSD * 100) : 0;
+        const dpnl = document.getElementById('dashTotalPnl'); if(dpnl){ dpnl.innerText = (totalPnL>=0?'+':'-') + '$' + Math.abs(Math.round(totalPnL)).toLocaleString(); dpnl.className = 'font-black text-xl leading-none ' + (totalPnL>=0?'text-red-400':'text-blue-400'); }
+        const dpct = document.getElementById('dashTotalPnlPct'); if(dpct){ dpct.innerText = (pnlPctV>=0?'+':'') + pnlPctV.toFixed(2) + '%'; dpct.className = 'text-[12px] font-bold mt-1 ' + (pnlPctV>=0?'text-red-400':'text-blue-400'); }
+        try { _setUpdTime('accountUpdateTime'); } catch(e) {}
         // 손익 분석(원화) — 주식손익 vs 환차손익 분리 + 환율 게이지 + 입출금 요약 (현재환율=실시간 우선)
         renderCapitalAnalysis(totalPrincipalKRW, totalInjectedUSD, avgRate, (_liveUsdKrw || globalData.rate), totalPnL);
         try { renderBenchmark(); } catch(e) {}
