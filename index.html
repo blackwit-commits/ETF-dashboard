@@ -19,7 +19,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260702h">
+    <link rel="stylesheet" href="style.css?v=20260702i">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -417,7 +417,10 @@
             <!-- ===== 현황 뷰 ===== -->
             <div id="stratView-status" class="space-y-4">
             <div id="strategyProgressCard" class="glass-panel rounded-2xl p-3 border border-slate-700 hidden">
-                <h3 class="text-sm font-bold text-white mb-2">투자 진행 요약</h3>
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-sm font-bold text-white">투자 진행 요약</h3>
+                    <button type="button" onclick="openAllocationModal(activeTicker)" class="flex items-center gap-1 text-[11px] text-blue-200 bg-blue-500/20 border border-blue-500/30 px-2.5 py-1 rounded-lg font-bold hover:bg-blue-500/30 active:scale-[0.98] transition"><i class="fa-solid fa-sack-dollar text-yellow-500 text-[10px]"></i>자금 할당 변경</button>
+                </div>
                 <div class="bg-slate-800/40 rounded-lg p-3 flex items-center gap-3">
                     <div class="w-16 h-16 shrink-0 relative">
                         <canvas id="stratExecChart"></canvas>
@@ -984,7 +987,7 @@
             <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20260702h"></script>
+    <script src="script.js?v=20260702i"></script>
     <script>
     if('serviceWorker' in navigator){
         window.addEventListener('load',function(){
