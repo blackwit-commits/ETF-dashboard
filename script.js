@@ -4708,6 +4708,19 @@ function actualPriceCell(actual, plan) {
         + '<div class="text-[9px] font-bold ' + color + '">' + sub + '</div>';
 }
 
+// 수량 셀 — 실제/계획 + 초과/부족 표시 (아직 체결 없으면 계획 수량만)
+function actualQtyCell(planned, bought) {
+    planned = planned || 0;
+    if (!bought || bought <= 0) return '<div class="text-white font-bold">' + planned + '주</div>';
+    var diff = bought - planned;
+    var color, sub;
+    if (diff > 0) { color = 'text-orange-300'; sub = '초과 +' + diff + '주'; }
+    else if (diff < 0) { color = 'text-sky-300'; sub = '부족 ' + diff + '주'; }
+    else { color = 'text-slate-400'; sub = '계획대로'; }
+    return '<div class="font-bold text-white">' + bought + '<span class="text-[9px] text-slate-500 font-normal">/' + planned + '주</span></div>'
+        + '<div class="text-[9px] font-bold ' + color + '">' + sub + '</div>';
+}
+
 function calculatePlan() {
     const d = portfolios[activeTicker];
     const activeCycleId = (function() {
@@ -4791,7 +4804,7 @@ function calculatePlan() {
             <td class="p-2 text-center text-slate-400 font-medium">${i+1}차 <span class="text-[9px] text-slate-600 block">(${drop.toFixed(2)}%)</span></td>
             <td class="p-2 text-center text-blue-300 font-bold align-middle">$${targetPrice.toFixed(2)}</td>
             <td class="p-2 text-center align-middle">${actualPriceCell(actualBuyPrice, targetPrice)}</td>
-            <td class="p-2 text-center text-white font-bold align-middle">${qty}주</td>
+            <td class="p-2 text-center align-middle">${actualQtyCell(qty, boughtQty)}</td>
             <td class="p-2 text-center align-middle">${statusBadge}</td>
         </tr>`;
     }
@@ -4832,7 +4845,7 @@ function calculatePlan() {
             <td class="p-2 text-center text-slate-500 font-medium">${stageNum}차 <span class="text-[9px] text-red-400/80 block">부스터 (${bDrop.toFixed(2)}%)</span></td>
             <td class="p-2 text-center text-blue-300 font-bold align-middle">$${targetPrice.toFixed(2)}</td>
             <td class="p-2 text-center align-middle">${actualPriceCell(actualBuyPrice, targetPrice)}</td>
-            <td class="p-2 text-center text-white font-bold align-middle">${qty}주</td>
+            <td class="p-2 text-center align-middle">${actualQtyCell(qty, boughtQty)}</td>
             <td class="p-2 text-center align-middle">${statusBadge}</td>
         </tr>`;
         }
