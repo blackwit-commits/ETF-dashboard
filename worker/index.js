@@ -445,18 +445,53 @@ export default {
         try { marketRaw = JSON.parse(marketText); } catch (e) {}
         const market = sortTrim(Array.isArray(marketRaw) ? marketRaw : [], 8).map(mapNews);
 
-        // 보유 종목별 뉴스 (최근 7일)
+        // ETF는 종목 뉴스가 거의 없음 → 대표 기초종목(뉴스 활발한 리더)로 매핑해 신선한 뉴스 제공
+        const ETF_NEWS_PROXY = {
+          TQQQ: { label: "나스닥100/기술", tickers: ["NVDA", "AAPL", "MSFT"] },
+          SQQQ: { label: "나스닥100/기술", tickers: ["NVDA", "AAPL", "MSFT"] },
+          SPXL: { label: "S&P500 대형주", tickers: ["NVDA", "AAPL", "MSFT"] },
+          UDOW: { label: "다우", tickers: ["MSFT", "JPM", "CAT"] },
+          SOXL: { label: "반도체", tickers: ["NVDA", "AMD", "TSM"] },
+          FAS:  { label: "금융", tickers: ["JPM", "BAC", "GS"] },
+          NRGU: { label: "에너지", tickers: ["XOM", "CVX", "COP"] },
+          GUSH: { label: "오일·가스", tickers: ["XOM", "CVX", "COP"] },
+          NUGT: { label: "금광", tickers: ["NEM", "GOLD", "AEM"] },
+          GDXU: { label: "금광", tickers: ["NEM", "GOLD", "AEM"] },
+          GLD:  { label: "금", tickers: ["NEM", "GOLD"] },
+          UGL:  { label: "금", tickers: ["NEM", "GOLD"] },
+          DRN:  { label: "부동산(리츠)", tickers: ["PLD", "AMT", "EQIX"] },
+          CURE: { label: "헬스케어", tickers: ["LLY", "UNH", "JNJ"] },
+          LABU: { label: "바이오", tickers: ["VRTX", "REGN", "AMGN"] },
+          BITX: { label: "비트코인", tickers: ["COIN", "MSTR"] },
+          TNA:  { label: "미 소형주(러셀2000)", tickers: [] },
+          TMF:  { label: "미 장기국채/금리", tickers: [] },
+          UUP:  { label: "미 달러(DXY)", tickers: [] },
+          UVXY: { label: "변동성(VIX)", tickers: [] }
+        };
+
+        // 보유 종목별 뉴스 (최근 7일) — ETF면 대표 종목 뉴스 병합
         const now = new Date();
         const to = now.toISOString().slice(0, 10);
         const from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
         const byTicker = {};
+        const proxyLabel = {};
+        const fetchCompanyNews = async (fs) => {
+          try { const r = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(fs)}&from=${from}&to=${to}&token=${key}`); return r.ok ? await r.json() : []; }
+          catch (e) { return []; }
+        };
         await Promise.all(symbols.map(async (sym) => {
+          const proxy = ETF_NEWS_PROXY[sym];
+          const fetchSyms = (proxy && proxy.tickers.length) ? proxy.tickers : (proxy ? [] : [sym]);
+          if (proxy && proxy.tickers.length) proxyLabel[sym] = proxy.label + " · " + proxy.tickers.join("·");
+          else if (proxy) proxyLabel[sym] = proxy.label;
+          if (!fetchSyms.length) return;   // 대응 종목 없는 ETF(달러/국채/VIX 등)는 시장뉴스로 대체
           try {
-            const r = await fetch(`https://finnhub.io/api/v1/company-news?symbol=${encodeURIComponent(sym)}&from=${from}&to=${to}&token=${key}`);
-            const raw = r.ok ? await r.json() : [];
-            const news = sortTrim(Array.isArray(raw) ? raw : [], 4).map(mapNews);
+            const results = await Promise.all(fetchSyms.map(fetchCompanyNews));
+            const merged = [], seen = {};
+            results.forEach((arr) => (Array.isArray(arr) ? arr : []).forEach((x) => { const u = x.url || x.headline; if (u && !seen[u]) { seen[u] = 1; merged.push(x); } }));
+            const news = sortTrim(merged, proxy ? 5 : 4).map(mapNews);
             if (news.length) byTicker[sym] = news;
-          } catch (e) { /* 개별 종목 실패는 무시 */ }
+          } catch (e) { /* 개별 실패 무시 */ }
         }));
 
         // 보유 종목 감성 점수 (Alpha Vantage NEWS_SENTIMENT — 한 번 호출로 전 종목 커버, 무료 25회/일 절약)
@@ -490,7 +525,7 @@ export default {
           } catch (e) { /* 감성 실패는 무시 — 뉴스만 반환 */ }
         }
 
-        return new Response(JSON.stringify({ market, byTicker, sentiment, timestamp: new Date().toISOString() }), { headers: jsonHeaders });
+        return new Response(JSON.stringify({ market, byTicker, sentiment, proxyLabel, timestamp: new Date().toISOString() }), { headers: jsonHeaders });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: jsonHeaders });
       }

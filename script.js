@@ -732,9 +732,10 @@ function renderStockNews(data, isFresh) {
         tickers.forEach(function(tk) {
             var items = byTicker[tk] || [];
             if (!items.length) return;
+            var _plabel = (data.proxyLabel && data.proxyLabel[tk]) ? data.proxyLabel[tk] : '';
             html += '<div class="glass-panel rounded-xl p-3.5">'
                 + '<div class="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-700/60">'
-                +   '<div class="text-[13px] font-black text-sky-300 flex items-center gap-2"><i class="fa-solid fa-tag"></i>' + escapeHtml(tk) + '</div>'
+                +   '<div class="text-[13px] font-black text-sky-300 flex items-center gap-2 min-w-0"><i class="fa-solid fa-tag shrink-0"></i>' + escapeHtml(tk) + (_plabel ? ' <span class="text-[10px] font-bold text-slate-500 truncate">· ' + escapeHtml(_plabel) + '</span>' : '') + '</div>'
                 +   sentimentBadgeHtml(sentiment[tk])
                 + '</div><div class="space-y-2">';
             items.forEach(function(x) { html += newsItemHtml(x, { isNew: isNew(x) }); });
