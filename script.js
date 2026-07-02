@@ -3071,7 +3071,7 @@ function _watchRowHtml(w) {
         + '<div class="flex items-baseline gap-1.5"><span class="' + dot + ' text-[8px]">●</span>'
         + '<span class="text-[13px] font-black text-white">' + escapeHtml(w.sym) + '</span>'
         + '<span class="text-[10px] text-slate-400 truncate">' + escapeHtml(w.name || '') + '</span></div>'
-        + '<div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-1.5">거래량 ' + fmtVolume(q.volume) + (spark ? ' · ' + spark : '') + '</div>'
+        + '<div class="text-[10px] text-slate-500 mt-0.5 flex items-center"><span class="shrink-0" style="width:82px">거래량 ' + fmtVolume(q.volume) + '</span>' + (spark ? spark : '') + '</div>'
         + '</div>'
         + '<div class="text-right shrink-0"><div class="text-[13px] font-black text-white">' + priceStr + extTag + '</div>'
         + '<div class="text-[11px] font-bold ' + chgClass(showChg) + '">' + fmtChgPct(showChg) + '</div></div>'
