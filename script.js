@@ -4165,11 +4165,33 @@ function renderStrategyProgressCard(sym) {
     var priceBelowLast = currentPrice > 0 && lastStagePrice > 0 && currentPrice < lastStagePrice;
 
     if (allBasesDone && priceBelowLast && !(d.config && d.config.boosterOn)) {
+        // 자동 옵션이 켜져 있으면 부스터 자동 활성화 (1회)
+        if (d.config && d.config.boosterAuto === true) {
+            activateBooster(sym, true);
+            boosterHint.classList.add('hidden');
+            return;
+        }
         boosterHint.classList.remove('hidden');
-        boosterHint.innerHTML = '<i class="fa-solid fa-rocket mr-1"></i><strong>부스터 활성화 권장</strong> — 모든 ' + baseTotal + '단계 매수 완료, 현재가($' + currentPrice.toFixed(2) + ')가 마지막 계획가($' + lastStagePrice.toFixed(2) + ') 아래입니다. 추가 투입이 필요하면 아래 부스터 설정을 활성화하세요.';
+        boosterHint.innerHTML = '<div class="flex items-center justify-between gap-2"><div class="min-w-0"><i class="fa-solid fa-rocket mr-1"></i><strong>부스터 활성화 권장</strong> — ' + baseTotal + '단계 매수 완료, 현재가 $' + currentPrice.toFixed(2) + '가 마지막 계획가 $' + lastStagePrice.toFixed(2) + ' 아래입니다.</div>'
+            + '<button type="button" onclick="activateBooster(\'' + sym + '\')" class="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-900 text-[11px] font-black"><i class="fa-solid fa-rocket mr-1"></i>부스터 켜기</button></div>';
     } else {
         boosterHint.classList.add('hidden');
     }
+}
+
+// 부스터 원탭/자동 활성화 — boosterOn=true + BOOSTER 모드로 전환(설정 노출), 계획만 확장(자동 매수 X)
+function activateBooster(sym, isAuto) {
+    var d = portfolios[sym]; if (!d || !d.config) return;
+    if (d.config.boosterOn === true) return;
+    d.config.boosterOn = true;
+    d.config.mode = 'BOOSTER';
+    if (!(parseInt(d.config.boosterStages, 10) > 0)) d.config.boosterStages = 2;
+    if (d.config.boosterMdd == null) d.config.boosterMdd = 10;
+    var allocOk = parseFloat(d.config.boosterAllocPct) > 0;
+    try { saveAll(); } catch (e) {}
+    try { if (activeTicker === sym) loadTickerData(sym); } catch (e) {}
+    try { renderStrategyProgressCard(sym); } catch (e) {}
+    showToast('🚀 ' + sym + ' 부스터 ' + (isAuto ? '자동 ' : '') + '켜짐 — 추가 매수 단계가 계획·알림에 반영됩니다' + (allocOk ? '' : ' (추가 할당 %를 설정하세요)'));
 }
 
 function loadTickerData(sym) {
@@ -4198,6 +4220,7 @@ function loadTickerData(sym) {
             const ap = document.getElementById('boosterAllocPct'); if (ap) ap.value = d.config.boosterAllocPct != null ? d.config.boosterAllocPct : 0;
             const st = document.getElementById('boosterStages'); if (st) st.value = d.config.boosterStages != null ? d.config.boosterStages : 2;
             const md = document.getElementById('boosterMdd'); if (md) md.value = d.config.boosterMdd != null ? d.config.boosterMdd : 10;
+            const au = document.getElementById('boosterAuto'); if (au) au.checked = d.config.boosterAuto === true;
         } else {
             sec.classList.add('hidden');
         }
@@ -4920,6 +4943,7 @@ function updateConfig() {
         d.config.boosterAllocPct = parseFloat(document.getElementById('boosterAllocPct').value) || 0;
         d.config.boosterStages = parseInt(document.getElementById('boosterStages').value) || 2;
         d.config.boosterMdd = parseFloat(document.getElementById('boosterMdd').value) || 10;
+        var _auEl = document.getElementById('boosterAuto'); d.config.boosterAuto = !!(_auEl && _auEl.checked);
     } else {
         const sec = document.getElementById('boosterConfigSection');
         if (sec) sec.classList.add('hidden');
