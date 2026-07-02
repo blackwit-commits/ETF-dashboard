@@ -1244,7 +1244,7 @@ function getPortfolioSummary() {
         const allocPct = p.config && (p.config.alloc != null) ? p.config.alloc : 0;
         const allocUsd = totalEquityBase * (allocPct / 100);
         const investedUsd = (p.qty || 0) * (p.avgPrice || 0);
-        const currPrice = (p.marketData && p.marketData.price > 0) ? p.marketData.price : (p.avgPrice || 0);
+        const currPrice = curPriceOf(sym, p.avgPrice);
         const marketVal = (p.qty || 0) * currPrice;
         totalInvested += investedUsd;
         totalMarketVal += marketVal;
@@ -1253,11 +1253,12 @@ function getPortfolioSummary() {
         byTicker.push({ sym, allocPct, allocUsd, investedUsd, execRate, qty: p.qty || 0, avgPrice: p.avgPrice || 0 });
     });
     let totalRealized = 0, totalUnrealized = 0;
-    Object.values(portfolios || {}).forEach(p => {
+    Object.keys(portfolios || {}).forEach(sym => {
+        const p = portfolios[sym];
         if (p.realizedPnL) totalRealized += p.realizedPnL;
         if (p.totalDiv) totalRealized += p.totalDiv;
         if (p.qty > 0) {
-            const curr = (p.marketData && p.marketData.price > 0) ? p.marketData.price : p.avgPrice;
+            const curr = curPriceOf(sym, p.avgPrice);
             totalUnrealized += (p.qty * curr) - (p.qty * p.avgPrice);
         }
     });
@@ -1474,6 +1475,13 @@ async function fetchMarketData(sym) {
         return { price: 0, change: 0, rsi: 0, ma200: 0, ema8: 0, error: true };
     }
 }
+
+// 프리/애프터장이면 연장거래가/등락 우선 (홈탭·관심목록과 동일 기준) — 전략탭 시세 연결용
+function mdPrice(md) { if (!md) return 0; if ((md.marketState === 'PRE' || md.marketState === 'POST') && md.extPrice > 0) return md.extPrice; return md.price || 0; }
+function mdChg(md) { if (!md) return null; if ((md.marketState === 'PRE' || md.marketState === 'POST') && md.extChg != null) return md.extChg; return (md.change != null ? md.change : null); }
+function mdExtTag(md) { if (!md) return ''; if (md.marketState === 'PRE') return '<span class="text-[8px] bg-indigo-500/20 text-indigo-300 px-1 rounded font-bold ml-1 align-middle">프리</span>'; if (md.marketState === 'POST') return '<span class="text-[8px] bg-indigo-500/20 text-indigo-300 px-1 rounded font-bold ml-1 align-middle">애프터</span>'; return ''; }
+// 종목 현재가(프리/애프터 반영) — MARKET_SNAPSHOT 기준, 없으면 폴백
+function curPriceOf(sym, fallback) { var pr = mdPrice(MARKET_SNAPSHOT[sym]); return pr > 0 ? pr : (fallback || 0); }
 
 async function fetchNews() {
     try {
@@ -2626,7 +2634,7 @@ function renderHoldingStatus() {
         var p = portfolios[sym];
         var md = MARKET_SNAPSHOT[sym] || {};
         var meta = ETF_DB.find(function(e){return e.sym===sym;}) || {};
-        var currPrice = md.price || p.avgPrice || 0;
+        var currPrice = mdPrice(md) || p.avgPrice || 0;   // 프리/애프터장 반영
         var pnlPct = p.avgPrice > 0 ? ((currPrice - p.avgPrice) / p.avgPrice * 100) : 0;
         var pnlColor = pnlPct >= 0 ? 'text-green-400' : 'text-red-400';
 
@@ -4978,8 +4986,9 @@ function renderPositionOverview() {
         var p = portfolios[sym];
         var md = MARKET_SNAPSHOT[sym] || {};
         var meta = ETF_DB.find(function (e) { return e.sym === sym; }) || {};
-        var price = md.price || p.avgPrice || 0;
-        var chg = (md.change != null && !isNaN(md.change)) ? md.change : null;
+        var price = mdPrice(md) || p.avgPrice || 0;   // 프리/애프터장 반영
+        var chg = mdChg(md);
+        var extTag = mdExtTag(md);
         var hasQty = (p.qty || 0) > 0;
         var pnlPct = (hasQty && p.avgPrice > 0) ? ((price - p.avgPrice) / p.avgPrice * 100) : null;
         var prog = buyStageProgress(p);
@@ -5010,7 +5019,7 @@ function renderPositionOverview() {
             +       '<span class="font-black text-white text-base">' + sym + '</span>'
             +       (active ? '<span class="text-[8px] bg-blue-500/20 text-blue-300 px-1 py-0.5 rounded font-bold shrink-0">선택</span>' : '')
             +     '</div>'
-            +     '<div class="text-sm font-black text-white shrink-0 whitespace-nowrap">' + (price > 0 ? ('$' + price.toFixed(2)) : '--') + ' <span class="text-[11px] font-bold ' + chgClass(chg) + '">' + chgTxt + '</span></div>'
+            +     '<div class="text-sm font-black text-white shrink-0 whitespace-nowrap">' + (price > 0 ? ('$' + price.toFixed(2)) : '--') + ' <span class="text-[11px] font-bold ' + chgClass(chg) + '">' + chgTxt + '</span>' + extTag + '</div>'
             +   '</div>'
             +   '<div class="flex items-center justify-between gap-2 mt-2">'
             +     '<span class="text-[10px] text-slate-500 truncate">' + escapeHtml(meta.name || meta.desc || '') + '</span>'
@@ -5470,6 +5479,10 @@ function submitTrade() {
     }
     saveAll();
     loadTickerData(activeTicker);
+    // 매수/매도 즉시 계좌 요약·포지션·보유상태 갱신
+    try { updateGlobalCalc(); } catch (e) {}
+    try { renderPositionOverview(); } catch (e) {}
+    try { renderHoldingStatus(); } catch (e) {}
     // 계획가보다 싸게 체결한 경우: 단계 계획가 자동 조정 토스트 표시
     if (autoAdjustedFromStage != null && autoAdjustedCount > 0) {
         showToast(autoAdjustedFromStage + '차 실체결가 반영: 이후 ' + autoAdjustedCount + '개 단계 계획가 자동 조정');
@@ -6595,9 +6608,9 @@ function updateGlobalCalc() {
         const eEl = document.getElementById('dashExecutionRate'); if(eEl) eEl.innerText = sum.overallExecRate.toFixed(1) + '%'; 
         const listEl = document.getElementById('dashTickerAllocList'); if(listEl) listEl.innerHTML = sum.byTicker.length ? sum.byTicker.map(t => `<div class="flex justify-between items-center bg-slate-800/50 px-2.5 py-1.5 rounded text-xs"><span class="font-bold text-white">${t.sym}</span><span class="text-slate-400">$${Math.round(t.allocUsd)} / $${Math.round(t.investedUsd)}</span><span class="text-yellow-400 font-bold">${t.execRate.toFixed(0)}%</span></div>`).join('') : '<div class="text-slate-500 py-1 text-xs">종목 없음</div>'; 
         let totalCurrentVal = 0; let totalRealizedPnL = 0; 
-        Object.values(portfolios).forEach(p => { if(p.qty > 0) { const currPrice = p.marketData && p.marketData.price > 0 ? p.marketData.price : p.avgPrice; totalCurrentVal += (p.qty * currPrice); } if(p.realizedPnL) totalRealizedPnL += p.realizedPnL; if(p.totalDiv) totalRealizedPnL += p.totalDiv; }); 
+        Object.keys(portfolios).forEach(s => { const p = portfolios[s]; if(p.qty > 0) { const currPrice = curPriceOf(s, p.avgPrice); totalCurrentVal += (p.qty * currPrice); } if(p.realizedPnL) totalRealizedPnL += p.realizedPnL; if(p.totalDiv) totalRealizedPnL += p.totalDiv; });
         let totalUnrealizedPnL = 0; 
-        Object.values(portfolios).forEach(p => { if(p.qty > 0) { const currPrice = p.marketData && p.marketData.price > 0 ? p.marketData.price : p.avgPrice; totalUnrealizedPnL += (p.qty * currPrice) - (p.qty * p.avgPrice); } }); 
+        Object.keys(portfolios).forEach(s => { const p = portfolios[s]; if(p.qty > 0) { const currPrice = curPriceOf(s, p.avgPrice); totalUnrealizedPnL += (p.qty * currPrice) - (p.qty * p.avgPrice); } });
         const totalPnL = totalRealizedPnL + totalUnrealizedPnL; const pnlEl = document.getElementById('totalProfitDisplay'); if(pnlEl) { pnlEl.innerText = (totalPnL>=0?'+':'') + '$' + totalPnL.toLocaleString(undefined,{maximumFractionDigits:0}); pnlEl.className = `text-lg font-black ${totalPnL>=0?'text-red-400':'text-blue-400'}`; }
         // 계좌 요약 히어로: 총 손익 + 수익률(투입원금 대비)
         const pnlPctV = totalInjectedUSD > 0 ? (totalPnL / totalInjectedUSD * 100) : 0;
@@ -6610,7 +6623,7 @@ function updateGlobalCalc() {
         renderCapitalAnalysis(totalPrincipalKRW, totalInjectedUSD, avgRate, (_liveUsdKrw || globalData.rate), totalPnL);
         try { renderBenchmark(); } catch(e) {}
         let invested = 0; const labels = [], data = [], colors = [];
-        Object.keys(portfolios).forEach(s => { const p = portfolios[s]; const price = p.marketData && p.marketData.price > 0 ? p.marketData.price : p.avgPrice; const val = p.qty * price; if(val > 0) { invested += val; labels.push(s); data.push(val); colors.push(s==='GLD'?'#facc15':'#3b82f6'); } }); 
+        Object.keys(portfolios).forEach(s => { const p = portfolios[s]; const price = curPriceOf(s, p.avgPrice); const val = p.qty * price; if(val > 0) { invested += val; labels.push(s); data.push(val); colors.push(s==='GLD'?'#facc15':'#3b82f6'); } });
         const totalEquity = totalInjectedUSD + totalPnL; const cashProxy = totalEquity - invested;
         if(cashProxy > 0) { labels.push('현금(Est)'); data.push(cashProxy); colors.push('#1e293b'); }
         if (portfolioChart && typeof portfolioChart.destroy === "function") {
@@ -6624,7 +6637,7 @@ function updateGlobalCalc() {
                 let retHtml = '';
                 const p = portfolios[l];
                 if (p && (p.qty||0) > 0 && p.avgPrice > 0) {
-                    const price = (p.marketData && p.marketData.price > 0) ? p.marketData.price : p.avgPrice;
+                    const price = curPriceOf(l, p.avgPrice);
                     const pct = (price - p.avgPrice) / p.avgPrice * 100;
                     const pnl = p.qty * (price - p.avgPrice);
                     const cls = pct >= 0 ? 'text-red-400' : 'text-blue-400';
