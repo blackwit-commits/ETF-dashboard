@@ -1113,6 +1113,24 @@ function _econTodayResultsHtml() {
     return out;
 }
 
+// 뉴스 배지(새 발표결과) 클릭 진입 시 → 발표결과 피드로 스크롤 + 강조
+function scrollToEconResults() {
+    var list = document.getElementById('econCalendarList');
+    if (list && list.classList.contains('hidden')) { try { toggleEconCalendar(); } catch (e) {} }  // 접혀 있으면 펼침
+    var tries = 0;
+    var attempt = function () {
+        var el = document.getElementById('econResultsFeed');
+        if (el) {
+            try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { el.scrollIntoView(); }
+            el.classList.add('ring-2', 'ring-cyan-400');
+            setTimeout(function () { el.classList.remove('ring-2', 'ring-cyan-400'); }, 2200);
+            return;
+        }
+        if (tries++ < 25) setTimeout(attempt, 200);   // 캘린더 비동기 로드 대기(최대 5초)
+    };
+    attempt();
+}
+
 function markEconResultsSeen() {
     var d = _econCached(); if (!d) return;
     localStorage.setItem(ECON_SEEN_KEY, String(_econLatestTs(d)));
@@ -1126,7 +1144,7 @@ function _econResultsFeedHtml() {
     var recent = d.results.filter(function (r) { return r.ts && (Date.now() - r.ts) < 4 * 86400000; }).sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); }).slice(0, 8);
     if (!recent.length) return '';
     var flag = { US: '🇺🇸', KR: '🇰🇷' };
-    var html = '<div class="glass-panel rounded-xl p-3.5 mb-3 border border-cyan-700/30">'
+    var html = '<div id="econResultsFeed" class="glass-panel rounded-xl p-3.5 mb-3 border border-cyan-700/30 transition">'
         + '<div class="text-[11px] font-black text-cyan-300 mb-2"><i class="fa-solid fa-bullhorn mr-1"></i>최근 발표 결과</div><div class="space-y-2">';
     recent.forEach(function (r) {
         var sp = _econSurprise(r.surprise);
@@ -3720,7 +3738,7 @@ function switchTab(id) {
         if (activeTicker) setTimeout(() => loadTickerData(activeTicker), 10);
     }
     stopNewsAutoRefresh();
-    if(id==='news') { setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); ensureEconResults(); markEconResultsSeen(); }, 10); startNewsAutoRefresh(); }
+    if(id==='news') { var _hadNewEcon = false; try { var _nb = document.getElementById('newsBadge'); _hadNewEcon = !!(_nb && !_nb.classList.contains('hidden')); } catch(e){} setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); ensureEconResults(); markEconResultsSeen(); if(_hadNewEcon) scrollToEconResults(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); var _ao=document.getElementById('alertOwnerToggle'); if(_ao) _ao.checked = localStorage.getItem('umt_alert_owner')==='1'; }
     if(id==='home') { try { refreshIndexQuotes(); ensureIndexSparklines(); renderMarketSummary(); ensureEconResults(); renderWatchlist(); refreshWatchlist(); } catch(e) {} }

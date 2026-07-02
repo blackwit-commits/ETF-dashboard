@@ -438,12 +438,18 @@ export default {
           summary: (x.summary || "").substring(0, 200)
         });
 
-        // 시장 일반 뉴스
+        // 시장 일반 뉴스 — 매크로/시장 이동 키워드로 중요도 필터 (관련 없는 잡뉴스 제외)
         const marketResp = await fetch(`https://finnhub.io/api/v1/news?category=general&token=${key}`, { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } });
         const marketText = await marketResp.text();
         let marketRaw = [];
         try { marketRaw = JSON.parse(marketText); } catch (e) {}
-        const market = sortTrim(Array.isArray(marketRaw) ? marketRaw : [], 8).map(mapNews);
+        const MACRO_KW = [/\bfed\b|fomc|powell|federal reserve/i, /\brate|interest rate|rate cut|rate hike/i, /inflation|cpi|\bpce\b|ppi/i, /jobs?|payroll|unemployment|labor market/i, /tariff|trade war|trump|white house/i, /\bwar\b|conflict|missile|attack|sanction|geopolit/i, /oil|crude|opec|energy price/i, /\bgdp\b|recession|economy|economic/i, /treasury|yield|bond market|10-year/i, /dollar|forex|currency/i, /china|beijing|xi jinping/i, /nvidia|apple|microsoft|amazon|tesla|\bmeta\b|alphabet|google|broadcom/i, /earnings|guidance|forecast/i, /nasdaq|s&p 500|s&p500|dow jones|wall street|stocks?|market/i, /rally|sell-?off|plunge|surge|slump|tumble|soar|rout/i, /gold|silver|commodit/i, /semiconductor|\bchip|ai\b|artificial intelligence/i, /bitcoin|crypto|ethereum/i];
+        const scoreNews = (x) => { const t = ((x.headline || "") + " " + (x.summary || "")); let s = 0; for (const re of MACRO_KW) { if (re.test(t)) s++; } return s; };
+        const marketArr = Array.isArray(marketRaw) ? marketRaw : [];
+        const marketScored = marketArr.map((x) => ({ x, s: scoreNews(x) })).filter((o) => o.s > 0)
+          .sort((a, b) => (b.s - a.s) || ((b.x.datetime || 0) - (a.x.datetime || 0)));
+        let market = marketScored.slice(0, 8).map((o) => mapNews(o.x));
+        if (market.length < 4) market = sortTrim(marketArr, 8).map(mapNews);   // 걸러진 게 너무 적으면 최신순 폴백
 
         // ETF는 종목 뉴스가 거의 없음 → 대표 기초종목(뉴스 활발한 리더)로 매핑해 신선한 뉴스 제공
         const ETF_NEWS_PROXY = {
