@@ -19,7 +19,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260702d">
+    <link rel="stylesheet" href="style.css?v=20260702e">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -342,6 +342,24 @@
                         </div>
                     </div>
                 </div>
+                <!-- 오늘 평가손익 -->
+                <div id="dashTodayPnl" class="text-[12px] mb-2 px-0.5"></div>
+                <!-- 기간별 실현손익 -->
+                <div class="bg-slate-800/40 rounded-xl p-3 mb-2 border border-slate-700/60">
+                    <div class="flex items-center justify-between mb-2 gap-2">
+                        <span class="text-[11px] font-bold text-slate-400 shrink-0">실현손익</span>
+                        <div class="flex gap-0.5 bg-slate-900/70 rounded-lg p-0.5 flex-wrap justify-end">
+                            <button onclick="setRealizedPeriod('day')" data-rp="day" class="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-400">일</button>
+                            <button onclick="setRealizedPeriod('week')" data-rp="week" class="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-400">주</button>
+                            <button onclick="setRealizedPeriod('month')" data-rp="month" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-600 text-white">이번달</button>
+                            <button onclick="setRealizedPeriod('lastmonth')" data-rp="lastmonth" class="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-400">지난달</button>
+                            <button onclick="setRealizedPeriod('year')" data-rp="year" class="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-400">올해</button>
+                        </div>
+                    </div>
+                    <div id="dashRealizedStat" class="text-[13px]"></div>
+                </div>
+                <!-- 자산 추이 (일일 스냅샷 누적 시 표시) -->
+                <div id="dashEquityTrend" class="hidden bg-slate-800/40 rounded-xl p-3 mb-3 border border-slate-700/60"></div>
                 <!-- 보조 지표 3열 -->
                 <div class="grid grid-cols-3 gap-2 text-center mb-3">
                     <div class="bg-slate-800/60 p-2.5 rounded-lg border border-slate-700"><div class="text-[10px] text-slate-400 mb-0.5">투자금</div><div class="font-bold text-blue-400 text-sm" id="dashTotalInvested">$0</div><div class="text-[9px] text-slate-500" id="dashTotalInvestedKrw">₩0</div></div>
@@ -966,7 +984,7 @@
             <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20260702d"></script>
+    <script src="script.js?v=20260702e"></script>
     <script>
     if('serviceWorker' in navigator){
         window.addEventListener('load',function(){

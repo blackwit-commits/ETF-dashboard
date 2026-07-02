@@ -6377,8 +6377,104 @@ function closeTradeLogDetailModal() {
     try { if (_tradeChartObj) { _tradeChartObj.remove(); _tradeChartObj = null; } } catch (e) {}
 }
 
-function updateGlobalCalc() { 
-    try { 
+// ===== 계좌 기간별 손익 (오늘 평가손익 + 기간별 실현손익 + 일일 자산 스냅샷) =====
+var _realizedPeriod = 'month';
+var _equityPeriod = 'month';
+var EQUITY_SNAP_KEY = 'umt_equity_snap';
+function _ymd(d) { var p = function (n) { return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); }
+function _periodRange(period) {
+    var now = new Date(), today = _ymd(now);
+    if (period === 'day') return { from: today, to: today };
+    if (period === 'week') { var day = now.getDay(), diff = (day === 0 ? 6 : day - 1); var mon = new Date(now); mon.setDate(now.getDate() - diff); return { from: _ymd(mon), to: today }; }
+    if (period === 'month') return { from: _ymd(new Date(now.getFullYear(), now.getMonth(), 1)), to: today };
+    if (period === 'lastmonth') return { from: _ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), to: _ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
+    if (period === 'year') return { from: _ymd(new Date(now.getFullYear(), 0, 1)), to: today };
+    return { from: '0000-00-00', to: '9999-99-99' };
+}
+// 오늘 평가손익 (보유분의 당일 등락 $ 합계)
+function computeTodayPnl() {
+    var d = 0, base = 0;
+    Object.keys(portfolios || {}).forEach(function (s) {
+        var p = portfolios[s]; if (!p || !(p.qty > 0)) return;
+        var md = MARKET_SNAPSHOT[s] || {}; var price = (md.price > 0) ? md.price : p.avgPrice;
+        var chg = (md.change != null && !isNaN(md.change)) ? md.change : null;
+        if (chg == null || (1 + chg / 100) === 0) return;
+        var prev = price / (1 + chg / 100);
+        d += p.qty * (price - prev); base += p.qty * prev;
+    });
+    return { usd: d, pct: base > 0 ? d / base * 100 : 0 };
+}
+// 기간별 실현손익 (매도 확정)
+function _realizedByPeriod(period) {
+    var all = enrichTradesWithReturn(getAggregatedTrades());
+    var range = _periodRange(period);
+    var inP = all.filter(function (t) { return t.type === 'SELL' && t.realizedUSD != null && t.date >= range.from && t.date <= range.to; });
+    var sum = inP.reduce(function (a, t) { return a + t.realizedUSD; }, 0);
+    var wins = inP.filter(function (t) { return t.realizedUSD > 0; }).length;
+    return { usd: sum, count: inP.length, winRate: inP.length ? wins / inP.length * 100 : 0 };
+}
+// 일일 총자산 스냅샷 기록 (하루 1개, 최근 400일)
+function recordEquitySnapshot(totalAssets) {
+    if (!(totalAssets > 0)) return;
+    try {
+        var s = JSON.parse(localStorage.getItem(EQUITY_SNAP_KEY) || '{}');
+        s[_ymd(new Date())] = Math.round(totalAssets);
+        var keys = Object.keys(s).sort();
+        if (keys.length > 400) keys.slice(0, keys.length - 400).forEach(function (k) { delete s[k]; });
+        localStorage.setItem(EQUITY_SNAP_KEY, JSON.stringify(s));
+    } catch (e) {}
+}
+function _equityChange(period) {
+    var s = {}; try { s = JSON.parse(localStorage.getItem(EQUITY_SNAP_KEY) || '{}'); } catch (e) {}
+    var keys = Object.keys(s).sort();
+    if (keys.length < 2) return null;
+    var range = _periodRange(period);
+    var startKey = null; for (var i = 0; i < keys.length; i++) { if (keys[i] >= range.from) { startKey = keys[i]; break; } }
+    if (!startKey) startKey = keys[0];
+    var start = s[startKey], cur = s[keys[keys.length - 1]];
+    if (!(start > 0)) return null;
+    var pts = keys.filter(function (k) { return k >= startKey; }).map(function (k) { return s[k]; });
+    return { usd: cur - start, pct: (cur - start) / start * 100, pts: pts };
+}
+function setRealizedPeriod(p) {
+    _realizedPeriod = p;
+    ['day', 'week', 'month', 'lastmonth', 'year'].forEach(function (x) { var b = document.querySelector('[data-rp="' + x + '"]'); if (b) b.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold ' + (x === p ? 'bg-cyan-600 text-white' : 'text-slate-400'); });
+    renderAccountPeriods();
+}
+function setEquityPeriod(p) {
+    _equityPeriod = p;
+    ['week', 'month', 'year'].forEach(function (x) { var b = document.querySelector('[data-ep="' + x + '"]'); if (b) b.className = 'px-1.5 py-0.5 rounded text-[10px] font-bold ' + (x === p ? 'bg-cyan-600 text-white' : 'text-slate-400'); });
+    renderEquityTrend();
+}
+function renderAccountPeriods() {
+    var tEl = document.getElementById('dashTodayPnl');
+    if (tEl) {
+        var t = computeTodayPnl(); var cls = t.usd >= 0 ? 'text-red-400' : 'text-blue-400';
+        tEl.innerHTML = '<span class="text-slate-400">오늘 평가손익</span> <span class="font-black ' + cls + '">' + (t.usd >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(t.usd)).toLocaleString() + '</span> <span class="' + cls + ' font-bold">(' + (t.pct >= 0 ? '+' : '') + t.pct.toFixed(2) + '%)</span>';
+    }
+    var rEl = document.getElementById('dashRealizedStat');
+    if (rEl) {
+        var r = _realizedByPeriod(_realizedPeriod);
+        if (!r.count) rEl.innerHTML = '<span class="text-slate-500">해당 기간 매도(확정) 내역 없음</span>';
+        else { var rc = r.usd >= 0 ? 'text-red-400' : 'text-blue-400'; rEl.innerHTML = '<span class="font-black ' + rc + '">' + (r.usd >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(r.usd)).toLocaleString() + '</span> <span class="text-slate-500">· ' + r.count + '건 · 승률 ' + r.winRate.toFixed(0) + '%</span>'; }
+    }
+    renderEquityTrend();
+}
+function renderEquityTrend() {
+    var box = document.getElementById('dashEquityTrend'); if (!box) return;
+    var hasData = false; try { hasData = Object.keys(JSON.parse(localStorage.getItem(EQUITY_SNAP_KEY) || '{}')).length >= 2; } catch (e) {}
+    if (!hasData) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    var tabs = [['week', '주'], ['month', '월'], ['year', '년']].map(function (x) { return '<button onclick="setEquityPeriod(\'' + x[0] + '\')" data-ep="' + x[0] + '" class="px-1.5 py-0.5 rounded text-[10px] font-bold ' + (x[0] === _equityPeriod ? 'bg-cyan-600 text-white' : 'text-slate-400') + '">' + x[1] + '</button>'; }).join('');
+    var e = _equityChange(_equityPeriod), body;
+    if (e) { var cls = e.usd >= 0 ? 'text-red-400' : 'text-blue-400'; var spark = (e.pts && e.pts.length >= 2) ? '<span class="inline-block w-full" style="height:22px">' + sparkSvg(e.pts, 120, 22, e.pts[0]) + '</span>' : '';
+        body = '<div class="flex items-center gap-2"><div class="flex-1 h-[22px]">' + spark + '</div><div class="text-right shrink-0"><div class="font-black text-[13px] ' + cls + '">' + (e.pct >= 0 ? '+' : '') + e.pct.toFixed(2) + '%</div><div class="text-[10px] ' + cls + '">' + (e.usd >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(e.usd)).toLocaleString() + '</div></div></div>'; }
+    else body = '<div class="text-[11px] text-slate-500">기간 데이터가 더 쌓이면 표시됩니다</div>';
+    box.innerHTML = '<div class="flex items-center justify-between mb-1.5"><span class="text-[11px] font-bold text-slate-400">자산 추이</span><div class="flex gap-0.5 bg-slate-900/70 rounded-lg p-0.5">' + tabs + '</div></div>' + body;
+}
+
+function updateGlobalCalc() {
+    try {
         globalData.seedKRW = parseFloat(document.getElementById('globalSeedKRW').value)||0; globalData.rate = parseFloat(document.getElementById('globalRate').value)||1300; var _sipEl = document.getElementById('globalSipKRW'); if(_sipEl) globalData.sipKRW = parseFloat(_sipEl.value)||0; 
         let netDepositKRW = 0; let totalInjectedUSD = globalData.seedKRW / globalData.rate; 
         globalData.deposits.forEach(d => { netDepositKRW += d.amount; totalInjectedUSD += (d.amount / d.rate); }); 
@@ -6425,6 +6521,8 @@ function updateGlobalCalc() {
         const pnlPctV = totalInjectedUSD > 0 ? (totalPnL / totalInjectedUSD * 100) : 0;
         const dpnl = document.getElementById('dashTotalPnl'); if(dpnl){ dpnl.innerText = (totalPnL>=0?'+':'-') + '$' + Math.abs(Math.round(totalPnL)).toLocaleString(); dpnl.className = 'font-black text-xl leading-none ' + (totalPnL>=0?'text-red-400':'text-blue-400'); }
         const dpct = document.getElementById('dashTotalPnlPct'); if(dpct){ dpct.innerText = (pnlPctV>=0?'+':'') + pnlPctV.toFixed(2) + '%'; dpct.className = 'text-[12px] font-bold mt-1 ' + (pnlPctV>=0?'text-red-400':'text-blue-400'); }
+        try { recordEquitySnapshot(sum.totalAssets); } catch(e) {}
+        try { renderAccountPeriods(); } catch(e) {}
         try { _setUpdTime('accountUpdateTime'); } catch(e) {}
         // 손익 분석(원화) — 주식손익 vs 환차손익 분리 + 환율 게이지 + 입출금 요약 (현재환율=실시간 우선)
         renderCapitalAnalysis(totalPrincipalKRW, totalInjectedUSD, avgRate, (_liveUsdKrw || globalData.rate), totalPnL);
