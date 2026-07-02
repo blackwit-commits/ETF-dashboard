@@ -1339,9 +1339,11 @@ async function checkEconResultsAndAlert(env) {
       alerted[key] = { ts: Date.now(), attempts: ((alerted[key] && alerted[key].attempts) || 0) + 1, done: false };
       return;
     }
+    const gf = (r.forecast != null && String(r.forecast).trim()) ? String(r.forecast).trim() : "";
+    const gp = (r.previous != null && String(r.previous).trim()) ? String(r.previous).trim() : "";
     const rec = {
       date: e.date, country: e.country || "", name: e.name, importance: e.importance,
-      actual: actual, forecast: e.forecast || "", previous: e.previous || "",
+      actual: actual, forecast: gf || e.forecast || "", previous: gp || e.previous || "",  // Gemini 예상치 우선, 없으면 캘린더값
       surprise: (r.surprise || "").trim(), comment: (r.comment || "").trim(), quad: (r.quad || "").trim(),
       ts: Date.now()
     };
@@ -1353,8 +1355,8 @@ async function checkEconResultsAndAlert(env) {
     // 텔레그램 본문
     let body = `${impIcon[e.importance] || "⚪"} ${flag[e.country] || ""} <b>${tgEscape(e.name)}</b>\n실제 <b>${tgEscape(actual)}</b>`;
     const sub = [];
-    if (e.forecast) sub.push("예상 " + tgEscape(e.forecast));
-    if (e.previous) sub.push("이전 " + tgEscape(e.previous));
+    if (rec.forecast) sub.push("예상 " + tgEscape(rec.forecast));
+    if (rec.previous) sub.push("이전 " + tgEscape(rec.previous));
     if (sub.length) body += ` (${sub.join(" · ")})`;
     const tail = [surpArrow[rec.surprise] || "", rec.quad ? "Quad " + tgEscape(rec.quad) : ""].filter(Boolean);
     if (tail.length) body += `\n→ ${tail.join(" · ")}`;
@@ -1373,9 +1375,10 @@ async function checkEconResultsAndAlert(env) {
 
 const ECON_RESULT_PROMPT_HEAD = `당신은 경제지표 발표 결과 확인 전문가입니다. Google 검색으로 아래 지표들의 "실제 발표치(actual)"를 확인하세요.
 아직 발표되지 않았거나 확실하지 않으면 actual을 빈 문자열("")로 두세요(추측 금지).
-각 항목에 대해: 실제치(actual), 예상 대비(surprise: above=예상상회 / below=예상하회 / inline=부합 / 빈문자열=모름), 한 줄 시장 해석(comment, 한국어 40자 이내), Quad 영향(quad, 예: '인플레↑' '성장↓' '중립').
+각 항목에 대해: 실제치(actual), 시장 예상치/컨센서스(forecast, Google 검색으로 확인, 모르면 빈문자열), 이전치(previous, 직전 발표값), 예상 대비(surprise: above=예상상회 / below=예상하회 / inline=부합 / 빈문자열=모름), 한 줄 시장 해석(comment, 한국어 40자 이내), Quad 영향(quad, 예: '인플레↑' '성장↓' '중립').
+surprise는 반드시 actual과 forecast를 비교해 판정하세요(actual>forecast면 지표 성격에 따라 above 등).
 CRITICAL: 오직 유효한 JSON만. 마크다운/설명 없이 { 로 시작해 } 로 끝. 문자열 안에서 큰따옴표 금지.
-JSON: {"results":[{"name":"<입력 이름 그대로>","actual":"<실제치 또는 빈문자열>","surprise":"above|below|inline|","comment":"<한국어 해석>","quad":"<Quad 영향>"}]}
+JSON: {"results":[{"name":"<입력 이름 그대로>","actual":"<실제치 또는 빈문자열>","forecast":"<시장 예상치/컨센서스, 없으면 빈문자열>","previous":"<이전치, 없으면 빈문자열>","surprise":"above|below|inline|","comment":"<한국어 해석>","quad":"<Quad 영향>"}]}
 
 확인할 지표(이름은 그대로 사용):`;
 
