@@ -4059,6 +4059,25 @@ function renderStrategyProgressCard(sym) {
         : '';
     const stageLine = boosterText ? ('그리드: ' + baseText + ' · 부스터: ' + boosterText) : ('그리드: ' + baseText);
     set('progressStage', stageLine);
+    // 부스터 활성 상세
+    var boosterBox = document.getElementById('progressBoosterInfo');
+    if (boosterBox) {
+        var bOn = !!(d.config && d.config.boosterOn === true);
+        boosterBox.classList.toggle('hidden', !bOn);
+        if (bOn) {
+            var bAllocPct = parseFloat(d.config.boosterAllocPct) || 0;
+            var bAllocUsd = totalEquity * (bAllocPct / 100);
+            var bStages = parseInt(d.config.boosterStages, 10) || 0;
+            var bMdd = parseFloat(d.config.boosterMdd) || 0;
+            var baseMdd = parseFloat(d.config.mdd) || 0;
+            var bDone = Math.min(stage.boosterCompleted || 0, stage.boosterTotal || bStages);
+            set('progressBoosterAlloc', bAllocPct + '% · $' + Math.round(bAllocUsd).toLocaleString());
+            set('progressBoosterStages', bStages + '단계');
+            set('progressBoosterMdd', '-' + bMdd + '%');
+            set('progressBoosterStageLabel', '단계 ' + bDone + '/' + (stage.boosterTotal || bStages));
+            set('progressBoosterDesc', '기본 ' + (stage.baseTotal || 0) + '단계(MDD -' + baseMdd + '%) 소진 후, 최대 -' + (baseMdd + bMdd) + '%까지 추가 ' + bStages + '단계 분할매수 (여유자금 ' + bAllocPct + '% 투입)');
+        }
+    }
     // 진행 단계 바 (매매일지 스타일: 단계 N/M + 막대)
     var stageCur = (stage.baseInProgress && stage.baseInProgress > 0) ? stage.baseInProgress : (stage.baseCompleted || 0);
     var stageTot = stage.baseTotal || 0;
@@ -6600,13 +6619,20 @@ function renderAccountPeriods() {
 }
 function renderEquityTrend() {
     var box = document.getElementById('dashEquityTrend'); if (!box) return;
-    var hasData = false; try { hasData = Object.keys(JSON.parse(localStorage.getItem(EQUITY_SNAP_KEY) || '{}')).length >= 2; } catch (e) {}
-    if (!hasData) { box.classList.add('hidden'); return; }
+    var snaps = {}; try { snaps = JSON.parse(localStorage.getItem(EQUITY_SNAP_KEY) || '{}'); } catch (e) {}
+    var dayCount = Object.keys(snaps).length;
+    if (dayCount < 2) { box.classList.add('hidden'); return; }
     box.classList.remove('hidden');
     var tabs = [['week', '주'], ['month', '월'], ['year', '년']].map(function (x) { return '<button onclick="setEquityPeriod(\'' + x[0] + '\')" data-ep="' + x[0] + '" class="px-1.5 py-0.5 rounded text-[10px] font-bold ' + (x[0] === _equityPeriod ? 'bg-cyan-600 text-white' : 'text-slate-400') + '">' + x[1] + '</button>'; }).join('');
     var e = _equityChange(_equityPeriod), body;
-    if (e) { var cls = e.usd >= 0 ? 'text-red-400' : 'text-blue-400'; var spark = (e.pts && e.pts.length >= 2) ? '<span class="inline-block w-full" style="height:22px">' + sparkSvg(e.pts, 120, 22, e.pts[0]) + '</span>' : '';
-        body = '<div class="flex items-center gap-2"><div class="flex-1 h-[22px]">' + spark + '</div><div class="text-right shrink-0"><div class="font-black text-[13px] ' + cls + '">' + (e.pct >= 0 ? '+' : '') + e.pct.toFixed(2) + '%</div><div class="text-[10px] ' + cls + '">' + (e.usd >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(e.usd)).toLocaleString() + '</div></div></div>'; }
+    if (e) {
+        var cls = e.usd >= 0 ? 'text-red-400' : 'text-blue-400';
+        var nPts = e.pts ? e.pts.length : 0;
+        var spark = (e.pts && e.pts.length >= 2) ? '<span class="inline-block w-full" style="height:22px">' + sparkSvg(e.pts, 120, 22, e.pts[0]) + '</span>' : '<span class="text-[10px] text-slate-500">1일치라 선차트 대기</span>';
+        body = '<div class="flex items-center gap-2"><div class="flex-1 h-[22px]">' + spark + '</div><div class="text-right shrink-0"><div class="font-black text-[13px] ' + cls + '">' + (e.pct >= 0 ? '+' : '') + e.pct.toFixed(2) + '%</div><div class="text-[10px] ' + cls + '">' + (e.usd >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(e.usd)).toLocaleString() + '</div></div></div>';
+        // 누적 일수 안내 — 데이터가 적으면 주/월/년이 같게 보이는 이유 표시
+        body += '<div class="text-[9px] text-slate-500 mt-1">' + nPts + '일 구간 · 총 ' + dayCount + '일 누적' + (dayCount < 32 ? ' · 매일 자산 기록 중(데이터 쌓이면 주/월/년 구분↑)' : '') + '</div>';
+    }
     else body = '<div class="text-[11px] text-slate-500">기간 데이터가 더 쌓이면 표시됩니다</div>';
     box.innerHTML = '<div class="flex items-center justify-between mb-1.5"><span class="text-[11px] font-bold text-slate-400">자산 추이</span><div class="flex gap-0.5 bg-slate-900/70 rounded-lg p-0.5">' + tabs + '</div></div>' + body;
 }
