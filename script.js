@@ -1393,8 +1393,8 @@ function initApp() {
         // 종목 시세 주기 갱신 (90초) — 전략탭/ETF카드 가격이 멈추지 않도록
         if (window._mktLoopTimer) clearInterval(window._mktLoopTimer);
         window._mktLoopTimer = setInterval(function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); } catch (e) {} } }, 90000);
-        // 앱 복귀 시 즉시 시세 갱신
-        if (!window._mktVisHooked) { window._mktVisHooked = true; document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); } catch (e) {} } }); }
+        // 앱 복귀 시 즉시 시세 갱신 (주요지수·관심목록 포함)
+        if (!window._mktVisHooked) { window._mktVisHooked = true; document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); refreshIndexQuotes(); refreshWatchQuotes(); } catch (e) {} } }); }
         fetchMacroIndicatorsLive();
         fetchLiveFxRate();
         // 관심목록 로드 + 초기 시세/추세선
@@ -3516,13 +3516,13 @@ function openSectorChart(sym, name) {
 var _indexChart = null;
 var _indexResizeObs = null;
 var _idxCtx = null;          // { sym, name }
-var _indexInterval = '1d';   // 1d=일봉, 1wk=주봉
+var _indexInterval = '5m';   // 5m=분봉(기본), 1d=일봉, 1wk=주봉
 function openIndexChart(sym, name) {
     var modal = document.getElementById('macroChartModal');
     var titleEl = document.getElementById('macroChartTitle');
     if (!modal) return;
     _idxCtx = { sym: sym, name: name };
-    _indexInterval = '1d';
+    _indexInterval = '5m';
     if (titleEl) titleEl.innerText = name;
     modal.classList.remove('hidden'); modal.classList.add('flex');
     _renderIndexToggle();
@@ -3536,7 +3536,7 @@ function _renderIndexToggle() {
     if (!bar) return;
     bar.classList.remove('hidden');
     function btn(iv, label) { return '<button type="button" onclick="setIndexChartInterval(\'' + iv + '\')" class="px-3 py-1 rounded-lg text-[11px] font-bold ' + (_indexInterval === iv ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400') + '">' + label + '</button>'; }
-    bar.innerHTML = btn('1d', '일봉') + btn('1wk', '주봉');
+    bar.innerHTML = btn('5m', '분봉') + btn('1d', '일봉') + btn('1wk', '주봉');
 }
 function _renderIndexDetail() {
     var detail = document.getElementById('macroChartDetail');
@@ -3551,13 +3551,17 @@ async function _drawIndexChart() {
     var cont = document.getElementById('macroChartContainer');
     if (!cont || !_idxCtx) return;
     var sym = _idxCtx.sym;
-    var range = (_indexInterval === '1wk') ? '2y' : '6mo';
+    // 분봉=5일치 5분봉 / 일봉=6개월 / 주봉=2년
+    var intraday = (['1m', '5m', '15m', '30m', '60m', '1h'].indexOf(_indexInterval) >= 0);
+    var range = intraday ? '5d' : (_indexInterval === '1wk' ? '2y' : '6mo');
     cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>차트 불러오는 중...</div>';
     try {
         var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(sym) + '&range=' + range + '&interval=' + _indexInterval);
         var j = await r.json();
         var s = (j.series || []).filter(function (p) { return p.close != null; });
         if (s.length < 2 || typeof LightweightCharts === 'undefined') { cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">차트 데이터를 불러올 수 없습니다.</div>'; return; }
+        // 분봉은 유닉스타임(ts)로 같은 날 여러 봉 구분, 일/주봉은 날짜문자열
+        var tf = function (p) { return intraday ? p.ts : p.time; };
         cont.innerHTML = '';
         if (_indexChart) { try { _indexChart.remove(); } catch (e) {} _indexChart = null; }
         var W = cont.clientWidth || 320;
@@ -3567,21 +3571,21 @@ async function _drawIndexChart() {
             layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontSize: 11 },
             grid: { vertLines: { color: 'rgba(148,163,184,0.06)' }, horzLines: { color: 'rgba(148,163,184,0.06)' } },
             rightPriceScale: { borderColor: 'rgba(148,163,184,0.15)' },
-            timeScale: { borderColor: 'rgba(148,163,184,0.15)', timeVisible: false },
+            timeScale: { borderColor: 'rgba(148,163,184,0.15)', timeVisible: intraday, secondsVisible: false },
             crosshair: { mode: 1 }
         });
         // 캔들 (상승 빨강 / 하락 파랑, 한국식) — 위 70%
         var cs = chart.addCandlestickSeries({ upColor: '#ef4444', downColor: '#3b82f6', borderUpColor: '#ef4444', borderDownColor: '#3b82f6', wickUpColor: '#ef4444', wickDownColor: '#3b82f6' });
         cs.priceScale().applyOptions({ scaleMargins: { top: 0.06, bottom: 0.26 } });
-        cs.setData(s.map(function (p) { return { time: p.time, open: p.open, high: p.high, low: p.low, close: p.close }; }));
+        cs.setData(s.map(function (p) { return { time: tf(p), open: p.open, high: p.high, low: p.low, close: p.close }; }));
         // 거래량 히스토그램 — 아래 20%
         var vs = chart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
         chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-        vs.setData(s.map(function (p) { return { time: p.time, value: p.volume || 0, color: (p.close >= p.open) ? 'rgba(239,68,68,0.45)' : 'rgba(59,130,246,0.45)' }; }));
+        vs.setData(s.map(function (p) { return { time: tf(p), value: p.volume || 0, color: (p.close >= p.open) ? 'rgba(239,68,68,0.45)' : 'rgba(59,130,246,0.45)' }; }));
         // 20기간 이동평균
         if (s.length >= 20) {
             var ma = [];
-            for (var i = 19; i < s.length; i++) { var sum = 0; for (var k = i - 19; k <= i; k++) sum += s[k].close; ma.push({ time: s[i].time, value: sum / 20 }); }
+            for (var i = 19; i < s.length; i++) { var sum = 0; for (var k = i - 19; k <= i; k++) sum += s[k].close; ma.push({ time: tf(s[i]), value: sum / 20 }); }
             var maSeries = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
             maSeries.setData(ma);
         }

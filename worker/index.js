@@ -539,7 +539,8 @@ export default {
           if (cl[i] == null) continue;
           const d = new Date(ts[i] * 1000);
           const time = d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
-          out.push({ time, open: (op[i] != null ? op[i] : cl[i]), high: (hi[i] != null ? hi[i] : cl[i]), low: (lo[i] != null ? lo[i] : cl[i]), close: cl[i], volume: (vol[i] != null ? vol[i] : 0) });
+          // ts(유닉스초): 분봉/시간봉 차트용(같은 날 여러 봉 구분). time(날짜문자열): 일/주/월봉·스파크라인 호환
+          out.push({ time, ts: ts[i], open: (op[i] != null ? op[i] : cl[i]), high: (hi[i] != null ? hi[i] : cl[i]), low: (lo[i] != null ? lo[i] : cl[i]), close: cl[i], volume: (vol[i] != null ? vol[i] : 0) });
         }
         return new Response(JSON.stringify({ ticker, interval, series: out }), { headers: jsonHeaders });
       } catch (e) {
