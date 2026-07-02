@@ -1501,6 +1501,17 @@ function mdChg(md) { if (!md) return null; if ((md.marketState === 'PRE' || md.m
 function mdExtTag(md) { if (!md) return ''; if (md.marketState === 'PRE') return '<span class="text-[8px] bg-indigo-500/20 text-indigo-300 px-1 rounded font-bold ml-1 align-middle">프리</span>'; if (md.marketState === 'POST') return '<span class="text-[8px] bg-indigo-500/20 text-indigo-300 px-1 rounded font-bold ml-1 align-middle">애프터</span>'; return ''; }
 // 종목 현재가(프리/애프터 반영) — MARKET_SNAPSHOT 기준, 없으면 폴백
 function curPriceOf(sym, fallback) { var pr = mdPrice(MARKET_SNAPSHOT[sym]); return pr > 0 ? pr : (fallback || 0); }
+// 정규장 등락% + (프리/애프터장이면) 연장거래 등락% 배지 — AI포착·ETF리스트 공용
+function chgWithExtHtml(md, sizeCls) {
+    sizeCls = sizeCls || 'text-[10px]';
+    var chg = (md && md.change != null && !isNaN(md.change)) ? md.change : null;
+    var h = (chg != null) ? '<span class="' + sizeCls + ' font-bold ' + chgClass(chg) + '">' + (chg > 0 ? '+' : '') + chg.toFixed(1) + '%</span>' : '';
+    if (md && (md.marketState === 'PRE' || md.marketState === 'POST') && md.extChg != null) {
+        var lbl = md.marketState === 'PRE' ? '프리' : '애프터';
+        h += ' <span class="text-[9px] bg-indigo-500/20 text-indigo-300 px-1 rounded font-bold align-middle whitespace-nowrap">' + lbl + ' ' + (md.extChg >= 0 ? '+' : '') + md.extChg.toFixed(1) + '%</span>';
+    }
+    return h;
+}
 
 async function fetchNews() {
     try {
@@ -2017,9 +2028,7 @@ function updateSingleCard(sym, md) {
     let stColor = md.price < md.ma200 ? 'text-red-400' : (md.rsi < 60 ? 'text-green-400' : 'text-blue-400'); 
     let stText = md.price < md.ma200 ? '하락추세' : (md.rsi < 60 ? '매수적기' : '상승추세'); 
 
-    var _chg = (md.change != null && !isNaN(md.change)) ? md.change : null;
-    var _chgHtml = _chg != null ? ' <span class="text-[10px] font-bold ' + chgClass(_chg) + '">' + (_chg > 0 ? '+' : '') + _chg.toFixed(1) + '%</span>' : '';
-    pEl.innerHTML = '$' + md.price.toFixed(2) + _chgHtml;
+    pEl.innerHTML = '$' + md.price.toFixed(2) + ' ' + chgWithExtHtml(md);
     pEl.className = "text-sm font-bold text-white";
     
     const e = ETF_DB.find(x => x.sym === sym);
@@ -2066,7 +2075,8 @@ function updateRecommendationsUI() {
                 + renderSignalDots(sig)
                 + '</div>'
                 + '<div class="text-right shrink-0"><div class="text-sm font-bold text-white">'+price+'</div>'
-                + '<div class="text-[9px] text-slate-500 font-bold">Quad '+quadNow+' 수혜</div></div>'
+                + '<div class="mt-0.5">'+chgWithExtHtml(md)+'</div>'
+                + '<div class="text-[9px] text-slate-500 font-bold mt-0.5">Quad '+quadNow+' 수혜</div></div>'
                 + '</div></div>';
         }).join('');
         return;
@@ -2134,6 +2144,7 @@ function updateRecommendationsUI() {
             + '<div class="text-[10px] text-slate-400 mt-0.5">' + rsiText + '</div>'
             + '</div>'
             + '<div class="text-right shrink-0"><div class="text-sm font-bold text-white">$'+d.price.toFixed(2)+'</div>'
+            + '<div class="my-0.5">'+chgWithExtHtml(d)+'</div>'
             + '<span class="text-[10px] px-2 py-0.5 rounded font-bold '+sigColor+'">'+sigLabel+'</span></div>'
             + '</div></div>';
     }).join('');
