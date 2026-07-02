@@ -3473,12 +3473,19 @@ function renderSectors() {
     var maxAbs = Math.max.apply(null, rows.map(function (r) { return r.val != null ? Math.abs(r.val) : 0; }).concat([1]));
     box.innerHTML = rows.map(function (r) {
         var v = r.val;
-        var w = v != null ? Math.max(4, Math.abs(v) / maxAbs * 100) : 0;
-        var barColor = v == null ? 'bg-slate-700' : (v > 0 ? 'bg-red-400' : (v < 0 ? 'bg-blue-400' : 'bg-slate-500'));
+        // 중앙 기준 발산형: +면 중앙→오른쪽(빨강), -면 중앙→왼쪽(파랑)
+        var half = v != null ? Math.min(50, Math.abs(v) / maxAbs * 50) : 0;
+        var fill = (v == null) ? ''
+            : (v >= 0
+                ? '<div class="absolute top-0 h-full bg-red-400 rounded-r-sm transition-all" style="left:50%;width:' + half + '%"></div>'
+                : '<div class="absolute top-0 h-full bg-blue-400 rounded-l-sm transition-all" style="right:50%;width:' + half + '%"></div>');
         var valTxt = v == null ? '--' : ((v > 0 ? '+' : '') + v.toFixed(2) + '%');
         return '<button type="button" onclick="openSectorChart(\'' + r.s.sym + '\',\'' + r.s.name + '\')" class="w-full flex items-center gap-2 py-1 active:opacity-70 transition">'
             + '<span class="text-[11px] font-bold text-slate-200 w-[72px] text-left shrink-0 truncate" title="' + r.s.name + ' (' + r.s.sym + ')"><i class="fa-solid ' + r.s.icon + ' ' + r.s.color + ' mr-1 text-[10px]"></i>' + r.s.name + '</span>'
-            + '<div class="flex-1 h-3 rounded-full bg-slate-800/70 overflow-hidden"><div class="h-full rounded-full ' + barColor + ' transition-all" style="width:' + w + '%"></div></div>'
+            + '<div class="relative flex-1 h-3 bg-slate-800/70 rounded overflow-hidden">'
+            +   '<div class="absolute top-0 bottom-0 left-1/2 w-px bg-slate-500/70"></div>'
+            +   fill
+            + '</div>'
             + '<span class="text-[11px] font-black w-[54px] text-right shrink-0 ' + chgClass(v) + '">' + valTxt + '</span>'
             + '</button>';
     }).join('');
