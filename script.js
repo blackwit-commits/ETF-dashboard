@@ -3538,14 +3538,30 @@ function _renderIndexToggle() {
     function btn(iv, label) { return '<button type="button" onclick="setIndexChartInterval(\'' + iv + '\')" class="px-3 py-1 rounded-lg text-[11px] font-bold ' + (_indexInterval === iv ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400') + '">' + label + '</button>'; }
     bar.innerHTML = btn('5m', '분봉') + btn('1d', '일봉') + btn('1wk', '주봉');
 }
+// 심볼별 소수 자릿수: 원화 종목/지수·미국 지수=정수, 미국 개별/ETF=2자리
+function _symDec(sym) {
+    if (sym === 'KRW=X') return 2;
+    if (sym.indexOf('.KS') >= 0 || sym.indexOf('.KQ') >= 0) return 0;
+    if (sym.charAt(0) === '^') return 0;
+    return 2;
+}
+function _fmtTs(unix) {
+    var d = new Date(unix * 1000), p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
 function _renderIndexDetail() {
     var detail = document.getElementById('macroChartDetail');
     if (!detail || !_idxCtx) return;
     var sym = _idxCtx.sym, q = INDEX_QUOTE_MAP[sym] || {};
-    var dec = (sym === 'KRW=X' || sym === '^KS11' || sym === '^KQ11') ? 2 : 0;
-    detail.innerHTML = (q.price != null)
-        ? '<div class="flex items-baseline gap-2"><span class="text-xl font-black text-white">' + fmtNum(q.price, dec) + '</span><span class="text-sm font-bold ' + ((q.chg >= 0) ? 'text-red-400' : 'text-blue-400') + '">' + fmtChgPct(q.chg) + '</span></div>'
-        : '';
+    var dec = _symDec(sym);
+    var chgCls = (q.chg >= 0) ? 'text-red-400' : 'text-blue-400';
+    var chgUsd = (q.price != null && q.chg != null && (1 + q.chg / 100) !== 0) ? (q.price - q.price / (1 + q.chg / 100)) : null;
+    detail.innerHTML =
+        '<div class="flex items-baseline gap-2 mb-2.5">'
+        + '<span class="text-2xl font-black text-white">' + (q.price != null ? fmtNum(q.price, dec) : '--') + '</span>'
+        + (q.price != null ? '<span class="text-sm font-bold ' + chgCls + '">' + fmtChgPct(q.chg) + (chgUsd != null ? ' (' + (chgUsd >= 0 ? '+' : '') + fmtNum(chgUsd, dec) + ')' : '') + '</span>' : '')
+        + '</div>'
+        + '<div id="idxStatGrid" class="grid grid-cols-3 gap-1.5"></div>';
 }
 async function _drawIndexChart() {
     var cont = document.getElementById('macroChartContainer');
@@ -3589,8 +3605,51 @@ async function _drawIndexChart() {
             var maSeries = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
             maSeries.setData(ma);
         }
+        // 전일/기간시작 종가 기준선 (점선)
+        var qd = INDEX_QUOTE_MAP[sym] || {};
+        var dec = _symDec(sym);
+        var baseP = (qd.price != null && qd.chg != null && (1 + qd.chg / 100) !== 0) ? qd.price / (1 + qd.chg / 100) : null;
+        if (baseP != null) { try { cs.createPriceLine({ price: baseP, color: '#64748b', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '전일' }); } catch (e) {} }
         chart.timeScale().fitContent();
         _indexChart = chart;
+
+        // 하단 상세 통계 그리드 (전일종가·기간 고저·거래량)
+        var grid = document.getElementById('idxStatGrid');
+        if (grid) {
+            var hi = Math.max.apply(null, s.map(function (p) { return p.high; }));
+            var lo = Math.min.apply(null, s.map(function (p) { return p.low; }));
+            var vol = (qd.volume != null ? qd.volume : (s[s.length - 1].volume || 0));
+            var plabel = intraday ? '5일' : (_indexInterval === '1wk' ? '2년' : '6개월');
+            var cell = function (label, val, cls) { return '<div class="bg-slate-800/50 rounded-lg p-2"><div class="text-slate-500 text-[9px] mb-0.5">' + label + '</div><div class="font-bold text-[12px] ' + (cls || 'text-slate-200') + '">' + val + '</div></div>'; };
+            grid.innerHTML =
+                cell('전일 종가', baseP != null ? fmtNum(baseP, dec) : '--')
+                + cell(plabel + ' 고가', fmtNum(hi, dec), 'text-red-300')
+                + cell(plabel + ' 저가', fmtNum(lo, dec), 'text-blue-300')
+                + cell('거래량', fmtVolume(vol))
+                + cell('시가', fmtNum(s[s.length - 1].open, dec))
+                + cell('종가', fmtNum(s[s.length - 1].close, dec));
+        }
+
+        // 크로스헤어 툴팁 (봉 위 손가락/마우스 → 시/고/저/종)
+        try {
+            cont.style.position = 'relative';
+            var tip = document.createElement('div');
+            tip.className = 'absolute z-10 pointer-events-none px-2 py-1 rounded-md bg-slate-900/95 border border-slate-700 text-[10px] text-slate-200 hidden';
+            tip.style.top = '6px'; tip.style.left = '6px';
+            cont.appendChild(tip);
+            chart.subscribeCrosshairMove(function (param) {
+                if (!param || !param.time || !param.seriesData || typeof param.seriesData.get !== 'function') { tip.classList.add('hidden'); return; }
+                var b = param.seriesData.get(cs);
+                if (!b) { tip.classList.add('hidden'); return; }
+                var when = intraday ? _fmtTs(param.time) : String(param.time);
+                var up = b.close >= b.open;
+                tip.innerHTML = '<span class="text-slate-400">' + when + '</span>  '
+                    + '시 ' + fmtNum(b.open, dec) + ' 고 <span class="text-red-300">' + fmtNum(b.high, dec) + '</span> '
+                    + '저 <span class="text-blue-300">' + fmtNum(b.low, dec) + '</span> '
+                    + '종 <span class="' + (up ? 'text-red-300' : 'text-blue-300') + '">' + fmtNum(b.close, dec) + '</span>';
+                tip.classList.remove('hidden');
+            });
+        } catch (e) {}
         try { if (_indexResizeObs) _indexResizeObs.disconnect(); _indexResizeObs = new ResizeObserver(function () { try { chart.resize(cont.clientWidth, cont.clientHeight); } catch (e) {} }); _indexResizeObs.observe(cont); } catch (e) {}
     } catch (e) {
         cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs">차트를 불러올 수 없습니다.</div>';
