@@ -2049,42 +2049,79 @@ function updateSingleCard(sym, md) {
     if (homeTab && !homeTab.classList.contains('hidden')) renderMarketHeatmap();
 }
 
+// ===== AI 추천 멀티팩터 스코어링 (확신도 + 근거 + Quad별 가중치) =====
+function _levMag(lev) { var m = parseFloat(String(lev || '').replace(/x/i, '')); return isNaN(m) ? 0 : Math.abs(m); }
+// Quad별 팩터 가중치(합 100): 국면에 따라 추세·모멘텀 vs 눌림목·방어 비중 조정
+function _quadWeights(quad) {
+    switch (quad) {
+        case 1: return { trend: 40, mom: 30, pull: 15, quad: 15 };  // 골디락스: 추세·모멘텀 중시
+        case 2: return { trend: 30, mom: 35, pull: 15, quad: 20 };  // 과열: 모멘텀·테마
+        case 3: return { trend: 20, mom: 15, pull: 35, quad: 30 };  // 스태그: 방어·눌림목
+        case 4: return { trend: 25, mom: 15, pull: 30, quad: 30 };  // 침체: 방어·눌림목
+        default: return { trend: 35, mom: 25, pull: 25, quad: 15 };
+    }
+}
+// 멀티팩터 점수 → 확신도(0~100) + 충족 팩터 목록
+function scoreEtfMulti(e, md, quadNow) {
+    var W = _quadWeights(quadNow);
+    var price = md.price || 0, ma200 = md.ma200 || 0, ema8 = md.ema8 || 0, rsi = (md.rsi != null ? md.rsi : 50);
+    var factors = [], score = 0;
+    if (ma200 > 0 && price > ma200) { var ts = Math.max(0, Math.min(1, (price - ma200) / ma200 / 0.15)); score += W.trend * (0.55 + 0.45 * ts); factors.push('추세'); }
+    if (ema8 > 0 && price > ema8) { score += W.mom; factors.push('모멘텀'); }
+    var pull = Math.max(0, Math.min(1, (55 - rsi) / 35));                 // RSI≤20→1, ≥55→0
+    score += W.pull * pull; if (pull >= 0.45) factors.push('눌림목');
+    var quadFit = (e.quad && quadNow && e.quad.indexOf(quadNow) !== -1) ? (e.quad.length < 4 ? 1 : 0.5) : 0;
+    score += W.quad * quadFit; if (quadFit >= 1) factors.push('Quad적합');
+    if (rsi >= 72) score -= 12;                                            // 과매수 감점
+    try { var ov = getEventOverlayAdjustments(); if (ov.boost[e.sym]) { score += ov.boost[e.sym] * 8; factors.push('이벤트'); } if (ov.dampen[e.sym]) score -= ov.dampen[e.sym] * 12; } catch (_) {}
+    return { score: score, confidence: Math.max(0, Math.min(100, Math.round(score))), factors: factors, sig: getTechnicalSignal(e.sym, md) };
+}
+// 확신도 배지 + 근거 팩터 뱃지
+function renderConfidence(confidence, factors) {
+    var cls = confidence >= 70 ? 'text-red-300 bg-red-500/15 border border-red-500/30' : (confidence >= 45 ? 'text-amber-300 bg-amber-500/15 border border-amber-500/30' : 'text-slate-400 bg-slate-700/40');
+    var badges = (factors || []).map(function (f) { return '<span class="text-[8px] px-1 py-0.5 rounded bg-slate-700/70 text-emerald-300 font-bold">' + f + '✓</span>'; }).join(' ');
+    return '<div class="flex items-center gap-1.5 flex-wrap mt-1.5"><span class="text-[9px] font-black px-1.5 py-0.5 rounded ' + cls + '">확신도 ' + confidence + '%</span>' + badges + '</div>';
+}
+
 function updateRecommendationsUI() {
     var list = document.getElementById('recommendationList');
     if (!list) return;
 
     var quadNow = getCurrentQuad();
 
-    // 매크로 추천이 있으면 우선 사용
+    // 매크로 추천이 있으면 우선 사용 — 배율 2배 이상만
     if (MACRO_DATA && MACRO_DATA.recommendations && MACRO_DATA.recommendations.buy && MACRO_DATA.recommendations.buy.length > 0) {
-        var recs = MACRO_DATA.recommendations.buy;
-        list.innerHTML = recs.map(function(rec) {
-            var meta = ETF_DB.find(function(e){return e.sym===rec.ticker;}) || {};
-            var md = MARKET_SNAPSHOT[rec.ticker] || {};
-            var badge = meta.lev==='3x'?'badge-3x':(meta.lev==='2x'?'badge-2x':'badge-inv');
-            var sig = getTechnicalSignal(rec.ticker, md);
-            var modeLabels = {aggressive:'공격형', balanced:'균등형', defensive:'방어형'};
-            var modeColors = {aggressive:'text-red-400', balanced:'text-yellow-400', defensive:'text-blue-400'};
-            var price = md.price ? '$'+md.price.toFixed(2) : '--';
+        var recs = MACRO_DATA.recommendations.buy.filter(function(rec){ var m = ETF_DB.find(function(e){return e.sym===rec.ticker;}); return m && _levMag(m.lev) >= 2; });
+        if (recs.length) {
+            list.innerHTML = recs.map(function(rec) {
+                var meta = ETF_DB.find(function(e){return e.sym===rec.ticker;}) || {};
+                var md = MARKET_SNAPSHOT[rec.ticker] || {};
+                var badge = meta.lev==='3x'?'badge-3x':(meta.lev==='2x'?'badge-2x':'badge-inv');
+                var conf = scoreEtfMulti(meta, md, quadNow);
+                var modeLabels = {aggressive:'공격형', balanced:'균등형', defensive:'방어형'};
+                var modeColors = {aggressive:'text-red-400', balanced:'text-yellow-400', defensive:'text-blue-400'};
+                var price = md.price ? '$'+md.price.toFixed(2) : '--';
 
-            return '<div class="glass-panel p-3 rounded-xl border border-slate-700/70 cursor-pointer mb-2 active:bg-slate-800 transition" onclick="openAnalysisModal(\''+rec.ticker+'\')">'
-                + '<div class="flex justify-between items-start">'
-                + '<div>'
-                + '<div class="flex items-center gap-2"><span class="font-black text-white">'+rec.ticker+'</span><span class="text-[10px] px-1.5 py-0.5 rounded font-bold '+badge+'">'+(meta.lev||'')+'</span>'
-                + '<span class="text-[9px] font-bold '+(modeColors[rec.mode]||'text-slate-400')+'">'+(modeLabels[rec.mode]||rec.mode)+'</span></div>'
-                + '<div class="text-[10px] text-slate-400 mt-0.5">'+escapeHtml(rec.reason)+'</div>'
-                + renderSignalDots(sig)
-                + '</div>'
-                + '<div class="text-right shrink-0"><div class="text-sm font-bold text-white">'+price+'</div>'
-                + '<div class="mt-0.5">'+chgWithExtHtml(md)+'</div>'
-                + '<div class="text-[9px] text-slate-500 font-bold mt-0.5">Quad '+quadNow+' 수혜</div></div>'
-                + '</div></div>';
-        }).join('');
-        return;
+                return '<div class="glass-panel p-3 rounded-xl border border-slate-700/70 cursor-pointer mb-2 active:bg-slate-800 transition" onclick="openAnalysisModal(\''+rec.ticker+'\')">'
+                    + '<div class="flex justify-between items-start">'
+                    + '<div class="min-w-0">'
+                    + '<div class="flex items-center gap-2"><span class="font-black text-white">'+rec.ticker+'</span><span class="text-[10px] px-1.5 py-0.5 rounded font-bold '+badge+'">'+(meta.lev||'')+'</span>'
+                    + '<span class="text-[9px] font-bold '+(modeColors[rec.mode]||'text-slate-400')+'">'+(modeLabels[rec.mode]||rec.mode)+'</span></div>'
+                    + '<div class="text-[10px] text-slate-400 mt-0.5">'+escapeHtml(rec.reason||'')+'</div>'
+                    + renderConfidence(conf.confidence, conf.factors)
+                    + '</div>'
+                    + '<div class="text-right shrink-0 ml-2"><div class="text-sm font-bold text-white">'+price+'</div>'
+                    + '<div class="mt-0.5">'+chgWithExtHtml(md)+'</div>'
+                    + '<div class="text-[9px] text-slate-500 font-bold mt-0.5">Quad '+quadNow+' 수혜</div></div>'
+                    + '</div></div>';
+            }).join('');
+            return;
+        }
     }
 
-    // 폴백: 시장 데이터 기반 Quad 필터링 + 기술적 시그널
+    // 폴백: 시장 데이터 기반 — 배율 2배 이상 + Quad 필터 + 멀티팩터 스코어링
     var validData = ETF_DB.filter(function(e) {
+        if (_levMag(e.lev) < 2) return false;   // 2배 이상만
         var md = MARKET_SNAPSHOT[e.sym];
         return md && !md.error && md.price > 0 && md.ma200 > 0;
     });
@@ -2097,29 +2134,13 @@ function updateRecommendationsUI() {
         if (favored.length > 0) quadFiltered = favored;
     }
 
-    // 2단계: 기술적 시그널 스코어링
+    // 2단계: 멀티팩터 스코어링 (추세·모멘텀·눌림목·Quad, 국면별 가중치)
     var scored = quadFiltered.map(function(e) {
         var md = MARKET_SNAPSHOT[e.sym];
-        var sig = getTechnicalSignal(e.sym, md);
-        var score = 0;
-
-        // TREND: MA200 위 = +40
-        if (sig.trend === 'up') score += 40;
-        // TRADE: RSI < 50 + EMA8 위 = 최대 +35
-        if (sig.trade === 'buy') score += 35;
-        else if (sig.trade === 'wait') score += 15;
-        // 가격 위치: RSI 낮을수록 가산 (과매도 눌림목)
-        if (md.rsi < 50) score += (50 - md.rsi);
-        // Quad 정확 매칭 보너스 (전Quad 공용보다 전용 우선)
-        if (e.quad && e.quad.length > 0 && e.quad.length < 4 && quadNow && e.quad.indexOf(quadNow) !== -1) score += 10;
-        // 이벤트 오버레이 보정
-        var overlayAdj = getEventOverlayAdjustments();
-        if (overlayAdj.boost[e.sym]) score += overlayAdj.boost[e.sym] * 10;
-        if (overlayAdj.dampen[e.sym]) score -= overlayAdj.dampen[e.sym] * 15;
-        // 이미 보유 중이면 제외
-        if (portfolios && portfolios[e.sym] && portfolios[e.sym].qty > 0) score -= 100;
-
-        return Object.assign({}, e, md, { score: score, signal: sig });
+        var r = scoreEtfMulti(e, md, quadNow);
+        var score = r.score;
+        if (portfolios && portfolios[e.sym] && portfolios[e.sym].qty > 0) score -= 100;   // 이미 보유 제외
+        return Object.assign({}, e, md, { score: score, confidence: r.confidence, factors: r.factors, signal: r.sig });
     }).filter(function(d) { return d.score > 0; })
       .sort(function(a, b) { return b.score - a.score; })
       .slice(0, 3);
@@ -2141,7 +2162,7 @@ function updateRecommendationsUI() {
             + '<div>'
             + '<div class="flex items-center gap-2"><span class="font-black text-white">'+d.sym+'</span><span class="text-[10px] px-1.5 py-0.5 rounded font-bold '+badge+'">'+d.lev+'</span></div>'
             + '<div class="text-[10px] text-slate-500">' + escapeHtml(d.desc||'') + '</div>'
-            + renderSignalDots(sig)
+            + renderConfidence(d.confidence, d.factors)
             + '<div class="text-[10px] text-slate-400 mt-0.5">' + rsiText + '</div>'
             + '</div>'
             + '<div class="text-right shrink-0"><div class="text-sm font-bold text-white">$'+d.price.toFixed(2)+'</div>'
