@@ -2667,7 +2667,7 @@ function renderHoldingStatus() {
         var meta = ETF_DB.find(function(e){return e.sym===sym;}) || {};
         var currPrice = mdPrice(md) || p.avgPrice || 0;   // 프리/애프터장 반영
         var pnlPct = p.avgPrice > 0 ? ((currPrice - p.avgPrice) / p.avgPrice * 100) : 0;
-        var pnlColor = pnlPct >= 0 ? 'text-green-400' : 'text-red-400';
+        var pnlColor = pnlPct >= 0 ? 'text-red-400' : 'text-blue-400';   // 한국식: 상승 빨강 / 하락 파랑
 
         // 상태 판정
         var status = getHoldingStatus(sym, meta, md, quadNow);
