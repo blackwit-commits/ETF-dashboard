@@ -3612,9 +3612,9 @@ async function _drawIndexChart() {
     var cont = document.getElementById('macroChartContainer');
     if (!cont || !_idxCtx) return;
     var sym = _idxCtx.sym;
-    // 분봉=5일치 5분봉 / 일봉=6개월 / 주봉=2년
+    // 분봉=당일 5분봉(배지=오늘 등락과 일치) / 일봉=6개월 / 주봉=2년
     var intraday = (['1m', '5m', '15m', '30m', '60m', '1h'].indexOf(_indexInterval) >= 0);
-    var range = intraday ? '5d' : (_indexInterval === '1wk' ? '2y' : '6mo');
+    var range = intraday ? '1d' : (_indexInterval === '1wk' ? '2y' : '6mo');
     cont.innerHTML = '<div class="py-10 text-center text-slate-500 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>차트 불러오는 중...</div>';
     try {
         var r = await fetch(API_BASE_URL + '/ohlc?ticker=' + encodeURIComponent(sym) + '&range=' + range + '&interval=' + _indexInterval);
@@ -3664,7 +3664,7 @@ async function _drawIndexChart() {
             var hi = Math.max.apply(null, s.map(function (p) { return p.high; }));
             var lo = Math.min.apply(null, s.map(function (p) { return p.low; }));
             var vol = (qd.volume != null ? qd.volume : (s[s.length - 1].volume || 0));
-            var plabel = intraday ? '5일' : (_indexInterval === '1wk' ? '2년' : '6개월');
+            var plabel = intraday ? '당일' : (_indexInterval === '1wk' ? '2년' : '6개월');
             var cell = function (label, val, cls) { return '<div class="bg-slate-800/50 rounded-lg p-2"><div class="text-slate-500 text-[9px] mb-0.5">' + label + '</div><div class="font-bold text-[12px] ' + (cls || 'text-slate-200') + '">' + val + '</div></div>'; };
             grid.innerHTML =
                 cell('전일 종가', baseP != null ? fmtNum(baseP, dec) : '--')
