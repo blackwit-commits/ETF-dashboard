@@ -1422,6 +1422,7 @@ function initApp() {
         refreshWatchlist();
         // 갱신 시각 라벨 카운트업 (30초마다 — 데이터 갱신과 무관하게 'N분 전' 증가)
         if (!window._updLabelTimer) window._updLabelTimer = setInterval(_renderUpdTimes, 30000);
+        try { initSwipeNav(); } catch (e) {}   // 좌우 스와이프 탭 전환
         // 경제지표 발표결과 — 초기 1회 + 10분 주기(배지 갱신)
         ensureEconResults();
         if (!window._econLoopTimer) window._econLoopTimer = setInterval(function () { if (!document.hidden) { try { ensureEconResults(); } catch (e) {} } }, 10 * 60000);
@@ -3718,6 +3719,49 @@ function selectTicker(sym) {
 
     renderTickerBar(); 
     loadTickerData(sym);
+}
+
+// ===== 좌우 스와이프로 탭 전환 =====
+var TAB_ORDER = ['home', 'news', 'strategy', 'tradelog', 'settings'];
+function _currentTabId() {
+    for (var i = 0; i < TAB_ORDER.length; i++) { var el = document.getElementById('tab-' + TAB_ORDER[i]); if (el && !el.classList.contains('hidden')) return TAB_ORDER[i]; }
+    return localStorage.getItem('umt_last_tab') || 'home';
+}
+function swipeToTab(dir) {
+    var cur = _currentTabId(), idx = TAB_ORDER.indexOf(cur);
+    if (idx < 0) return;
+    var ni = idx + dir;
+    if (ni < 0 || ni >= TAB_ORDER.length) return;
+    switchTab(TAB_ORDER[ni]);
+}
+function initSwipeNav() {
+    if (window._swipeHooked) return; window._swipeHooked = true;
+    var sx = 0, sy = 0, tracking = false;
+    function inNoSwipe(el) {
+        while (el && el !== document.body && el.nodeType === 1) {
+            if (el.tagName === 'CANVAS' || el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') return true;
+            if (el.id === 'macroChartContainer' || el.id === 'tv_chart_container' || el.id === 'heatmapWidgetContainer') return true;
+            if (el.className && typeof el.className === 'string' && el.className.indexOf('lightweight-charts') >= 0) return true;
+            var ox = ''; try { ox = getComputedStyle(el).overflowX; } catch (e) {}
+            if ((ox === 'auto' || ox === 'scroll') && el.scrollWidth > el.clientWidth + 4) return true;  // 가로 스크롤 요소
+            el = el.parentElement;
+        }
+        return false;
+    }
+    function anyModalOpen() {
+        var m = document.querySelectorAll('.fixed.inset-0');
+        for (var i = 0; i < m.length; i++) { if (!m[i].classList.contains('hidden') && m[i].classList.contains('flex')) return true; }
+        return false;
+    }
+    document.addEventListener('touchstart', function (e) {
+        if (e.touches.length !== 1 || anyModalOpen() || inNoSwipe(e.target)) { tracking = false; return; }
+        var t = e.touches[0]; sx = t.clientX; sy = t.clientY; tracking = true;
+    }, { passive: true });
+    document.addEventListener('touchend', function (e) {
+        if (!tracking) return; tracking = false;
+        var t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+        if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.8) { swipeToTab(dx < 0 ? 1 : -1); }  // 왼쪽으로 밀면 다음 탭
+    }, { passive: true });
 }
 
 function switchTab(id) {
