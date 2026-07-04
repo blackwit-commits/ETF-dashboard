@@ -473,7 +473,14 @@ function renderHotIssues(data) {
     var overview = data && (data.overview || (data.quad && data.quad.summary));
     if (overview) brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1">📌 오늘의 핵심</div><div class="text-[12.5px] text-slate-200 leading-relaxed">' + escapeHtml(overview) + '</div></div>';
     var mk = data && data.markets;
-    if (mk && (mk.us || mk.kr)) brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">📊 시장 상황</div>' + _briefMarketLine('🇺🇸', '미국', mk.us) + _briefMarketLine('🇰🇷', '한국', mk.kr) + '</div>';
+    if (mk && (mk.us || mk.kr)) {
+        // 세션 시장을 먼저 (오후 3:30=한국 / 오전 6:30=미국)
+        var mLines = (sess.market === 'KR')
+            ? _briefMarketLine('🇰🇷', '한국', mk.kr) + _briefMarketLine('🇺🇸', '미국', mk.us)
+            : _briefMarketLine('🇺🇸', '미국', mk.us) + _briefMarketLine('🇰🇷', '한국', mk.kr);
+        var mkLabel = (sess.market === 'KR') ? '📊 한국 시장 상황' : '📊 미국 시장 상황';
+        brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">' + mkLabel + '</div>' + mLines + '</div>';
+    }
     var sectors = (data && Array.isArray(data.sectors)) ? data.sectors : [];
     if (sectors.length) {
         brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">🗺️ 섹터별 이슈</div><div class="space-y-1.5">';

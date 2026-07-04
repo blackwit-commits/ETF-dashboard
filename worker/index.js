@@ -1475,6 +1475,16 @@ const HOT_KV_TTL_MS = 3 * 60 * 60 * 1000; // 3시간 신선도 (초과 시 stale
 
 async function refreshHotToKV(env, source) {
   const result = await callGeminiHotIssues(env.GEMINI_API_KEY);
+  // 실제 지수 등락으로 시장 방향(dir) 보정 — Gemini가 상승/하락을 틀리게 판정하는 문제 방지
+  try {
+    if (result && result.markets) {
+      const [us, kr] = await Promise.all([fetchQuoteBrief("^IXIC"), fetchQuoteBrief("^KS11")]);
+      const dirOf = (q) => (q && q.chg != null) ? (q.chg > 0.05 ? "up" : (q.chg < -0.05 ? "down" : "mixed")) : null;
+      const du = dirOf(us), dk = dirOf(kr);
+      if (result.markets.us && du) result.markets.us.dir = du;
+      if (result.markets.kr && dk) result.markets.kr.dir = dk;
+    }
+  } catch (e) { /* 보정 실패는 무시 */ }
   result._cachedAt = Date.now();
   result._source = source || "ondemand";
   if (env.UMT_KV) {
