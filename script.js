@@ -1408,6 +1408,7 @@ function initApp() {
         fetchNews();
         startPriceTicker();
         startSectorRotation();
+        startHotEtf();
         syncPositionsToWorker();
         fetchMarketDataInBackground();
         // 종목 시세 주기 갱신 (90초) — 전략탭/ETF카드 가격이 멈추지 않도록
@@ -3472,6 +3473,84 @@ function _renderSectorInfo(sym) {
     }).catch(function () {});
 }
 
+// ===== 지금 뜨는 ETF (테마·섹터 ETF 모멘텀 강세순) =====
+var HOT_ETF_UNIVERSE = [
+    { sym: 'SMH', theme: '반도체', lev: 'SOXL' },
+    { sym: 'QQQ', theme: '나스닥100', lev: 'TQQQ' },
+    { sym: 'IWM', theme: '소형주', lev: 'TNA' },
+    { sym: 'XLF', theme: '금융', lev: 'FAS' },
+    { sym: 'XLE', theme: '에너지', lev: 'NRGU' },
+    { sym: 'GDX', theme: '금광', lev: 'NUGT' },
+    { sym: 'GLD', theme: '금', lev: 'UGL' },
+    { sym: 'XBI', theme: '바이오', lev: 'LABU' },
+    { sym: 'XLV', theme: '헬스케어', lev: 'CURE' },
+    { sym: 'IYR', theme: '부동산', lev: 'DRN' },
+    { sym: 'DIA', theme: '다우', lev: 'UDOW' },
+    { sym: 'BITO', theme: '비트코인', lev: 'BITX' },
+    { sym: 'BOTZ', theme: 'AI·로봇', lev: null },
+    { sym: 'URA', theme: '우라늄·원전', lev: null },
+    { sym: 'ITA', theme: '방산', lev: null },
+    { sym: 'ICLN', theme: '클린에너지', lev: null },
+    { sym: 'LIT', theme: '리튬·배터리', lev: null },
+    { sym: 'CIBR', theme: '사이버보안', lev: null },
+    { sym: 'ARKK', theme: '혁신성장', lev: null },
+    { sym: 'TAN', theme: '태양광', lev: null },
+    { sym: 'COPX', theme: '구리', lev: null },
+    { sym: 'SLV', theme: '은', lev: null },
+    { sym: 'JETS', theme: '항공', lev: null },
+    { sym: 'INDA', theme: '인도', lev: null }
+];
+var _hotEtfData = null;
+var _hotPeriod = 'chg1w';
+function startHotEtf() {
+    loadHotEtf();
+    if (window._hotEtfTimer) clearInterval(window._hotEtfTimer);
+    window._hotEtfTimer = setInterval(function () { if (!document.hidden) loadHotEtf(); }, 10 * 60 * 1000);
+}
+async function loadHotEtf() {
+    var box = document.getElementById('hotEtfList');
+    if (!box) return;
+    if (!_hotEtfData) box.innerHTML = '<div class="text-slate-500 text-xs py-3 text-center"><i class="fa-solid fa-spinner fa-spin mr-1"></i>불러오는 중…</div>';
+    try {
+        var syms = HOT_ETF_UNIVERSE.map(function (h) { return h.sym; }).join(',');
+        var res = await fetch(API_BASE_URL + '/sectors?symbols=' + encodeURIComponent(syms));
+        var data = await res.json();
+        var map = {};
+        (data || []).forEach(function (x) { map[x.symbol] = x; });
+        _hotEtfData = map;
+        renderHotEtf();
+        _setUpdTime('hotEtfTime');
+    } catch (e) {
+        if (!_hotEtfData && box) box.innerHTML = '<div class="text-center text-slate-500 text-xs py-3">불러오지 못했습니다</div>';
+    }
+}
+function setHotPeriod(p) {
+    _hotPeriod = p;
+    [['1w', 'chg1w'], ['1m', 'chg1m']].forEach(function (pair) { var b = document.getElementById('hotP_' + pair[0]); if (b) b.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (pair[1] === p ? 'bg-orange-600 text-white' : 'text-slate-400'); });
+    renderHotEtf();
+}
+function renderHotEtf() {
+    var box = document.getElementById('hotEtfList');
+    if (!box || !_hotEtfData) return;
+    var rows = HOT_ETF_UNIVERSE.map(function (h) {
+        var d = _hotEtfData[h.sym] || {};
+        var w = (d.chg1w != null ? d.chg1w : null), m = (d.chg1m != null ? d.chg1m : null);
+        var hot = (w != null ? w : 0) * 0.6 + (m != null ? m : 0) * 0.4;   // 1주 60% + 1개월 40%
+        return { h: h, w: w, m: m, hot: hot, has: (w != null || m != null) };
+    }).filter(function (r) { return r.has; }).sort(function (a, b) { return b.hot - a.hot; }).slice(0, 12);
+    if (!rows.length) { box.innerHTML = '<div class="text-center text-slate-500 text-xs py-2">데이터 없음</div>'; return; }
+    box.innerHTML = rows.map(function (r, i) {
+        var lev = r.h.lev;
+        var bridge = lev ? '<button type="button" onclick="event.stopPropagation();openAnalysisModal(\'' + lev + '\')" class="shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 font-bold whitespace-nowrap">' + lev + ' ↗</button>' : '<span class="w-11 shrink-0"></span>';
+        return '<button type="button" onclick="openIndexChart(\'' + r.h.sym + '\',\'' + r.h.theme + ' (' + r.h.sym + ')\')" class="w-full flex items-center gap-2 py-1.5 active:opacity-70 transition">'
+            + '<span class="text-[10px] text-slate-500 w-4 shrink-0 text-center">' + (i + 1) + '</span>'
+            + '<div class="flex-1 min-w-0 text-left"><div class="text-[12px] font-bold text-white truncate">' + r.h.theme + ' <span class="text-[9px] text-slate-500">' + r.h.sym + '</span></div>'
+            + '<div class="text-[10px] text-slate-500">1주 <span class="' + chgClass(r.w) + '">' + fmtChgPct(r.w) + '</span> · 1개월 <span class="' + chgClass(r.m) + '">' + fmtChgPct(r.m) + '</span></div></div>'
+            + bridge
+            + '</button>';
+    }).join('');
+}
+
 function startSectorRotation() {
     loadSectorRotation();
     if (window._sectorTimer) clearInterval(window._sectorTimer);
@@ -3817,7 +3896,7 @@ function switchTab(id) {
     if(id==='news') { var _hadNewEcon = false; try { var _nb = document.getElementById('newsBadge'); _hadNewEcon = !!(_nb && !_nb.classList.contains('hidden')); } catch(e){} setTimeout(() => { renderMarketFlow(); ensureStockNewsLoaded(); ensureUsNewsLoaded(); ensureKrNewsLoaded(); ensureCalendarLoaded(); ensureEconResults(); markEconResultsSeen(); if(_hadNewEcon) scrollToEconResults(); }, 10); startNewsAutoRefresh(); }
     if(id==='tradelog') setTimeout(() => renderTradeLog(), 10);
     if(id==='settings') { initInputs(); fetchLiveFxRate(); renderBackupStatus(); renderTaxSummary(); var _ao=document.getElementById('alertOwnerToggle'); if(_ao) _ao.checked = localStorage.getItem('umt_alert_owner')==='1'; }
-    if(id==='home') { try { refreshIndexQuotes(); ensureIndexSparklines(); renderMarketSummary(); ensureEconResults(); renderWatchlist(); refreshWatchlist(); } catch(e) {} }
+    if(id==='home') { try { refreshIndexQuotes(); ensureIndexSparklines(); renderMarketSummary(); ensureEconResults(); renderWatchlist(); refreshWatchlist(); if(_hotEtfData) renderHotEtf(); else loadHotEtf(); } catch(e) {} }
     if(id==='strategy') { try { updateGlobalCalc(); } catch(e) {} try { renderBenchmark(); } catch(e) {} try { renderHoldingStatus(); } catch(e) {} }
     if(id==='home') { updateGlobalCalc(); fetchMacroIndicatorsLive(); const h = document.getElementById('heatmapContent'); if (h && !h.classList.contains('hidden')) renderMarketHeatmap(); }
 }
