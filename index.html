@@ -19,7 +19,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260704d">
+    <link rel="stylesheet" href="style.css?v=20260704e">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -288,18 +288,19 @@
                 </div>
             </div>
 
-            <!-- ■ 4.5 실시간 핫이슈 (Gemini 그라운딩) -->
+            <!-- ■ 4.5 시장 브리핑 (핫이슈+브리핑 통합 · Gemini 그라운딩) -->
             <div id="hotIssuesSection">
-                <div class="flex justify-between items-center px-1 mb-2">
-                    <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-fire text-red-500"></i> 실시간 핫이슈 <span class="text-[10px] text-slate-500 font-normal" id="hotIssuesTime"></span></h3>
+                <div class="flex justify-between items-center px-1 mb-1">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-newspaper text-cyan-400"></i> 시장 브리핑 <span id="briefingHolidayBadge" class="hidden text-[9px] bg-slate-600 text-slate-200 px-1.5 py-0.5 rounded font-bold">휴장</span> <span class="text-[10px] text-slate-500 font-normal" id="hotIssuesTime"></span></h3>
                     <div class="flex items-center gap-1.5 shrink-0">
-                        <button onclick="sendTelegramBriefing()" class="w-8 h-7 flex items-center justify-center bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg transition" title="텔레그램으로 마켓 브리핑 전송"><i class="fa-brands fa-telegram text-xs"></i></button>
-                        <button onclick="startHotIssues()" class="w-8 h-7 flex items-center justify-center bg-red-600 hover:bg-red-500 text-white rounded-lg transition" title="새로고침"><i class="fa-solid fa-arrows-rotate text-xs"></i></button>
+                        <button onclick="sendTelegramBriefing()" class="w-8 h-7 flex items-center justify-center bg-cyan-700 hover:bg-cyan-600 text-white rounded-lg transition" title="텔레그램으로 브리핑 전송"><i class="fa-brands fa-telegram text-xs"></i></button>
+                        <button onclick="startHotIssues()" class="w-8 h-7 flex items-center justify-center bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition" title="새로고침"><i class="fa-solid fa-arrows-rotate text-xs"></i></button>
                         <button onclick="toggleHotIssues()" class="w-8 h-7 flex items-center justify-center bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition" id="hotToggleBtn" title="접기/펼치기"><i class="fa-solid fa-chevron-up text-xs" id="hotChev"></i></button>
                     </div>
                 </div>
+                <div id="briefingSessionLabel" class="text-[11px] font-bold text-cyan-300 px-1 mb-2"></div>
                 <div class="space-y-2" id="hotIssuesList">
-                    <div class="glass-panel p-4 text-center text-slate-500 text-xs">새로고침을 눌러 최신 핫이슈를 불러오세요</div>
+                    <div class="glass-panel p-4 text-center text-slate-500 text-xs">새로고침을 눌러 시장 브리핑을 불러오세요</div>
                 </div>
             </div>
 
@@ -1037,7 +1038,7 @@
             <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20260704d"></script>
+    <script src="script.js?v=20260704e"></script>
     <script>
     if('serviceWorker' in navigator){
         window.addEventListener('load',function(){

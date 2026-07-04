@@ -743,13 +743,13 @@ export default {
   async scheduled(event, env, ctx) {
     const cron = event.cron;
     // 미장 마감 후(21:00 UTC = 06:00 KST) 1회: 웹 Quad 대시보드용 매크로 분석을 미리 계산해 KV에 저장
-    if (cron === "0 21 * * 1-5" && env.GEMINI_API_KEY) {
+    if (cron === "30 21 * * 1-5" && env.GEMINI_API_KEY) {
       ctx.waitUntil((async () => {
         try { await refreshMacroToKV(env, "scheduled"); } catch (e) { /* 다음 트리거에 재시도 */ }
       })());
     }
     // 실시간 핫이슈 + 경제 일정: 개장 전(13:00) / 마감 후(21:00) 미리 계산해 KV에 저장 → 즉시 응답
-    if ((cron === "0 13 * * 1-5" || cron === "0 21 * * 1-5") && env.GEMINI_API_KEY) {
+    if ((cron === "30 6 * * 1-5" || cron === "30 21 * * 1-5") && env.GEMINI_API_KEY) {
       ctx.waitUntil((async () => {
         try { await refreshHotToKV(env, "scheduled"); } catch (e) { /* 다음 트리거에 재시도 */ }
       })());
@@ -758,7 +758,7 @@ export default {
       })());
     }
     // 텔레그램 정기 브리핑 (개장 전 13:00 / 마감 후 21:00 UTC 에만)
-    if ((cron === "0 13 * * 1-5" || cron === "0 21 * * 1-5") && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
+    if ((cron === "30 6 * * 1-5" || cron === "30 21 * * 1-5") && env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) {
       ctx.waitUntil((async () => {
         try {
           const symbols = parseBriefSymbols(env.WATCH_TICKERS);
@@ -1663,9 +1663,9 @@ const HOT_PROMPT = `당신은 글로벌 매크로/시장 속보 큐레이터입�
 CRITICAL: 오직 유효한 JSON만 출력하세요. 마크다운/설명/사과 없이 { 로 시작해 } 로 끝나야 합니다.
 
 JSON 스키마:
-{"quad":{"current":<1-4>,"name":"<골디락스|과열|스태그플레이션|침체>","summary":"<현재 성장·인플레 국면을 1문장으로>"},"overview":"<오늘 시장 전반의 흐름을 꿰는 3~4문장 내러티브. 개별 뉴스 나열이 아니라 '무엇이 시장을 주도하고 있고(주도 테마), 위험 요인은 무엇이며, 투자자 분위기(위험선호/회피)는 어떤지'를 이야기하듯 연결해서 서술. 지수 방향과 금리·유가·달러 등 매크로 맥락 포함>","markets":{"us":{"dir":"<up|down|mixed>","reason":"<미국 증시(S&P500/나스닥/다우) 최근 거래일 등락의 핵심 이유를 1문장 한국어로>"},"kr":{"dir":"<up|down|mixed>","reason":"<한국 증시(코스피/코스닥) 최근 거래일 등락의 핵심 이유를 1문장 한국어로>"}},"upcoming":[{"date":"<M/D>","name":"<이벤트명, 예: 미 CPI 발표 / FOMC / 엔비디아 실적>","importance":"<high|medium|low>"}],"items":[{"category":"<trump|fed|geopolitics|market|earnings|policy>","source":"<출처 매체/인물>","time":"<상대 시간, 예: 2시간 전 / 오늘 오전>","hours_ago":<정수: 뉴스 발생 후 지금까지 경과한 시간(시간 단위). 반드시 0~24 사이>,"severity":"<high|medium|low>","title":"<한글 제목>","summary":"<한글 2~3문장 상세 요약, 배경과 영향까지>","quote":"<핵심 원문 발언 한 줄, 없으면 빈 문자열>","tickers":["<영향 받는 미국 티커>"],"direction":"<bullish|bearish|neutral>","url":"<실제 출처 URL>"}],"timestamp":"<ISO8601>"}
+{"quad":{"current":<1-4>,"name":"<골디락스|과열|스태그플레이션|침체>","summary":"<현재 성장·인플레 국면을 1문장으로>"},"overview":"<오늘 시장 전반의 흐름을 꿰는 3~4문장 내러티브. 개별 뉴스 나열이 아니라 '무엇이 시장을 주도하고 있고(주도 테마), 위험 요인은 무엇이며, 투자자 분위기(위험선호/회피)는 어떤지'를 이야기하듯 연결해서 서술. 지수 방향과 금리·유가·달러 등 매크로 맥락 포함>","markets":{"us":{"dir":"<up|down|mixed>","reason":"<미국 증시(S&P500/나스닥/다우) 최근 거래일 등락의 핵심 이유를 1문장 한국어로>"},"kr":{"dir":"<up|down|mixed>","reason":"<한국 증시(코스피/코스닥) 최근 거래일 등락의 핵심 이유를 1문장 한국어로>"}},"sectors":[{"name":"<섹터명 한국어, 예: 반도체/에너지/금융/방산/헬스케어/기술/바이오>","dir":"<up|down>","reason":"<해당 섹터 강세 또는 약세의 핵심 이유 1문장>"}],"upcoming":[{"date":"<M/D>","name":"<이벤트명, 예: 미 CPI 발표 / FOMC / 엔비디아 실적>","importance":"<high|medium|low>"}],"items":[{"category":"<trump|fed|geopolitics|market|earnings|policy>","source":"<출처 매체/인물>","time":"<상대 시간, 예: 2시간 전 / 오늘 오전>","hours_ago":<정수: 뉴스 발생 후 지금까지 경과한 시간(시간 단위). 반드시 0~24 사이>,"severity":"<high|medium|low>","title":"<한글 제목>","summary":"<한글 2~3문장 상세 요약, 배경과 영향까지>","quote":"<핵심 원문 발언 한 줄, 없으면 빈 문자열>","tickers":["<영향 받는 미국 티커>"],"direction":"<bullish|bearish|neutral>","url":"<실제 출처 URL>"}],"timestamp":"<ISO8601>"}
 
-규칙: quad는 Hedgeye식 4국면 판정(1=골디락스 성장↑인플레↓, 2=과열 성장↑인플레↑, 3=스태그 성장↓인플레↑, 4=침체 성장↓인플레↓). overview는 반드시 채울 것(전체를 꿰는 내러티브). markets.us/kr는 각 시장의 최근 등락 핵심 이유를 1문장으로(dir=방향), 둘 다 반드시 채울 것. upcoming은 향후 7일 내 핵심 경제지표·실적·정책 일정 3~5개(없으면 빈 배열). items는 반드시 '최근 24시간 이내'에 발생한 뉴스만 6~8개(hours_ago 24 초과 항목은 절대 포함 금지, 며칠 전 뉴스 금지). hours_ago 오름차순(가장 최신이 위) 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.
+규칙: quad는 Hedgeye식 4국면 판정(1=골디락스 성장↑인플레↓, 2=과열 성장↑인플레↑, 3=스태그 성장↓인플레↑, 4=침체 성장↓인플레↓). overview는 반드시 채울 것(전체를 꿰는 내러티브). markets.us/kr는 각 시장의 최근 등락 핵심 이유를 1문장으로(dir=방향), 둘 다 반드시 채울 것. sectors는 최근 거래일 강세·약세가 뚜렷한 섹터 3~5개(강세 up·약세 down 섞어서, 이유 포함). upcoming은 향후 7일 내 핵심 경제지표·실적·정책 일정 3~5개(없으면 빈 배열). items는 반드시 '최근 24시간 이내'에 발생한 뉴스만 6~8개(hours_ago 24 초과 항목은 절대 포함 금지, 며칠 전 뉴스 금지). hours_ago 오름차순(가장 최신이 위) 정렬, url은 검색으로 찾은 실제 링크만(추측 금지), tickers는 관련 종목 없으면 빈 배열, 발언/인용이 핵심인 항목은 quote 채우기.
 
 수치 정확성: overview와 markets.us/kr.reason 등 모든 서술 텍스트에는 구체적인 지수 수치(예: 나스닥 26,000)나 정확한 등락률 %를 절대 쓰지 마세요. 방향(상승/하락/혼조)과 원인만 서술하세요. 정확한 지수 수치는 앱이 별도로 실시간 표시하므로, 텍스트에 숫자를 넣으면 실제와 어긋나 혼선을 줍니다.
 

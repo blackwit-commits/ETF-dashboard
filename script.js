@@ -436,9 +436,26 @@ function startHotIssues() {
     });
 }
 
+// 현재 시간대의 마감 브리핑 세션 (KST 06:30~15:30=미국 마감 / 그 외=한국 마감), 주말=휴장
+function _briefingSession() {
+    var k = new Date(Date.now() + 9 * 3600 * 1000);
+    var day = k.getUTCDay(), mins = k.getUTCHours() * 60 + k.getUTCMinutes();
+    var isUS = (mins >= 6 * 60 + 30 && mins < 15 * 60 + 30);
+    return { market: isUS ? 'US' : 'KR', label: isUS ? '🇺🇸 미국 마감 브리핑' : '🇰🇷 한국 마감 브리핑', holiday: (day === 0 || day === 6) };
+}
+function _briefMarketLine(flag, label, m) {
+    if (!m || !m.reason) return '';
+    var ar = (m.dir === 'up') ? '<span class="text-red-400 font-bold">▲</span>' : ((m.dir === 'down') ? '<span class="text-blue-400 font-bold">▼</span>' : '<span class="text-slate-400">—</span>');
+    return '<div class="text-[12px] leading-relaxed mb-0.5"><span class="font-bold text-slate-200">' + flag + ' ' + label + '</span> ' + ar + ' <span class="text-slate-400">' + escapeHtml(m.reason) + '</span></div>';
+}
+
 function renderHotIssues(data) {
     var list = document.getElementById('hotIssuesList');
     if (!list) return;
+    // 세션 라벨/휴장 배지
+    var sess = _briefingSession();
+    var sl = document.getElementById('briefingSessionLabel'); if (sl) sl.innerText = sess.label;
+    var hb = document.getElementById('briefingHolidayBadge'); if (hb) hb.classList.toggle('hidden', !sess.holiday);
     var items = (data && Array.isArray(data.items)) ? data.items : [];
     // 오래된 항목 방어 필터 — 핫이슈는 최근(약 36h 이내)만 (hours_ago 또는 time 문자열 기준)
     var _isOldHot = function(it){
@@ -451,9 +468,17 @@ function renderHotIssues(data) {
     };
     items = items.filter(function(it){ return !_isOldHot(it); });
     items = items.slice().sort(function(a, b){ var ha = Number(a.hours_ago), hb = Number(b.hours_ago); if (isNaN(ha)) ha = 999; if (isNaN(hb)) hb = 999; return ha - hb; });
-    if (!items.length) {
-        list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">표시할 핫이슈가 없습니다</div>';
-        return;
+    // ===== 브리핑 상단: 헤드라인 · 시장상황 · 섹터이슈 =====
+    var brief = '';
+    var overview = data && (data.overview || (data.quad && data.quad.summary));
+    if (overview) brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1">📌 오늘의 핵심</div><div class="text-[12.5px] text-slate-200 leading-relaxed">' + escapeHtml(overview) + '</div></div>';
+    var mk = data && data.markets;
+    if (mk && (mk.us || mk.kr)) brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">📊 시장 상황</div>' + _briefMarketLine('🇺🇸', '미국', mk.us) + _briefMarketLine('🇰🇷', '한국', mk.kr) + '</div>';
+    var sectors = (data && Array.isArray(data.sectors)) ? data.sectors : [];
+    if (sectors.length) {
+        brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">🗺️ 섹터별 이슈</div><div class="space-y-1.5">';
+        sectors.slice(0, 6).forEach(function (s) { var ar = s.dir === 'up' ? '<span class="text-red-400 font-bold">▲</span>' : (s.dir === 'down' ? '<span class="text-blue-400 font-bold">▼</span>' : '<span class="text-slate-400">—</span>'); brief += '<div class="text-[12px] leading-relaxed"><span class="font-bold text-slate-200">' + ar + ' ' + escapeHtml(s.name || '') + '</span> <span class="text-slate-400">' + escapeHtml(s.reason || '') + '</span></div>'; });
+        brief += '</div></div>';
     }
 
     var catMeta = {
@@ -467,7 +492,8 @@ function renderHotIssues(data) {
     var sevBorder = {high:'border-l-red-500', medium:'border-l-yellow-500', low:'border-l-slate-600'};
     var dirMeta = {bullish:{t:'▲ 호재',c:'text-red-400'}, bearish:{t:'▼ 악재',c:'text-blue-400'}, neutral:{t:'중립',c:'text-slate-400'}};
 
-    var html = '';
+    var html = brief;
+    if (items.length) html += '<div class="text-[10px] font-bold text-slate-500 mb-1 px-1 pt-1">🔥 핫이슈</div>';
     items.forEach(function(it) {
         var cm = catMeta[it.category] || {label:'뉴스', icon:'fa-newspaper', color:'text-slate-400'};
         var dm = dirMeta[it.direction] || dirMeta.neutral;
@@ -495,6 +521,16 @@ function renderHotIssues(data) {
         }
         html += '</div></div>';
     });
+
+    // 다음 카탈리스트 (경제지표·실적 일정)
+    var up = (data && Array.isArray(data.upcoming)) ? data.upcoming.slice(0, 5) : [];
+    if (up.length) {
+        html += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">📅 다음 카탈리스트</div><div class="space-y-1">';
+        var impIcon = { high: '🔴', medium: '🟡', low: '⚪' };
+        up.forEach(function (ev) { html += '<div class="text-[11px] text-slate-300">' + (impIcon[ev.importance] || '⚪') + ' <span class="text-slate-500">' + escapeHtml(ev.date || '') + '</span> ' + escapeHtml(ev.name || '') + '</div>'; });
+        html += '</div></div>';
+    }
+    if (!html) html = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">표시할 브리핑이 없습니다</div>';
 
     // 생성 시간
     if (data._cachedAt) {
@@ -3020,6 +3056,18 @@ function _marketMood() {
     if (downs >= Math.ceil(tot * 0.6)) return { icon: '🔵', label: '위험 회피', cls: 'text-blue-400', sub: '주요지수 ' + downs + '/' + tot + ' 하락' };
     return { icon: '🟡', label: '혼조', cls: 'text-yellow-400', sub: ups + '↑ ' + downs + '↓' };
 }
+// 홈 시장요약 '자세히' → 뉴스탭 시장 브리핑으로 이동+스크롤
+function goToBriefing() {
+    try { switchTab('news'); } catch (e) {}
+    var tries = 0;
+    var attempt = function () {
+        var el = document.getElementById('hotIssuesSection');
+        if (el) { try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { el.scrollIntoView(); } return; }
+        if (tries++ < 20) setTimeout(attempt, 150);
+    };
+    setTimeout(attempt, 120);
+}
+
 // 홈 시장 요약 (분위기 배지 + 첫 문장 + 자세히) — 핫이슈 overview 재활용
 function renderMarketSummary() {
     var card = document.getElementById('marketSummaryCard');
@@ -3046,6 +3094,7 @@ function renderMarketSummary() {
         // 아직 markets 데이터가 없으면(구버전 캐시) 첫 문장 폴백
         html += '<span class="text-slate-300 text-[12px]">' + escapeHtml(_firstSentence(overview)) + '</span>';
     }
+    if (mk || overview) html += '<div class="mt-2 text-right"><button type="button" onclick="goToBriefing()" class="text-[11px] font-bold text-cyan-300 hover:text-cyan-200">자세히 (시장 브리핑) <i class="fa-solid fa-arrow-right text-[9px]"></i></button></div>';
     txt.innerHTML = html;
     var te = document.getElementById('marketSummaryTime');
     if (te && hot && hot._cachedAt) { var m = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = '· ' + (m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전'); }
