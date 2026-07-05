@@ -2518,6 +2518,11 @@ var NOWCAST_EXPLAIN = {
     smallcap:  { plain: '작은 회사들은 경기를 많이 탑니다. 대형주보다 소형주가 세면 경기 회복 기대가 크다는 뜻.', up: '오르면: 경기 기대 ↑ (성장 가속)', down: '내리면: 경기 신중 (성장 둔화)' },
     us10y:     { plain: '10년 만기 국채 금리예요. 경제가 좋아지고 물가가 오를 것 같으면 금리가 완만히 오릅니다.', up: '오르면: 성장·물가 기대 ↑', down: '내리면: 성장 둔화·안전 선호' },
 };
+// 지표별 TradingView 심볼 (단일 종목 + 비율 차트 모두 지원)
+var NOWCAST_TV = {
+    wti: 'USOIL', copgold: 'HG1!/GC1!', dxy: 'DXY', breakeven: 'TIP/IEF',
+    cycdef: 'XLY/XLP', credit: 'HYG/TLT', smallcap: 'IWM/SPY', us10y: 'US10Y',
+};
 function _nowcastWhyHtml(s) {
     var e = NOWCAST_EXPLAIN[s.key];
     if (!e) return '<i class="fa-solid fa-lightbulb text-amber-500/60 mr-1"></i>' + escapeHtml(s.why || '');
@@ -2525,10 +2530,14 @@ function _nowcastWhyHtml(s) {
     var nowLine = (s.chg20d != null)
         ? '<div class="mt-1 pt-1 border-t border-slate-700/40 text-slate-400">지금: 20일 <b class="' + (s.chg20d >= 0 ? 'text-red-400' : 'text-blue-400') + '">' + (s.chg20d > 0 ? '+' : '') + s.chg20d + '%</b> → <b class="' + (s.vote === 'accel' ? 'text-amber-300' : 'text-sky-300') + '">' + voteLbl + '</b> 신호</div>'
         : '';
+    var tv = NOWCAST_TV[s.key];
+    var tvBtn = tv
+        ? '<a href="https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(tv) + '" target="_blank" rel="noopener" class="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/25 rounded px-2 py-1 active:opacity-70"><i class="fa-solid fa-chart-line"></i>TradingView에서 추이 보기 <i class="fa-solid fa-arrow-up-right-from-square text-[8px] opacity-70"></i></a>'
+        : '';
     return '<div class="text-slate-400 leading-relaxed">'
         + '<div><i class="fa-solid fa-lightbulb text-amber-500/60 mr-1"></i>' + escapeHtml(e.plain) + '</div>'
         + '<div class="mt-1 flex flex-col gap-0.5 text-[10px]"><span class="text-slate-300">' + escapeHtml(e.up) + '</span><span class="text-slate-300">' + escapeHtml(e.down) + '</span></div>'
-        + nowLine + '</div>';
+        + nowLine + tvBtn + '</div>';
 }
 
 function renderNowcastAxis(axisKey, axisLabel, nc, q) {
