@@ -452,6 +452,7 @@ function _briefMarketLine(flag, label, m) {
 function renderHotIssues(data) {
     var list = document.getElementById('hotIssuesList');
     if (!list) return;
+    _briefGeminiData = data;   // 심층분석 서사 매칭용 (추가 Gemini 호출 없이 재사용)
     // 세션 라벨/휴장 배지
     var sess = _briefingSession();
     var sl = document.getElementById('briefingSessionLabel'); if (sl) sl.innerText = sess.label;
@@ -555,7 +556,56 @@ function renderHotIssues(data) {
 }
 
 // ===== 종합 브리핑 실측 데이터 (숫자는 API, 서사는 Gemini — 하이브리드) =====
-var _briefData = null;   // { q:{sym:quote}, sectors:{sym:secdata}, ts }
+var _briefData = null;        // { q:{sym:quote}, sectors:{sym:secdata}, ts }
+var _briefGeminiData = null;  // 최근 /hot 응답 (심층분석 서사 매칭용)
+
+// 기술적 판독 (섹터 흐름 아이템 → 쉬운 문장)
+function _techRead(x) {
+    var parts = [];
+    if (x.price != null && x.ma50 != null) parts.push(x.price > x.ma50 ? 'MA50 위 <span class="text-red-400">상승추세</span>' : 'MA50 아래 <span class="text-blue-400">약세</span>');
+    if (x.rsi != null) { var r = Math.round(x.rsi); parts.push('RSI ' + r + (r >= 70 ? ' <span class="text-amber-400">과열</span>' : (r <= 35 ? ' <span class="text-sky-400">과매도</span>' : ' 중립'))); }
+    if (x.price != null && x.ema8 != null) parts.push(x.price > x.ema8 ? '단기 강세' : '단기 조정');
+    return parts.join(' · ');
+}
+function _riskRead(x) {
+    if (x.rsi != null && x.rsi >= 70) return '단기 과열 상태 — 추격보다 눌림목 대기가 유리';
+    if (x.price != null && x.ma50 != null && x.price < x.ma50) return '아직 MA50 아래 — 추세 전환 확인 필요';
+    if (x.rsi != null && x.rsi <= 35) return '과매도 반등 초기 — 되돌림 가능성 유의';
+    return '추세 양호 — 급등일보다 조정 시 분할 접근';
+}
+// Gemini 섹터 서사/뉴스에서 해당 섹터 관련 한 줄 찾기 (추가 호출 없음)
+function _whyNow(x) {
+    var d = _briefGeminiData;
+    if (!d) return '';
+    var nm = x.name;
+    // 1) Gemini 섹터별 이슈에서 이름 매칭
+    if (Array.isArray(d.sectors)) {
+        for (var i = 0; i < d.sectors.length; i++) {
+            var s = d.sectors[i]; var sn = String(s.name || '');
+            if (s.reason && (sn.indexOf(nm) >= 0 || nm.indexOf(sn) >= 0)) return s.reason;
+        }
+    }
+    // 2) 핫이슈 중 대표종목 티커가 걸리는 항목
+    var info = SECTOR_INFO[x.sym] || {};
+    var reps = (info.top || []).map(function (h) { return h.s; });
+    if (Array.isArray(d.items)) {
+        for (var j = 0; j < d.items.length; j++) {
+            var it = d.items[j]; var tk = Array.isArray(it.tickers) ? it.tickers : [];
+            if (tk.some(function (t) { return reps.indexOf(t) >= 0; })) return it.title || it.summary || '';
+        }
+    }
+    return '';
+}
+// 오버라이드: 48시간(약 2~3일) 내 高중요 이벤트 (보수적)
+function _macroOverride() {
+    var d = _briefGeminiData;
+    var ups = (d && Array.isArray(d.upcoming)) ? d.upcoming : [];
+    for (var i = 0; i < ups.length; i++) {
+        var ev = ups[i];
+        if (ev && ev.importance === 'high') return ev;   // 임박 高중요 이벤트 우선 표시
+    }
+    return null;
+}
 
 function ensureBriefingData() {
     if (_briefData && (Date.now() - _briefData.ts) < 5 * 60 * 1000) { renderBriefingData(); return; }
@@ -608,33 +658,53 @@ function renderBriefingData() {
         idxEl.innerHTML = rows ? _briefCard('📈 주요 지수', rows) : '';
     }
 
-    // ② 미국 섹터 자금흐름 + 주도 Top2 (실측)
+    // ② 미국 섹터 자금흐름 — 주도 섹터 심층(Top1) + 차선 + 빠지는 곳 (실측 + Gemini 서사 매칭)
     var secEl = document.getElementById('briefSectorFlow');
     if (secEl) {
         var flow = _computeSectorFlow(_briefData.sectors);
         if (flow && flow.length >= 4) {
             var curQuad = (typeof MACRO_DATA !== 'undefined' && MACRO_DATA && MACRO_DATA.quad) ? MACRO_DATA.quad.current : null;
-            var top = flow.slice(0, 2), bottom = flow.slice(-2).reverse();
-            var topHtml = top.map(function (x, i) {
-                var info = SECTOR_INFO[x.sym] || {};
-                var fav = SECTOR_FAV_QUAD[x.sym] || [];
-                var aligned = curQuad && fav.indexOf(curQuad) >= 0;
-                var qtag = curQuad ? (aligned ? ' <span class="text-[9px] text-emerald-300">Q' + curQuad + '정합✓</span>' : ' <span class="text-[9px] text-slate-500">Q' + curQuad + '비정합</span>') : '';
-                var reps = (info.top || []).slice(0, 3).map(function (h) { return h.s; }).join('·');
-                return '<div class="mb-1.5 last:mb-0">'
-                    + '<div class="flex items-center gap-1.5"><span class="text-[12px]">' + (i === 0 ? '🥇' : '🥈') + '</span>'
-                    +   '<span class="text-[12px] font-black text-white">' + x.name + '</span>' + qtag
-                    +   '<span class="text-[12px] font-black ml-auto ' + chgClass(x.chg1d) + '">' + (x.chg1d > 0 ? '+' : '') + x.chg1d.toFixed(2) + '%</span></div>'
-                    + (info.desc ? '<div class="text-[10.5px] text-slate-400 leading-snug mt-0.5">' + info.desc + '</div>' : '')
-                    + (reps ? '<div class="text-[10px] text-slate-500 mt-0.5">대표: ' + reps + '</div>' : '')
-                    + '</div>';
-            }).join('');
+            var lead = flow[0], second = flow[1], bottom = flow.slice(-2).reverse();
+
+            // 오버라이드: 임박 高중요 이벤트
+            var ov = _macroOverride();
+            var ovHtml = ov ? '<div class="text-[10.5px] text-amber-200 bg-amber-500/10 border border-amber-500/25 rounded-lg px-2.5 py-1.5 mb-2"><i class="fa-solid fa-bolt mr-1 text-amber-400"></i><b>이번 주 최대 변수</b> · ' + escapeHtml(((ov.date || '') + ' ' + (ov.name || '')).trim()) + ' — 결과에 따라 주도 섹터가 바뀔 수 있습니다.</div>' : '';
+
+            // 주도 섹터 심층 (Top1)
+            var info = SECTOR_INFO[lead.sym] || {};
+            var fav = SECTOR_FAV_QUAD[lead.sym] || [];
+            var aligned = curQuad && fav.indexOf(curQuad) >= 0;
+            var qtag = curQuad ? (aligned ? '<span class="text-[9px] text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded ml-1">Q' + curQuad + ' 정합✓</span>' : '<span class="text-[9px] text-slate-500 bg-slate-700/40 px-1.5 py-0.5 rounded ml-1">Q' + curQuad + ' 비정합</span>') : '';
+            var why = _whyNow(lead);
+            var repHtml = (info.top || []).slice(0, 3).map(function (h) { return '<span class="inline-flex items-center gap-1 mr-2.5"><span class="text-[10px] font-bold text-slate-300">' + h.s + '</span><span class="text-[10px] font-bold text-slate-500" data-fh="' + h.s + '">…</span></span>'; }).join('');
+            var deep = '<div class="rounded-lg bg-slate-800/40 border border-slate-700/60 p-2.5">'
+                + '<div class="flex items-center gap-1.5"><span class="text-[10px] font-black text-red-400">🔬 주도 섹터 심층</span>'
+                +   '<i class="fa-solid ' + lead.icon + ' ' + lead.color + ' text-[11px] ml-1"></i>'
+                +   '<span class="text-[13px] font-black text-white">' + lead.name + '</span>' + qtag
+                +   '<span class="text-[13px] font-black ml-auto ' + chgClass(lead.chg1d) + '">' + (lead.chg1d > 0 ? '+' : '') + lead.chg1d.toFixed(2) + '%</span></div>'
+                + (info.desc ? '<div class="text-[11px] text-slate-400 leading-snug mt-1">' + info.desc + '</div>' : '')
+                + (why ? '<div class="text-[11px] text-slate-300 leading-snug mt-1.5 pl-2 border-l-2 border-red-500/40"><span class="text-slate-500 font-bold">왜 지금 </span>' + escapeHtml(why) + '</div>' : '')
+                + '<div class="mt-1.5 pt-1.5 border-t border-slate-700/40 text-[10.5px]"><span class="text-slate-500 font-bold">기술 </span><span class="text-slate-300">' + _techRead(lead) + '</span></div>'
+                + '<div class="text-[10.5px] mt-0.5"><span class="text-slate-500 font-bold">리스크 </span><span class="text-amber-300/90">' + _riskRead(lead) + '</span></div>'
+                + (repHtml ? '<div class="mt-1.5 pt-1.5 border-t border-slate-700/40"><div class="text-[9px] text-slate-500 mb-1">대표 종목 (실시간)</div><div class="flex flex-wrap items-center">' + repHtml + '</div></div>' : '')
+                + '</div>';
+
+            // 차선 섹터 (Top2, 간략)
+            var sInfo = SECTOR_INFO[second.sym] || {};
+            var secondHtml = '<div class="flex items-center gap-1.5 mt-1.5 rounded-lg bg-slate-800/25 border border-slate-700/40 px-2.5 py-1.5">'
+                + '<span class="text-[10px]">🥈</span><i class="fa-solid ' + second.icon + ' ' + second.color + ' text-[10px]"></i>'
+                + '<span class="text-[11px] font-bold text-slate-200 shrink-0">' + second.name + '</span>'
+                + '<span class="text-[10px] text-slate-500 truncate ml-1">' + (sInfo.desc || '').slice(0, 26) + '…</span>'
+                + '<span class="text-[11px] font-black ml-auto shrink-0 ' + chgClass(second.chg1d) + '">' + (second.chg1d > 0 ? '+' : '') + second.chg1d.toFixed(1) + '%</span></div>';
+
             var botHtml = bottom.map(function (x) {
                 return '<span class="text-[11px] mr-3"><span class="text-slate-300 font-bold">' + x.name + '</span> <span class="font-black ' + chgClass(x.chg1d) + '">' + (x.chg1d > 0 ? '+' : '') + x.chg1d.toFixed(1) + '%</span></span>';
             }).join('');
-            var inner = '<div class="text-[10px] font-bold text-red-400 mb-1">🔥 돈이 몰리는 곳</div>' + topHtml
+
+            var inner = ovHtml + deep + secondHtml
                 + '<div class="text-[10px] font-bold text-blue-400 mt-2 mb-1">💧 빠지는 곳</div><div>' + botHtml + '</div>';
             secEl.innerHTML = _briefCard('🗺️ 미국 섹터 자금흐름', inner);
+            _fillFlowQuotes(secEl);
         } else secEl.innerHTML = '';
     }
 
