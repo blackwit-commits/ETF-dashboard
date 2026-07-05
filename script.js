@@ -5876,6 +5876,7 @@ function applyModeUI(mode) {
     tg('mddBlock', isAegis);                 // MDD(하락폭) 숨김
     tg('stageConfigContainer', isAegis);     // 단계별 하락폭/비중 편집기 숨김
     tg('boosterConfigSection', isAegis);     // 부스터는 케이던스 전용
+    tg('basePriceBlock', isAegis);           // 1차 진입 기준가는 케이던스 전용(이지스=매주 시장가)
     tg('aegisPlanNote', !isAegis);           // 이지스 안내
     tx('stagesLabel', isAegis ? '총 탕 수 (주 1회)' : '분할 단계');
     tx('planSectionHeader', isAegis ? '탕별 매수 계획' : '단계별 매수 계획');
