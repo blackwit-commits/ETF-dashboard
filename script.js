@@ -5824,14 +5824,21 @@ function updateConfig() {
         return;
     }
     const stages = parseInt(document.getElementById('configStages').value) || 4;
+    // 이전 값 보존: 하락폭 입력칸이 없을 때(이지스→케이던스 전환 직후 등) 기존 config 값 유지
+    const prevDrops = Array.isArray(d.config.drops) ? d.config.drops.slice() : [];
+    const prevWeights = Array.isArray(d.config.weights) ? d.config.weights.slice() : [];
     d.config.stages = stages;
     d.config.drops = [];
     d.config.weights = [];
     for(let i=0; i<stages; i++) {
-        d.config.drops.push(parseFloat(document.getElementById(`drop_${i}`).value)||0);
-        d.config.weights.push(parseFloat(document.getElementById(`wgt_${i}`).value)||0);
+        const de = document.getElementById(`drop_${i}`);
+        const we = document.getElementById(`wgt_${i}`);
+        const gap = stages > 1 ? (parseFloat(d.config.mdd) || 20) / (stages - 1) : 0;
+        d.config.drops.push(de ? (parseFloat(de.value) || 0) : (prevDrops[i] != null ? prevDrops[i] : parseFloat(-(gap * i).toFixed(2))));
+        d.config.weights.push(we ? (parseFloat(we.value) || 0) : (prevWeights[i] != null ? prevWeights[i] : Math.floor(100 / stages)));
     }
     d.config.basePrice = parseFloat(document.getElementById('planBasePrice').value) || 0;
+    try { renderStageInputs(); } catch (e) {}   // 케이던스 하락폭 입력칸 재렌더 (전환 직후 빈 화면 방지)
     if ((d.config.mode || '') === 'BOOSTER') {
         const sec = document.getElementById('boosterConfigSection');
         if (sec) sec.classList.remove('hidden');
