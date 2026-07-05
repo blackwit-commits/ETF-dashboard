@@ -2523,6 +2523,24 @@ var NOWCAST_TV = {
     wti: 'USOIL', copgold: 'HG1!/GC1!', dxy: 'DXY', breakeven: 'TIP/IEF',
     cycdef: 'XLY/XLP', credit: 'HYG/TLT', smallcap: 'IWM/SPY', us10y: 'US10Y',
 };
+// 미니 추이 스파크라인 (인앱, SVG) — 방향에 따라 상승 빨강 / 하락 파랑
+function _sparklineSvg(arr) {
+    var v = (arr || []).filter(function (x) { return x != null && !isNaN(x); });
+    if (v.length < 2) return '';
+    var min = Math.min.apply(null, v), max = Math.max.apply(null, v), rng = (max - min) || 1;
+    var n = v.length;
+    var pts = v.map(function (val, i) {
+        var x = (i / (n - 1)) * 100;
+        var y = 36 - ((val - min) / rng) * 32;   // 상단 여백 2, 하단 여백 2
+        return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+    var up = v[n - 1] >= v[0];
+    var col = up ? '#f87171' : '#60a5fa';
+    var area = '0,38 ' + pts + ' 100,38';
+    return '<svg viewBox="0 0 100 38" preserveAspectRatio="none" class="w-full h-9">'
+        + '<polygon points="' + area + '" fill="' + col + '" opacity="0.08"/>'
+        + '<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>';
+}
 function _nowcastWhyHtml(s) {
     var e = NOWCAST_EXPLAIN[s.key];
     if (!e) return '<i class="fa-solid fa-lightbulb text-amber-500/60 mr-1"></i>' + escapeHtml(s.why || '');
@@ -2530,14 +2548,16 @@ function _nowcastWhyHtml(s) {
     var nowLine = (s.chg20d != null)
         ? '<div class="mt-1 pt-1 border-t border-slate-700/40 text-slate-400">지금: 20일 <b class="' + (s.chg20d >= 0 ? 'text-red-400' : 'text-blue-400') + '">' + (s.chg20d > 0 ? '+' : '') + s.chg20d + '%</b> → <b class="' + (s.vote === 'accel' ? 'text-amber-300' : 'text-sky-300') + '">' + voteLbl + '</b> 신호</div>'
         : '';
+    var spark = _sparklineSvg(s.spark);
+    var sparkHtml = spark ? '<div class="mt-1.5"><div class="text-[9px] text-slate-500 mb-0.5">최근 약 2개월 추이</div>' + spark + '</div>' : '';
     var tv = NOWCAST_TV[s.key];
     var tvBtn = tv
-        ? '<a href="https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(tv) + '" target="_blank" rel="noopener" class="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/25 rounded px-2 py-1 active:opacity-70"><i class="fa-solid fa-chart-line"></i>TradingView에서 추이 보기 <i class="fa-solid fa-arrow-up-right-from-square text-[8px] opacity-70"></i></a>'
+        ? '<a href="https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(tv) + '" target="_blank" rel="noopener" class="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/25 rounded px-2 py-1 active:opacity-70"><i class="fa-solid fa-chart-line"></i>TradingView에서 더 자세히 <i class="fa-solid fa-arrow-up-right-from-square text-[8px] opacity-70"></i></a>'
         : '';
     return '<div class="text-slate-400 leading-relaxed">'
         + '<div><i class="fa-solid fa-lightbulb text-amber-500/60 mr-1"></i>' + escapeHtml(e.plain) + '</div>'
         + '<div class="mt-1 flex flex-col gap-0.5 text-[10px]"><span class="text-slate-300">' + escapeHtml(e.up) + '</span><span class="text-slate-300">' + escapeHtml(e.down) + '</span></div>'
-        + nowLine + tvBtn + '</div>';
+        + nowLine + sparkHtml + tvBtn + '</div>';
 }
 
 function renderNowcastAxis(axisKey, axisLabel, nc, q) {

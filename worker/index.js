@@ -969,17 +969,24 @@ async function computeQuadNowcast() {
   const series = {};
   await Promise.all([...syms].map(async (sym) => { series[sym] = await fetchCloseSeries(sym); }));
   const N = 20;
+  const SPARK_N = 44;   // 미니 추이용 ~2개월 시리즈
+  const _sparkRound = (v) => (v == null ? null : Number(v.toPrecision(5)));
   const buildSig = (s) => {
-    let chg20 = null, value = null;
+    let chg20 = null, value = null, spark = null;
     if (s.sym) {
       const ser = series[s.sym];
-      if (ser) { chg20 = _pctBack(ser.closes, N); value = ser.last; }
+      if (ser) {
+        chg20 = _pctBack(ser.closes, N); value = ser.last;
+        if (ser.closes) spark = ser.closes.slice(-SPARK_N).map(_sparkRound);
+      }
     } else {
       const A = series[s.a], B = series[s.b];
       if (A && B) {
         const pA = _pctBack(A.closes, N), pB = _pctBack(B.closes, N);
         chg20 = (pA != null && pB != null) ? (pA - pB) : null;
         value = (A.last && B.last) ? A.last / B.last : null;
+        const a = A.closes || [], b = B.closes || [], n = Math.min(a.length, b.length, SPARK_N);
+        if (n >= 2) { spark = []; for (let i = 0; i < n; i++) { const bv = b[b.length - n + i]; spark.push(bv ? _sparkRound(a[a.length - n + i] / bv) : null); } }
       }
     }
     const ok = chg20 != null;
@@ -989,6 +996,7 @@ async function computeQuadNowcast() {
       value, valueStr: _fmtNowVal(value, s.fmt), chg20d: chg20 != null ? +chg20.toFixed(1) : null,
       dir: ok ? (chg20 > 0 ? "up" : "down") : null,
       vote: ok ? (accel ? "accel" : "decel") : null,
+      spark,
     };
   };
   const axisVerdict = (sigs) => {
