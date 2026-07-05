@@ -5095,16 +5095,13 @@ function loadTickerData(sym) {
     document.getElementById('planBasePrice').value = d.config.basePrice || 0;
     const sec = document.getElementById('boosterConfigSection');
     if (sec) {
-        if ((d.config.mode || '') === 'BOOSTER') {
-            sec.classList.remove('hidden');
-            const onEl = document.getElementById('boosterOn'); if (onEl) onEl.checked = d.config.boosterOn === true;
-            const ap = document.getElementById('boosterAllocPct'); if (ap) ap.value = d.config.boosterAllocPct != null ? d.config.boosterAllocPct : 0;
-            const st = document.getElementById('boosterStages'); if (st) st.value = d.config.boosterStages != null ? d.config.boosterStages : 2;
-            const md = document.getElementById('boosterMdd'); if (md) md.value = d.config.boosterMdd != null ? d.config.boosterMdd : 10;
-            const au = document.getElementById('boosterAuto'); if (au) au.checked = d.config.boosterAuto === true;
-        } else {
-            sec.classList.add('hidden');
-        }
+        // 부스터 필드는 모드와 무관하게 항상 config에서 동기화 (모드 전환 시 stale DOM 값으로 초기화 방지)
+        const onEl = document.getElementById('boosterOn'); if (onEl) onEl.checked = d.config.boosterOn === true;
+        const ap = document.getElementById('boosterAllocPct'); if (ap) ap.value = d.config.boosterAllocPct != null ? d.config.boosterAllocPct : 0;
+        const st = document.getElementById('boosterStages'); if (st) st.value = d.config.boosterStages != null ? d.config.boosterStages : 2;
+        const md = document.getElementById('boosterMdd'); if (md) md.value = d.config.boosterMdd != null ? d.config.boosterMdd : 10;
+        const au = document.getElementById('boosterAuto'); if (au) au.checked = d.config.boosterAuto === true;
+        sec.classList.toggle('hidden', (d.config.mode || '') === 'AEGIS');  // 케이던스 계열에선 항상 노출(부스터 토글 가능)
     }
     const plans = d.config.sellPlans || [];
     for (let i = 1; i <= 3; i++) {
@@ -5839,17 +5836,19 @@ function updateConfig() {
     }
     d.config.basePrice = parseFloat(document.getElementById('planBasePrice').value) || 0;
     try { renderStageInputs(); } catch (e) {}   // 케이던스 하락폭 입력칸 재렌더 (전환 직후 빈 화면 방지)
-    if ((d.config.mode || '') === 'BOOSTER') {
+    // 케이던스 계열(GRID/BOOSTER)에선 부스터 섹션 항상 노출 + 설정 반영. 부스터 사용 여부로 모드 확정
+    {
         const sec = document.getElementById('boosterConfigSection');
         if (sec) sec.classList.remove('hidden');
-        d.config.boosterOn = document.getElementById('boosterOn').checked === true;
+        const bOnEl = document.getElementById('boosterOn');
+        const bOn = !!(bOnEl && bOnEl.checked);
+        d.config.boosterOn = bOn;
         d.config.boosterAllocPct = parseFloat(document.getElementById('boosterAllocPct').value) || 0;
         d.config.boosterStages = parseInt(document.getElementById('boosterStages').value) || 2;
         d.config.boosterMdd = parseFloat(document.getElementById('boosterMdd').value) || 10;
         var _auEl = document.getElementById('boosterAuto'); d.config.boosterAuto = !!(_auEl && _auEl.checked);
-    } else {
-        const sec = document.getElementById('boosterConfigSection');
-        if (sec) sec.classList.add('hidden');
+        d.config.mode = bOn ? 'BOOSTER' : 'GRID';   // 부스터 켜짐=BOOSTER, 꺼짐=GRID
+        document.getElementById('configMode').value = d.config.mode;
     }
     saveAll();
     calculatePlan();
@@ -5876,6 +5875,7 @@ function applyModeUI(mode) {
     var tx = function (id, t) { var e = document.getElementById(id); if (e) e.textContent = t; };
     tg('mddBlock', isAegis);                 // MDD(하락폭) 숨김
     tg('stageConfigContainer', isAegis);     // 단계별 하락폭/비중 편집기 숨김
+    tg('boosterConfigSection', isAegis);     // 부스터는 케이던스 전용
     tg('aegisPlanNote', !isAegis);           // 이지스 안내
     tx('stagesLabel', isAegis ? '총 탕 수 (주 1회)' : '분할 단계');
     tx('planSectionHeader', isAegis ? '탕별 매수 계획' : '단계별 매수 계획');
@@ -5936,35 +5936,67 @@ function onStagesChange() {
     }
 }
 
+// 앱 스타일 확인 모달 (네이티브 confirm 대체)
+function uiConfirm(message, onConfirm, opts) {
+    opts = opts || {};
+    var ov = document.getElementById('uiConfirmOverlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'uiConfirmOverlay';
+        ov.className = 'fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6';
+        ov.style.display = 'none';
+        ov.innerHTML = '<div class="w-full max-w-xs rounded-2xl bg-slate-800 border border-slate-700 p-4 shadow-2xl">'
+            + '<div id="uiConfirmTitle" class="text-sm font-black text-white mb-2"></div>'
+            + '<div id="uiConfirmMsg" class="text-[12px] text-slate-300 leading-relaxed whitespace-pre-line mb-4"></div>'
+            + '<div class="flex gap-2"><button id="uiConfirmCancel" type="button" class="flex-1 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-bold">취소</button>'
+            + '<button id="uiConfirmOk" type="button" class="flex-1 py-2.5 rounded-lg text-white text-sm font-black"></button></div></div>';
+        document.body.appendChild(ov);
+    }
+    document.getElementById('uiConfirmTitle').textContent = opts.title || '확인';
+    document.getElementById('uiConfirmMsg').textContent = message;
+    var okBtn = document.getElementById('uiConfirmOk'), cancelBtn = document.getElementById('uiConfirmCancel');
+    okBtn.textContent = opts.okText || '확인';
+    cancelBtn.textContent = opts.cancelText || '취소';
+    okBtn.className = 'flex-1 py-2.5 rounded-lg text-white text-sm font-black ' + (opts.danger ? 'bg-red-600 hover:bg-red-500' : 'bg-cyan-600 hover:bg-cyan-500');
+    ov.style.display = 'flex';
+    function close() { ov.style.display = 'none'; okBtn.onclick = null; cancelBtn.onclick = null; ov.onclick = null; }
+    okBtn.onclick = function () { close(); if (onConfirm) onConfirm(); };
+    cancelBtn.onclick = function () { close(); if (opts.onCancel) opts.onCancel(); };
+    ov.onclick = function (e) { if (e.target === ov) { close(); if (opts.onCancel) opts.onCancel(); } };
+}
+
 function selectBuyMode(m) {
     var sel = document.getElementById('configMode'); if (!sel) return;
     var d = portfolios[activeTicker];
     var curPrimary = (sel.value === 'AEGIS') ? 'AEGIS' : 'GRID';
     var newPrimary = (m === 'AEGIS') ? 'AEGIS' : 'GRID';
+    function proceed() {
+        if (m === 'GRID') {
+            sel.value = (d && d.config && d.config.boosterOn === true) ? 'BOOSTER' : 'GRID';
+        } else {
+            sel.value = m;
+        }
+        if (d && d.config) {
+            if (newPrimary === 'AEGIS') {
+                if (!d.config.aegisTangs) d.config.aegisTangs = 8;
+                document.getElementById('configStages').value = d.config.aegisTangs;
+            } else {
+                document.getElementById('configStages').value = d.config.stages || 4;
+            }
+        }
+        refreshModeCards();
+        updateConfig();
+    }
     // 보유 중 실제 모드 변경 시에만 확인 (비파괴 — 설정·기록 보존)
     if (curPrimary !== newPrimary && d && (d.qty || 0) > 0) {
         var tg = (d.config && d.config.aegisTangs) || 8;
         var msg = (newPrimary === 'AEGIS')
             ? '이지스로 변경하면 매수 계획이 "주 1회 균등 ' + tg + '탕" 방식으로 바뀝니다.\n보유 수량·매매기록은 그대로 유지됩니다. 변경할까요?'
             : '케이던스로 변경하면 매수 계획이 "하락폭 기반 분할" 방식으로 바뀝니다.\n보유 수량·매매기록은 그대로 유지됩니다. 변경할까요?';
-        if (!confirm(msg)) { refreshModeCards(); return; }
-    }
-    if (m === 'GRID') {
-        sel.value = (d && d.config && d.config.boosterOn === true) ? 'BOOSTER' : 'GRID';
+        uiConfirm(msg, proceed, { title: (newPrimary === 'AEGIS' ? '이지스로 변경' : '케이던스로 변경'), okText: '변경', onCancel: refreshModeCards });
     } else {
-        sel.value = m;
+        proceed();
     }
-    // 탕수/단계 selector 값 동기화
-    if (d && d.config) {
-        if (newPrimary === 'AEGIS') {
-            if (!d.config.aegisTangs) d.config.aegisTangs = 8;
-            document.getElementById('configStages').value = d.config.aegisTangs;
-        } else {
-            document.getElementById('configStages').value = d.config.stages || 4;
-        }
-    }
-    refreshModeCards();
-    updateConfig();
 }
 
 // 이지스 탕수 = 현재 사이클의 매수 체결 횟수 (탕 = 주 1회 매수)

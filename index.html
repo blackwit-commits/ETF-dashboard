@@ -19,7 +19,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260706a">
+    <link rel="stylesheet" href="style.css?v=20260706b">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -605,11 +605,11 @@
                     </div>
                 </div>
                 <div id="boosterConfigSection" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 p-3 rounded-xl bg-slate-800/50 border border-slate-700">
-                    <label class="col-span-2 sm:col-span-1 flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" id="boosterOn" class="accent-red-500"> 부스터 사용</label>
-                    <div><label class="text-[9px] text-slate-500 block mb-0.5">추가 할당(%)</label><input type="number" id="boosterAllocPct" value="0" min="0" class="w-full bg-slate-900 p-2 rounded text-sm text-red-400 border border-slate-700"></div>
-                    <div><label class="text-[9px] text-slate-500 block mb-0.5">추가 단계</label><input type="number" id="boosterStages" value="2" min="1" max="5" class="w-full bg-slate-900 p-2 rounded text-sm text-white border border-slate-700"></div>
-                    <div><label class="text-[9px] text-slate-500 block mb-0.5">부스터 추가 하락폭(%)</label><input type="number" id="boosterMdd" value="10" min="0" class="w-full bg-slate-900 p-2 rounded text-sm text-red-400 border border-slate-700" placeholder="예: 10"></div>
-                    <label class="col-span-2 sm:col-span-4 flex items-center gap-2 text-xs text-slate-300 border-t border-slate-700/50 pt-2 mt-0.5"><input type="checkbox" id="boosterAuto" class="accent-amber-500"> <span><i class="fa-solid fa-wand-magic-sparkles text-amber-400 mr-1"></i>케이던스 전 단계 매수 완료 시 <b>부스터 자동 켜기</b> <span class="text-slate-500 text-[10px]">(계획만 확장·알림, 자동 매수 아님)</span></span></label>
+                    <label class="col-span-2 sm:col-span-1 flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" id="boosterOn" onchange="updateConfig()" class="accent-red-500"> 부스터 사용</label>
+                    <div><label class="text-[9px] text-slate-500 block mb-0.5">추가 할당(%)</label><input type="number" id="boosterAllocPct" value="0" min="0" onchange="updateConfig()" class="w-full bg-slate-900 p-2 rounded text-sm text-red-400 border border-slate-700"></div>
+                    <div><label class="text-[9px] text-slate-500 block mb-0.5">추가 단계</label><input type="number" id="boosterStages" value="2" min="1" max="5" onchange="updateConfig()" class="w-full bg-slate-900 p-2 rounded text-sm text-white border border-slate-700"></div>
+                    <div><label class="text-[9px] text-slate-500 block mb-0.5">부스터 추가 하락폭(%)</label><input type="number" id="boosterMdd" value="10" min="0" onchange="updateConfig()" class="w-full bg-slate-900 p-2 rounded text-sm text-red-400 border border-slate-700" placeholder="예: 10"></div>
+                    <label class="col-span-2 sm:col-span-4 flex items-center gap-2 text-xs text-slate-300 border-t border-slate-700/50 pt-2 mt-0.5"><input type="checkbox" id="boosterAuto" onchange="updateConfig()" class="accent-amber-500"> <span><i class="fa-solid fa-wand-magic-sparkles text-amber-400 mr-1"></i>케이던스 전 단계 매수 완료 시 <b>부스터 자동 켜기</b> <span class="text-slate-500 text-[10px]">(계획만 확장·알림, 자동 매수 아님)</span></span></label>
                 </div>
 
                 <!-- ③ 단계별 매수 계획 -->
@@ -1075,7 +1075,7 @@
             <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20260706a"></script>
+    <script src="script.js?v=20260706b"></script>
     <script>
     if('serviceWorker' in navigator){
         window.addEventListener('load',function(){
