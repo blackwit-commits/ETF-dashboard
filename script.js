@@ -472,6 +472,7 @@ function renderHotIssues(data) {
     var brief = '';
     var overview = data && (data.overview || (data.quad && data.quad.summary));
     if (overview) brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1">📌 오늘의 핵심</div><div class="text-[12.5px] text-slate-200 leading-relaxed">' + escapeHtml(overview) + '</div></div>';
+    brief += '<div id="briefIndexSummary"></div>';   // 실측: 주요 지수 표
     var mk = data && data.markets;
     if (mk && (mk.us || mk.kr)) {
         // 세션 시장을 먼저 (오후 3:30=한국 / 오전 6:30=미국)
@@ -481,12 +482,14 @@ function renderHotIssues(data) {
         var mkLabel = (sess.market === 'KR') ? '📊 한국 시장 상황' : '📊 미국 시장 상황';
         brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">' + mkLabel + '</div>' + mLines + '</div>';
     }
+    brief += '<div id="briefSectorFlow"></div>';   // 실측: 미국 섹터 자금흐름 + 주도 Top2
     var sectors = (data && Array.isArray(data.sectors)) ? data.sectors : [];
     if (sectors.length) {
         brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">🗺️ 섹터별 이슈</div><div class="space-y-1.5">';
         sectors.slice(0, 6).forEach(function (s) { var ar = s.dir === 'up' ? '<span class="text-red-400 font-bold">▲</span>' : (s.dir === 'down' ? '<span class="text-blue-400 font-bold">▼</span>' : '<span class="text-slate-400">—</span>'); brief += '<div class="text-[12px] leading-relaxed"><span class="font-bold text-slate-200">' + ar + ' ' + escapeHtml(s.name || '') + '</span> <span class="text-slate-400">' + escapeHtml(s.reason || '') + '</span></div>'; });
         brief += '</div></div>';
     }
+    brief += '<div id="briefKorea"></div><div id="briefCommodities"></div>';   // 실측: 한국시장 + 원자재·암호화폐
 
     var catMeta = {
         trump:      {label:'트럼프',   icon:'fa-comment-dots', color:'text-orange-400'},
@@ -548,6 +551,111 @@ function renderHotIssues(data) {
     }
 
     list.innerHTML = html;
+    ensureBriefingData();   // 실측 데이터 블록(지수·섹터흐름·한국·원자재/암호화폐) 채우기
+}
+
+// ===== 종합 브리핑 실측 데이터 (숫자는 API, 서사는 Gemini — 하이브리드) =====
+var _briefData = null;   // { q:{sym:quote}, sectors:{sym:secdata}, ts }
+
+function ensureBriefingData() {
+    if (_briefData && (Date.now() - _briefData.ts) < 5 * 60 * 1000) { renderBriefingData(); return; }
+    loadBriefingMarketData();
+}
+async function loadBriefingMarketData() {
+    try {
+        var idxComm = ['^GSPC','^IXIC','^DJI','^VIX','^KS11','GC=F','CL=F','BTC-USD','ETH-USD','005930.KS','000660.KS'].join(',');
+        var secSyms = SECTOR_LIST.map(function (s) { return s.sym; }).join(',');
+        var res = await Promise.all([
+            fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(idxComm)).then(function (r) { return r.json(); }).catch(function () { return []; }),
+            fetch(API_BASE_URL + '/sectors?symbols=' + encodeURIComponent(secSyms)).then(function (r) { return r.json(); }).catch(function () { return []; })
+        ]);
+        var qmap = {}; (res[0] || []).forEach(function (q) { qmap[q.symbol] = q; });
+        var smap = {}; (res[1] || []).forEach(function (q) { smap[q.symbol] = q; });
+        _briefData = { q: qmap, sectors: smap, ts: Date.now() };
+        renderBriefingData();
+    } catch (e) { /* 실측 실패 시 Gemini 서사만 표시 */ }
+}
+
+function _briefCard(title, inner) {
+    return '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">' + title + '</div>' + inner + '</div>';
+}
+function _briefQuoteRow(label, q, opts) {
+    opts = opts || {};
+    if (!q || q.price == null) return '';
+    var chg = q.chg;
+    var arw = chg == null ? '' : (chg > 0 ? '<span class="text-red-400">▲</span>' : (chg < 0 ? '<span class="text-blue-400">▼</span>' : '<span class="text-slate-500">—</span>'));
+    var priceStr = opts.krw ? ('₩' + fmtNum(q.price, 0)) : ((opts.prefix || '') + fmtNum(q.price, opts.dp != null ? opts.dp : 2));
+    return '<div class="flex items-center justify-between py-0.5">'
+        + '<span class="text-[12px] font-bold text-slate-200">' + label + '</span>'
+        + '<span class="flex items-center gap-2">'
+        +   '<span class="text-[12px] text-slate-300 tabular-nums">' + priceStr + '</span>'
+        +   '<span class="text-[12px] font-black tabular-nums w-[64px] text-right ' + chgClass(chg) + '">' + arw + ' ' + (chg == null ? '--' : ((chg > 0 ? '+' : '') + chg.toFixed(2) + '%')) + '</span>'
+        + '</span></div>';
+}
+
+function renderBriefingData() {
+    if (!_briefData) return;
+    var Q = _briefData.q || {};
+
+    // ① 주요 지수 (실측)
+    var idxEl = document.getElementById('briefIndexSummary');
+    if (idxEl) {
+        var rows = _briefQuoteRow('S&P 500', Q['^GSPC'])
+            + _briefQuoteRow('나스닥', Q['^IXIC'])
+            + _briefQuoteRow('다우', Q['^DJI'])
+            + _briefQuoteRow('코스피', Q['^KS11'])
+            + _briefQuoteRow('VIX (변동성)', Q['^VIX']);
+        idxEl.innerHTML = rows ? _briefCard('📈 주요 지수', rows) : '';
+    }
+
+    // ② 미국 섹터 자금흐름 + 주도 Top2 (실측)
+    var secEl = document.getElementById('briefSectorFlow');
+    if (secEl) {
+        var flow = _computeSectorFlow(_briefData.sectors);
+        if (flow && flow.length >= 4) {
+            var curQuad = (typeof MACRO_DATA !== 'undefined' && MACRO_DATA && MACRO_DATA.quad) ? MACRO_DATA.quad.current : null;
+            var top = flow.slice(0, 2), bottom = flow.slice(-2).reverse();
+            var topHtml = top.map(function (x, i) {
+                var info = SECTOR_INFO[x.sym] || {};
+                var fav = SECTOR_FAV_QUAD[x.sym] || [];
+                var aligned = curQuad && fav.indexOf(curQuad) >= 0;
+                var qtag = curQuad ? (aligned ? ' <span class="text-[9px] text-emerald-300">Q' + curQuad + '정합✓</span>' : ' <span class="text-[9px] text-slate-500">Q' + curQuad + '비정합</span>') : '';
+                var reps = (info.top || []).slice(0, 3).map(function (h) { return h.s; }).join('·');
+                return '<div class="mb-1.5 last:mb-0">'
+                    + '<div class="flex items-center gap-1.5"><span class="text-[12px]">' + (i === 0 ? '🥇' : '🥈') + '</span>'
+                    +   '<span class="text-[12px] font-black text-white">' + x.name + '</span>' + qtag
+                    +   '<span class="text-[12px] font-black ml-auto ' + chgClass(x.chg1d) + '">' + (x.chg1d > 0 ? '+' : '') + x.chg1d.toFixed(2) + '%</span></div>'
+                    + (info.desc ? '<div class="text-[10.5px] text-slate-400 leading-snug mt-0.5">' + info.desc + '</div>' : '')
+                    + (reps ? '<div class="text-[10px] text-slate-500 mt-0.5">대표: ' + reps + '</div>' : '')
+                    + '</div>';
+            }).join('');
+            var botHtml = bottom.map(function (x) {
+                return '<span class="text-[11px] mr-3"><span class="text-slate-300 font-bold">' + x.name + '</span> <span class="font-black ' + chgClass(x.chg1d) + '">' + (x.chg1d > 0 ? '+' : '') + x.chg1d.toFixed(1) + '%</span></span>';
+            }).join('');
+            var inner = '<div class="text-[10px] font-bold text-red-400 mb-1">🔥 돈이 몰리는 곳</div>' + topHtml
+                + '<div class="text-[10px] font-bold text-blue-400 mt-2 mb-1">💧 빠지는 곳</div><div>' + botHtml + '</div>';
+            secEl.innerHTML = _briefCard('🗺️ 미국 섹터 자금흐름', inner);
+        } else secEl.innerHTML = '';
+    }
+
+    // ③ 한국 시장 (실측)
+    var krEl = document.getElementById('briefKorea');
+    if (krEl) {
+        var kr = _briefQuoteRow('코스피', Q['^KS11'])
+            + _briefQuoteRow('삼성전자', Q['005930.KS'], { krw: true })
+            + _briefQuoteRow('SK하이닉스', Q['000660.KS'], { krw: true });
+        krEl.innerHTML = kr ? _briefCard('🇰🇷 한국 시장', kr) : '';
+    }
+
+    // ④ 원자재 · 암호화폐 (실측)
+    var cmEl = document.getElementById('briefCommodities');
+    if (cmEl) {
+        var cm = _briefQuoteRow('금 (Gold)', Q['GC=F'], { prefix: '$' })
+            + _briefQuoteRow('WTI 원유', Q['CL=F'], { prefix: '$' })
+            + _briefQuoteRow('비트코인', Q['BTC-USD'], { prefix: '$', dp: 0 })
+            + _briefQuoteRow('이더리움', Q['ETH-USD'], { prefix: '$', dp: 0 });
+        cmEl.innerHTML = cm ? _briefCard('🛢️ 원자재 · ₿ 암호화폐', cm) : '';
+    }
 }
 
 function sendTelegramBriefing() {
@@ -3870,10 +3978,11 @@ function renderSectors() {
 var SECTOR_FAV_QUAD = { XLK:[1], XLF:[2], XLE:[2,3], XLV:[3,4], XLY:[1,2], XLP:[3,4], XLI:[1,2], XLB:[2], XLU:[4], XLRE:[1], XLC:[1,2] };
 var SECTOR_FLOW_KEY = 'umt_sector_flow_base';
 
-function _computeSectorFlow() {
-    if (!_sectorData) return null;
+function _computeSectorFlow(dataMap) {
+    var src = dataMap || _sectorData;
+    if (!src) return null;
     var items = SECTOR_LIST.map(function (s) {
-        var q = _sectorData[s.sym] || {};
+        var q = src[s.sym] || {};
         return { sym: s.sym, name: s.name, icon: s.icon, color: s.color,
                  chg1d: q.chg1d, chg1w: q.chg1w, chg1m: q.chg1m, price: q.price, ma50: q.ma50, ema8: q.ema8, rsi: q.rsi };
     }).filter(function (x) { return x.chg1d != null && x.chg1w != null && x.chg1m != null; });
