@@ -3064,15 +3064,14 @@ function _marketMood() {
     return { icon: '🟡', label: '혼조', cls: 'text-yellow-400', sub: ups + '↑ ' + downs + '↓' };
 }
 // 홈 시장요약 '자세히' → 뉴스탭 시장 브리핑으로 이동+스크롤
+// (뉴스탭 다른 섹션이 늦게 로드되며 위치가 밀리므로 여러 번 재스크롤)
 function goToBriefing() {
     try { switchTab('news'); } catch (e) {}
-    var tries = 0;
-    var attempt = function () {
+    var scroll = function () {
         var el = document.getElementById('hotIssuesSection');
-        if (el) { try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { el.scrollIntoView(); } return; }
-        if (tries++ < 20) setTimeout(attempt, 150);
+        if (el) { try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { el.scrollIntoView(); } }
     };
-    setTimeout(attempt, 120);
+    [250, 700, 1300, 2000].forEach(function (d) { setTimeout(scroll, d); });
 }
 
 // 홈 시장 요약 (분위기 배지 + 첫 문장 + 자세히) — 핫이슈 overview 재활용
