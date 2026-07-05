@@ -743,11 +743,20 @@ export default {
   // Cron 트리거: 마켓 브리핑을 텔레그램으로 푸시 (wrangler.toml [triggers] crons)
   async scheduled(event, env, ctx) {
     const cron = event.cron;
-    // 미장 마감 후(21:00 UTC = 06:00 KST) 1회: 웹 Quad 대시보드용 매크로 분석을 미리 계산해 KV에 저장
-    if (cron === "30 21 * * 1-5" && env.GEMINI_API_KEY) {
-      ctx.waitUntil((async () => {
-        try { await refreshMacroToKV(env, "scheduled"); } catch (e) { /* 다음 트리거에 재시도 */ }
-      })());
+    // Quad 판정 3층 케이던스 (미장 마감 후 21:30 UTC = 06:30 KST):
+    //  · 월요일 → 풀 Gemini 판정 + 히스테리시스 (주 1회 공식 판정)
+    //  · 그 외 평일 → 나우캐스트만 갱신 (Gemini 미호출, 무료 시장 프록시 조기신호)
+    if (cron === "30 21 * * 1-5") {
+      const utcDay = new Date().getUTCDay(); // 0=일 … 1=월
+      if (utcDay === 1 && env.GEMINI_API_KEY) {
+        ctx.waitUntil((async () => {
+          try { await refreshMacroToKV(env, "scheduled-weekly"); } catch (e) { /* 다음 트리거에 재시도 */ }
+        })());
+      } else {
+        ctx.waitUntil((async () => {
+          try { await refreshMacroNowcastOnly(env); } catch (e) { /* 무시 */ }
+        })());
+      }
     }
     // 실시간 핫이슈 + 경제 일정: 개장 전(13:00) / 마감 후(21:00) 미리 계산해 KV에 저장 → 즉시 응답
     if ((cron === "30 6 * * 1-5" || cron === "30 21 * * 1-5") && env.GEMINI_API_KEY) {
@@ -1445,6 +1454,7 @@ async function checkEconResultsAndAlert(env) {
   const store = (await env.UMT_KV.get(ECON_RESULTS_KEY, "json")) || { results: [], ts: 0 };
   if (!Array.isArray(store.results)) store.results = [];
   const msgs = [];
+  let highResult = false; // 高중요도 지표 신규 확정 → 이벤트 트리거 Quad 재판정
   const impIcon = { high: "🔴", medium: "🟠", low: "⚪" };
   const flag = { US: "🇺🇸", KR: "🇰🇷" };
   const surpArrow = { above: "🔺상회", below: "🔻하회", inline: "▪️부합" };
@@ -1469,6 +1479,7 @@ async function checkEconResultsAndAlert(env) {
     store.results = store.results.filter((x) => !(x.date === rec.date && x.name === rec.name));
     store.results.push(rec);
     alerted[key] = { ts: Date.now(), attempts: ((alerted[key] && alerted[key].attempts) || 0) + 1, done: true };
+    if (e.importance === "high") highResult = true;
 
     // 텔레그램 본문
     let body = `${impIcon[e.importance] || "⚪"} ${flag[e.country] || ""} <b>${tgEscape(e.name)}</b>\n실제 <b>${tgEscape(actual)}</b>`;
@@ -1489,6 +1500,10 @@ async function checkEconResultsAndAlert(env) {
   await env.UMT_KV.put(ECON_RESULTS_KEY, JSON.stringify(store));
   await env.UMT_KV.put(ECON_ALERTED_KEY, JSON.stringify(alerted));
   if (msgs.length) await sendTelegram(env, "📊 <b>경제지표 발표</b>\n\n" + msgs.join("\n\n"));
+  // 이벤트 트리거: 高중요도 지표(CPI·NFP·FOMC 등)가 새로 확정되면 Quad를 즉시 재판정
+  if (highResult && env.GEMINI_API_KEY) {
+    try { await refreshMacroToKV(env, "econ-trigger"); } catch (e) { /* 실패는 다음 주간 판정에서 반영 */ }
+  }
 }
 
 const ECON_RESULT_PROMPT_HEAD = `당신은 경제지표 발표 결과 확인 전문가입니다. Google 검색으로 아래 지표들의 "실제 발표치(actual)"를 확인하세요.
@@ -1577,23 +1592,40 @@ const MACRO_KV_TTL_MS = 24 * 60 * 60 * 1000; // 24시간
 const MACRO_KV_KEY = "macro_latest";
 
 // Quad 매크로 분석을 실행해 KV에 저장하고 결과 반환 (크론/온디맨드 공용)
+// 시장 나우캐스트로 Gemini Quad 판정 교차검증 (성장/인플레 축별 일치도 → 신뢰도 재산출)
+function applyNowcastCrosscheck(result, nc) {
+  result.nowcast = nc;
+  if (!result.quad || !nc) return;
+  const agG = result.quad.growth === nc.growth;
+  const agI = result.quad.inflation === nc.inflation;
+  const agreeAxes = (agG ? 1 : 0) + (agI ? 1 : 0);
+  result.quad.marketQuad = nc.quad;
+  result.quad.agreement = agreeAxes === 2 ? "full" : (agreeAxes === 1 ? "partial" : "conflict");
+  result.quad.agreeGrowth = agG;
+  result.quad.agreeInflation = agI;
+  // Gemini가 지어낸 confidence 대신, 나우캐스트 신뢰도 × 판정 일치도로 재산출
+  const factor = agreeAxes === 2 ? 1.0 : (agreeAxes === 1 ? 0.82 : 0.62);
+  result.quad.confidence = Math.max(40, Math.min(95, Math.round((nc.confidence || 60) * factor)));
+}
+
 async function refreshMacroToKV(env, source) {
   const result = await callGeminiMacroAnalysis(env.GEMINI_API_KEY);
-  // 시장 나우캐스트로 Gemini Quad 판정 교차검증 (성장/인플레 축별 일치도 → 신뢰도 재산출)
   try {
     const nc = await computeQuadNowcast();
-    result.nowcast = nc;
-    if (result.quad) {
-      const agG = result.quad.growth === nc.growth;
-      const agI = result.quad.inflation === nc.inflation;
-      const agreeAxes = (agG ? 1 : 0) + (agI ? 1 : 0);
-      result.quad.marketQuad = nc.quad;
-      result.quad.agreement = agreeAxes === 2 ? "full" : (agreeAxes === 1 ? "partial" : "conflict");
-      result.quad.agreeGrowth = agG;
-      result.quad.agreeInflation = agI;
-      // Gemini가 지어낸 confidence 대신, 나우캐스트 신뢰도 × 판정 일치도로 재산출
-      const factor = agreeAxes === 2 ? 1.0 : (agreeAxes === 1 ? 0.82 : 0.62);
-      result.quad.confidence = Math.max(40, Math.min(95, Math.round(nc.confidence * factor)));
+    applyNowcastCrosscheck(result, nc);
+    // 히스테리시스: 직전 공식 Quad와 다르면, 시장 나우캐스트가 새 국면을 확인해줄 때만 '확정'
+    if (result.quad && env.UMT_KV) {
+      const prevOfficial = await env.UMT_KV.get("official_quad");
+      const nowQ = result.quad.current;
+      if (prevOfficial && String(nowQ) !== prevOfficial) {
+        // 전환 발생 — 시장이 새 국면(또는 그 방향)에 동의하면 확정, 아니면 '전환 검토중'
+        result.quad.transitioned = true;
+        result.quad.prevQuad = Number(prevOfficial);
+        result.quad.confirmed = (nc && nc.quad === nowQ) || result.quad.agreement === "full";
+      } else {
+        result.quad.confirmed = true;
+      }
+      await env.UMT_KV.put("official_quad", String(nowQ));
     }
   } catch (e) { /* 나우캐스트 실패는 무시 (Gemini 판정 그대로 사용) */ }
   result._cachedAt = Date.now();
@@ -1601,6 +1633,23 @@ async function refreshMacroToKV(env, source) {
   if (env.UMT_KV) {
     try { await env.UMT_KV.put(MACRO_KV_KEY, JSON.stringify(result)); } catch (e) { /* KV 실패 무시 */ }
   }
+  return result;
+}
+
+// 나우캐스트만 갱신 (Gemini 미호출) — 매일 크론으로 캐시된 Quad에 최신 시장 프록시 반영
+async function refreshMacroNowcastOnly(env) {
+  if (!env.UMT_KV) return null;
+  let result = null;
+  try { const raw = await env.UMT_KV.get(MACRO_KV_KEY); if (raw) result = JSON.parse(raw); } catch (e) { /* 무시 */ }
+  if (!result || !result.quad) {
+    // 캐시된 Quad가 없으면 풀 판정으로 폴백 (초기 1회)
+    if (env.GEMINI_API_KEY) return await refreshMacroToKV(env, "nowcast-fallback");
+    return null;
+  }
+  const nc = await computeQuadNowcast();
+  applyNowcastCrosscheck(result, nc);
+  result._nowcastAt = Date.now();
+  try { await env.UMT_KV.put(MACRO_KV_KEY, JSON.stringify(result)); } catch (e) { /* 무시 */ }
   return result;
 }
 

@@ -2466,6 +2466,8 @@ function renderNowcast() {
         +   '<span class="font-black ' + (QUAD_COLORS[mq] || 'text-white') + '">Q' + (mq || '?') + ' ' + (NOWCAST_QUAD_NAMES[mq] || '') + ' · 신뢰 ' + (nc.confidence || 0) + '%</span></div>'
         + '<div class="flex items-center justify-between mt-1"><span class="text-slate-400">AI(Gemini) 판정</span>'
         +   '<span class="font-bold ' + (QUAD_COLORS[gq] || 'text-slate-300') + '">Q' + (gq || '?') + ' ' + (NOWCAST_QUAD_NAMES[gq] || '') + '</span></div>'
+        + (q && q.transitioned ? '<div class="text-[10px] mt-1.5 pt-1.5 border-t border-slate-700/50 ' + (q.confirmed ? 'text-emerald-300/90' : 'text-amber-300/90') + '">'
+            + (q.confirmed ? '<i class="fa-solid fa-circle-check mr-1"></i>Q' + (q.prevQuad||'?') + '→Q' + gq + ' 전환 확정 (시장 프록시 확인됨)' : '<i class="fa-solid fa-hourglass-half mr-1"></i>Q' + (q.prevQuad||'?') + '→Q' + gq + ' 전환 검토중 — 시장 프록시 미확인, 관망 권장') + '</div>' : '')
         + (mq && gq && mq !== gq ? '<div class="text-[10px] text-amber-300/90 mt-1.5 pt-1.5 border-t border-slate-700/50"><i class="fa-solid fa-triangle-exclamation mr-1"></i>두 판정이 달라 신뢰도를 낮췄습니다. 아래 지표로 어디서 갈리는지 확인하세요.</div>' : '')
         + '</div>';
 
