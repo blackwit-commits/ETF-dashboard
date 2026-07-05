@@ -1588,6 +1588,7 @@ function sanitizeData() {
                 { targetPct: defaultSellPlans[2].targetPct, sellRatio: defaultSellPlans[2].sellRatio }
             ];
         }
+        p.config.aegisTangs = parseInt(p.config.aegisTangs) || 8;   // 이지스 총 탕 수 (주 1회 균등)
         p.config.boosterOn = p.config.boosterOn === true;
         p.config.boosterAllocPct = parseFloat(p.config.boosterAllocPct) || 0;
         p.config.boosterStages = parseInt(p.config.boosterStages) || 2;
@@ -5087,9 +5088,10 @@ function loadTickerData(sym) {
     
     document.getElementById('configMode').value = d.config.mode || 'GRID';
     try { refreshModeCards(); } catch(e) {}
+    try { applyModeUI(d.config.mode || 'GRID'); } catch(e) {}
     try { renderAegisPanel(sym); } catch(e) {}
     document.getElementById('configMdd').value = d.config.mdd || 20;
-    document.getElementById('configStages').value = d.config.stages || 4; 
+    document.getElementById('configStages').value = (d.config.mode === 'AEGIS') ? (d.config.aegisTangs || 8) : (d.config.stages || 4);
     document.getElementById('planBasePrice').value = d.config.basePrice || 0;
     const sec = document.getElementById('boosterConfigSection');
     if (sec) {
@@ -5116,8 +5118,9 @@ function loadTickerData(sym) {
     updateStrategyDataUI(sym);
     loadTradingViewChart(sym);
     
-    renderStageInputs(); 
-    renderSellPlan(); 
+    renderStageInputs();
+    try { calculatePlan(); } catch(e) {}   // 모드별 계획 테이블 렌더 (이지스=탕별 / 케이던스=단계별)
+    renderSellPlan();
     renderJournal();
 }
 
@@ -5546,9 +5549,11 @@ function applyCycleReset() {
 }
 
 function renderStageInputs() {
-    const stages = parseInt(document.getElementById('configStages').value) || 4;
     const c = document.getElementById('stageConfigContainer');
-    c.innerHTML = '';
+    if (c) c.innerHTML = '';
+    const d0 = portfolios[activeTicker];
+    if (d0 && d0.config && d0.config.mode === 'AEGIS') return;  // 이지스는 하락폭 편집기 없음
+    const stages = parseInt(document.getElementById('configStages').value) || 4;
     const d = portfolios[activeTicker];
     
     if (!d.config.drops || d.config.drops.length !== stages) {
@@ -5674,6 +5679,7 @@ function actualQtyCell(planned, bought) {
 
 function calculatePlan() {
     const d = portfolios[activeTicker];
+    if (d && d.config && d.config.mode === 'AEGIS') { renderAegisPlanTable(activeTicker); return; }  // 이지스 탕별 테이블
     const activeCycleId = (function() {
         if (!d) return null;
         if (d.currentCycleId != null) return d.currentCycleId;
@@ -5804,9 +5810,20 @@ function calculatePlan() {
 }
     
 function updateConfig() {
-    const stages = parseInt(document.getElementById('configStages').value) || 4;
     const d = portfolios[activeTicker];
     d.config.mode = document.getElementById('configMode').value;
+    applyModeUI(d.config.mode);
+    // 이지스: 비파괴 — 케이던스 stages/drops/weights 건드리지 않음, 탕수만 반영
+    if (d.config.mode === 'AEGIS') {
+        d.config.aegisTangs = parseInt(document.getElementById('configStages').value) || 8;
+        d.config.basePrice = parseFloat(document.getElementById('planBasePrice').value) || 0;
+        saveAll();
+        renderAegisPlanTable(activeTicker);
+        try { renderPositionOverview(); } catch (e) {}
+        try { renderAegisPanel(activeTicker); } catch (e) {}
+        return;
+    }
+    const stages = parseInt(document.getElementById('configStages').value) || 4;
     d.config.stages = stages;
     d.config.drops = [];
     d.config.weights = [];
@@ -5845,14 +5862,99 @@ function refreshModeCards() {
         b.className = 'text-left rounded-xl p-2.5 transition ' + (on ? onCls : 'border border-slate-700 bg-slate-800/40 opacity-60');
     });
 }
+// 이지스/케이던스에 따라 매수 계획 UI 전환 (리프레임 — 하락폭 기반 UI 숨김)
+function applyModeUI(mode) {
+    var isAegis = (mode === 'AEGIS');
+    var tg = function (id, hide) { var e = document.getElementById(id); if (e) e.classList.toggle('hidden', hide); };
+    var tx = function (id, t) { var e = document.getElementById(id); if (e) e.textContent = t; };
+    tg('mddBlock', isAegis);                 // MDD(하락폭) 숨김
+    tg('stageConfigContainer', isAegis);     // 단계별 하락폭/비중 편집기 숨김
+    tg('aegisPlanNote', !isAegis);           // 이지스 안내
+    tx('stagesLabel', isAegis ? '총 탕 수 (주 1회)' : '분할 단계');
+    tx('planSectionHeader', isAegis ? '탕별 매수 계획' : '단계별 매수 계획');
+    tx('planThStage', isAegis ? '탕' : '단계');
+    tx('planThPrice', isAegis ? '탕당액' : '계획가');
+    var ht = document.getElementById('configHintText');
+    if (ht) ht.innerHTML = isAegis
+        ? '<i class="fa-solid fa-shield-halved mr-1 text-amber-400/70"></i>탕당 균등 배분 (자금할당 ÷ 탕수)'
+        : '<i class="fa-solid fa-wand-magic-sparkles mr-1 text-blue-400/70"></i>MDD·단계 변경 시 자동 균등 배분';
+}
+
+// 이지스 탕별 매수 계획 테이블 (주 1회 균등 — 하락폭 없음)
+function renderAegisPlanTable(sym) {
+    var d = portfolios[sym]; if (!d) return;
+    var body = document.getElementById('planTableBody'); if (!body) return;
+    var tangs = parseInt(d.config.aegisTangs) || 8;
+    var allocUsd = getTotalEquityUSD() * ((d.config.alloc || 0) / 100);
+    var perTang = tangs > 0 ? allocUsd / tangs : 0;
+    var activeCycleId = (d.currentCycleId != null) ? d.currentCycleId : (function () {
+        if ((d.qty || 0) > 0 && Array.isArray(d.history)) { var m = d.history.reduce(function (mm, h) { return (h && h.cycleId != null && h.cycleId > mm) ? h.cycleId : mm; }, 0); return m > 0 ? m : null; }
+        return null;
+    })();
+    var byStage = {};
+    (d.history || []).forEach(function (h) {
+        if (!h || h.type !== 'BUY') return;
+        if (activeCycleId != null && h.cycleId !== activeCycleId) return;
+        var s = parseInt(h.stage, 10); if (isNaN(s) || s <= 0) return;
+        if (!byStage[s]) byStage[s] = { qty: 0, cost: 0 };
+        byStage[s].qty += (h.qty || 0); byStage[s].cost += (h.qty || 0) * (h.price || 0);
+    });
+    var rows = '';
+    for (var i = 1; i <= tangs; i++) {
+        var b = byStage[i];
+        var avgP = (b && b.qty) ? b.cost / b.qty : 0;
+        var phase = i <= 4 ? '계획' : '판정';
+        var phaseCls = i <= 4 ? 'text-cyan-400/70' : 'text-amber-400/70';
+        var status = (b && b.qty > 0) ? '<span class="text-emerald-500 font-bold text-[10px]">완료</span>' : '<span class="text-slate-500 text-[10px]">대기</span>';
+        rows += '<tr class="border-b border-slate-800/50">'
+            + '<td class="p-2 text-center text-slate-400 font-medium">' + i + '탕 <span class="text-[9px] ' + phaseCls + ' block">' + phase + '</span></td>'
+            + '<td class="p-2 text-center text-blue-300 font-bold align-middle">$' + Math.round(perTang).toLocaleString() + '</td>'
+            + '<td class="p-2 text-center align-middle">' + (avgP > 0 ? '$' + avgP.toFixed(2) : '—') + '</td>'
+            + '<td class="p-2 text-center align-middle">' + ((b && b.qty) ? b.qty : '—') + '</td>'
+            + '<td class="p-2 text-center align-middle">' + status + '</td></tr>';
+    }
+    body.innerHTML = rows;
+}
+
+// 탕수/분할단계 selector — 모드에 따라 라우팅
+function onStagesChange() {
+    var d = portfolios[activeTicker]; if (!d || !d.config) return;
+    if (d.config.mode === 'AEGIS') {
+        d.config.aegisTangs = parseInt(document.getElementById('configStages').value) || 8;
+        saveAll();
+        renderAegisPlanTable(activeTicker);
+        try { renderAegisPanel(activeTicker); } catch (e) {}
+    } else {
+        applyManualConfig();
+    }
+}
+
 function selectBuyMode(m) {
     var sel = document.getElementById('configMode'); if (!sel) return;
     var d = portfolios[activeTicker];
+    var curPrimary = (sel.value === 'AEGIS') ? 'AEGIS' : 'GRID';
+    var newPrimary = (m === 'AEGIS') ? 'AEGIS' : 'GRID';
+    // 보유 중 실제 모드 변경 시에만 확인 (비파괴 — 설정·기록 보존)
+    if (curPrimary !== newPrimary && d && (d.qty || 0) > 0) {
+        var tg = (d.config && d.config.aegisTangs) || 8;
+        var msg = (newPrimary === 'AEGIS')
+            ? '이지스로 변경하면 매수 계획이 "주 1회 균등 ' + tg + '탕" 방식으로 바뀝니다.\n보유 수량·매매기록은 그대로 유지됩니다. 변경할까요?'
+            : '케이던스로 변경하면 매수 계획이 "하락폭 기반 분할" 방식으로 바뀝니다.\n보유 수량·매매기록은 그대로 유지됩니다. 변경할까요?';
+        if (!confirm(msg)) { refreshModeCards(); return; }
+    }
     if (m === 'GRID') {
-        // 케이던스 계열: 부스터가 켜져 있었으면 BOOSTER 상태 유지 (부스터 사라짐 방지)
         sel.value = (d && d.config && d.config.boosterOn === true) ? 'BOOSTER' : 'GRID';
     } else {
         sel.value = m;
+    }
+    // 탕수/단계 selector 값 동기화
+    if (d && d.config) {
+        if (newPrimary === 'AEGIS') {
+            if (!d.config.aegisTangs) d.config.aegisTangs = 8;
+            document.getElementById('configStages').value = d.config.aegisTangs;
+        } else {
+            document.getElementById('configStages').value = d.config.stages || 4;
+        }
     }
     refreshModeCards();
     updateConfig();
