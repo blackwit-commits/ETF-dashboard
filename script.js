@@ -2488,21 +2488,36 @@ function toggleNowcastWhy(id) {
 // 2×2 Quad 지도 — 시장 프록시(채움) vs AI 판정(테두리) 위치
 function renderNowcastMap(mq, gq) {
     var order = [3, 2, 4, 1]; // 좌상 Q3 · 우상 Q2 · 좌하 Q4 · 우하 Q1
-    var cells = order.map(function(n) {
+    var cells = order.map(function (n) {
         var m = QUAD_META[n] || {};
         var isMkt = (n === mq), isAI = (n === gq);
-        var cls = isMkt ? (m.bg + ' ' + m.bdr) : 'bg-slate-800/40 border-slate-700/40';
-        var ring = (isAI && !isMkt) ? ' ring-1 ring-slate-300/70' : '';
-        return '<div class="rounded-md p-1.5 text-center border ' + cls + ring + '">'
-            + '<div class="text-[10px] font-black ' + (isMkt ? (m.txt || 'text-white') : 'text-slate-500') + '">Q' + n + '</div>'
-            + '<div class="text-[8px] leading-tight ' + (isMkt ? 'text-slate-300' : 'text-slate-600') + '">' + (m.name || '') + '</div>'
-            + (isMkt ? '<div class="text-[7px] font-bold mt-0.5 ' + (m.txt || '') + '">● 시장</div>' : (isAI ? '<div class="text-[7px] font-bold text-slate-400 mt-0.5">◌ AI</div>' : ''))
+        var cls, dim = '';
+        if (isMkt) cls = 'border-2 ' + m.bdr + ' ' + m.bg;
+        else if (isAI) cls = 'border-2 border-dashed ' + m.bdr + ' bg-slate-800/60';
+        else { cls = 'border border-slate-700/50 bg-slate-900/40'; dim = ' opacity-50'; }
+        var style = isMkt && m.glow ? ' style="box-shadow:0 0 10px ' + m.glow + '"' : '';
+        var pills = '';
+        if (isMkt) pills += '<span class="text-[8px] font-black px-1.5 py-[1px] rounded-full ' + m.dot + ' text-slate-900">시장</span>';
+        if (isAI) pills += '<span class="text-[8px] font-black px-1.5 py-[1px] rounded-full border ' + m.bdr + ' ' + m.txt + (isMkt ? ' ml-0.5' : '') + '">AI</span>';
+        return '<div class="relative rounded-lg p-1.5 flex flex-col items-center justify-center min-h-[56px] ' + cls + dim + '"' + style + '>'
+            + '<div class="text-[15px] font-black leading-none ' + m.txt + '">Q' + n + '</div>'
+            + '<div class="text-[9px] leading-tight mt-0.5 ' + (isMkt ? 'text-slate-100 font-bold' : 'text-slate-400') + '">' + (m.name || '') + '</div>'
+            + (pills ? '<div class="flex items-center mt-1">' + pills + '</div>' : '')
             + '</div>';
     }).join('');
-    return '<div class="mb-2.5">'
-        + '<div class="flex items-center justify-between mb-1 text-[8px] text-slate-600 font-bold"><span>← 성장 둔화</span><span>성장 가속 →</span></div>'
-        + '<div class="grid grid-cols-2 gap-1">' + cells + '</div>'
-        + '<div class="flex items-center justify-between mt-1 text-[8px] text-slate-600 font-bold"><span>물가 ↑상단 · ↓하단</span><span>채움=시장 · 테두리=AI</span></div>'
+    var sideLbl = function (t) { return '<div class="flex items-center justify-center shrink-0 w-3.5"><span class="text-[9px] text-slate-500 font-bold whitespace-nowrap" style="writing-mode:vertical-rl">' + t + '</span></div>'; };
+    return '<div class="mb-3">'
+        + '<div class="text-center text-[9px] text-slate-500 font-bold mb-1">물가 가속 ↑</div>'
+        + '<div class="flex items-stretch gap-1.5">'
+        +   sideLbl('성장 둔화')
+        +   '<div class="grid grid-cols-2 gap-1.5 flex-1">' + cells + '</div>'
+        +   sideLbl('성장 가속')
+        + '</div>'
+        + '<div class="text-center text-[9px] text-slate-500 font-bold mt-1">물가 둔화 ↓</div>'
+        + '<div class="flex items-center justify-center gap-4 mt-2 text-[9px] text-slate-500">'
+        +   '<span class="flex items-center gap-1"><span class="w-3 h-3 rounded bg-slate-300"></span>시장 프록시</span>'
+        +   '<span class="flex items-center gap-1"><span class="w-3 h-3 rounded border-2 border-dashed border-slate-400"></span>AI 판정</span>'
+        + '</div>'
         + '</div>';
 }
 
