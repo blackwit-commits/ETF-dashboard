@@ -2491,6 +2491,7 @@ function updateMacroDashboard() {
     try { renderNewsBriefing(); } catch(e) { console.error('[Macro] renderNewsBriefing:', e); }
     try { renderHoldingStatus(); } catch(e) { console.error('[Macro] renderHoldingStatus:', e); }
     try { renderMarketFlow(); } catch(e) {} // 홈 Quad와 시장흐름 Quad 동기화
+    try { renderSectorFlow(); } catch(e) {} // 자금흐름 Quad 정합 태그 갱신
     try { maybeRerenderEtfList(); } catch(e) { console.error('[Macro] maybeRerenderEtfList:', e); }
     // 상단 전광판은 Google News RSS (startNewsTicker)가 담당
 }
@@ -3806,6 +3807,7 @@ async function loadSectorRotation() {
         // 프리/애프터장 등락 병합 (1일 뷰에서 활용)
         (ext || []).forEach(function (e) { if (e && map[e.symbol]) { map[e.symbol].state = e.state; map[e.symbol].extChg = e.extChg; } });
         _sectorData = map;
+        renderSectorFlow();
         renderSectors();
         _setUpdTime('sectorUpdateTime');
     } catch (e) {
@@ -3818,6 +3820,7 @@ function setSectorPeriod(p) {
         var btn = document.getElementById('secP_' + pair[0]);
         if (btn) btn.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (pair[1] === p ? 'bg-cyan-600 text-white' : 'text-slate-400');
     });
+    renderSectorFlow();
     renderSectors();
 }
 function renderSectors() {
@@ -3863,6 +3866,130 @@ function renderSectors() {
             + '</button>';
     }).join('');
 }
+// ===== 자금 흐름 분석 (섹터 상대강도·가속·추세 → 몰리는/빠지는 곳 + 회전 감지) =====
+var SECTOR_FAV_QUAD = { XLK:[1], XLF:[2], XLE:[2,3], XLV:[3,4], XLY:[1,2], XLP:[3,4], XLI:[1,2], XLB:[2], XLU:[4], XLRE:[1], XLC:[1,2] };
+var SECTOR_FLOW_KEY = 'umt_sector_flow_base';
+
+function _computeSectorFlow() {
+    if (!_sectorData) return null;
+    var items = SECTOR_LIST.map(function (s) {
+        var q = _sectorData[s.sym] || {};
+        return { sym: s.sym, name: s.name, icon: s.icon, color: s.color,
+                 chg1d: q.chg1d, chg1w: q.chg1w, chg1m: q.chg1m, price: q.price, ma50: q.ma50, ema8: q.ema8, rsi: q.rsi };
+    }).filter(function (x) { return x.chg1d != null && x.chg1w != null && x.chg1m != null; });
+    if (items.length < 4) return null;
+    var mean = function (k) { var v = items.map(function (x) { return x[k]; }); return v.reduce(function (a, b) { return a + b; }, 0) / v.length; };
+    var m1d = mean('chg1d'), m1w = mean('chg1w'), m1m = mean('chg1m');
+    items.forEach(function (x) {
+        var rs1d = x.chg1d - m1d, rs1w = x.chg1w - m1w, rs1m = x.chg1m - m1m;  // 시장(섹터평균) 대비 상대강도
+        var momo = 0.5 * rs1d + 0.3 * rs1w + 0.2 * rs1m;                        // 최근 우선 가중
+        var accel = (x.chg1d * 5 - x.chg1w);                                    // 이번주 모멘텀 가속도
+        var trend = (x.price != null && x.ma50 != null ? (x.price > x.ma50 ? 1 : -1) : 0)
+                  + (x.price != null && x.ema8 != null ? (x.price > x.ema8 ? 0.5 : -0.5) : 0);
+        x.rs1w = rs1w; x.accel = accel;
+        x.score = momo * 1.0 + Math.max(-3, Math.min(3, accel)) * 0.4 + trend * 0.8;
+    });
+    items.sort(function (a, b) { return b.score - a.score; });
+    // 회전 감지: localStorage 기준선(약 1일 전) 대비 순위 변화
+    var curRanks = {}; items.forEach(function (x, i) { curRanks[x.sym] = i; });
+    var base = null; try { base = JSON.parse(localStorage.getItem(SECTOR_FLOW_KEY)); } catch (e) {}
+    items.forEach(function (x) {
+        x.prevRank = (base && base.ranks && base.ranks[x.sym] != null) ? base.ranks[x.sym] : null;
+        x.rankDelta = (x.prevRank != null) ? (x.prevRank - curRanks[x.sym]) : 0;  // +면 순위 상승(유입)
+    });
+    var now = Date.now();
+    if (!base || !base.ts || (now - base.ts) > 20 * 3600 * 1000) {   // 기준선 하루 1회 갱신
+        try { localStorage.setItem(SECTOR_FLOW_KEY, JSON.stringify({ ts: now, ranks: curRanks })); } catch (e) {}
+    }
+    return items;
+}
+
+function _flowPeriodVal(x) { var v = x[_sectorPeriod]; return v != null ? v : x.chg1d; }
+
+function _flowCard(x, rank, curQuad) {
+    var info = SECTOR_INFO[x.sym] || {};
+    var fav = SECTOR_FAV_QUAD[x.sym] || [];
+    var aligned = curQuad && fav.indexOf(curQuad) >= 0;
+    var quadTag = curQuad ? (aligned
+        ? '<span class="text-[9px] text-emerald-300 bg-emerald-500/10 px-1 py-0.5 rounded ml-1">Q' + curQuad + ' 정합 ✓</span>'
+        : '<span class="text-[9px] text-slate-500 bg-slate-700/40 px-1 py-0.5 rounded ml-1">Q' + curQuad + ' 비정합</span>') : '';
+    var medal = rank === 1 ? '🥇' : '🥈';
+    var chg = _flowPeriodVal(x);
+    var stocksHtml = (info.top || []).slice(0, 3).map(function (h) {
+        return '<span class="inline-flex items-center gap-1 mr-2.5"><span class="text-[10px] font-bold text-slate-300">' + h.s + '</span><span class="text-[10px] font-bold text-slate-500" data-fh="' + h.s + '">…</span></span>';
+    }).join('');
+    return '<button type="button" onclick="openSectorChart(\'' + x.sym + '\',\'' + x.name + '\')" class="w-full text-left rounded-lg bg-slate-800/40 border border-slate-700/50 p-2 active:opacity-70">'
+        + '<div class="flex items-center gap-1.5">'
+        +   '<span class="text-[13px]">' + medal + '</span>'
+        +   '<i class="fa-solid ' + x.icon + ' ' + x.color + ' text-[11px]"></i>'
+        +   '<span class="text-[12px] font-black text-white">' + x.name + '</span>'
+        +   quadTag
+        +   '<span class="text-[12px] font-black ml-auto ' + chgClass(chg) + '">' + (chg > 0 ? '+' : '') + chg.toFixed(2) + '%</span>'
+        + '</div>'
+        + (info.desc ? '<div class="text-[10px] text-slate-400 mt-1 leading-snug">' + info.desc + '</div>' : '')
+        + '<div class="mt-1.5 pt-1.5 border-t border-slate-700/40 flex flex-wrap items-center">' + stocksHtml + '</div>'
+        + '</button>';
+}
+
+function _flowMini(x) {
+    var chg = _flowPeriodVal(x);
+    return '<button type="button" onclick="openSectorChart(\'' + x.sym + '\',\'' + x.name + '\')" class="text-left rounded-lg bg-slate-800/30 border border-slate-700/40 px-2 py-1.5 active:opacity-70">'
+        + '<div class="flex items-center gap-1"><i class="fa-solid ' + x.icon + ' ' + x.color + ' text-[10px]"></i>'
+        + '<span class="text-[11px] font-bold text-slate-300 truncate">' + x.name + '</span>'
+        + '<span class="text-[11px] font-black ml-auto ' + chgClass(chg) + '">' + (chg > 0 ? '+' : '') + chg.toFixed(1) + '%</span></div></button>';
+}
+
+function _fillFlowQuotes(box) {
+    var els = box.querySelectorAll('[data-fh]');
+    if (!els.length) return;
+    var syms = []; els.forEach(function (el) { var s = el.getAttribute('data-fh'); if (syms.indexOf(s) < 0) syms.push(s); });
+    fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(syms.join(','))).then(function (r) { return r.json(); }).then(function (data) {
+        var map = {}; (data || []).forEach(function (q) { map[q.symbol] = q; });
+        els.forEach(function (el) {
+            var q = map[el.getAttribute('data-fh')];
+            if (q && q.chg != null) { el.className = 'text-[10px] font-bold ' + chgClass(q.chg); el.textContent = (q.chg > 0 ? '+' : '') + q.chg.toFixed(1) + '%'; }
+            else el.textContent = '—';
+        });
+    }).catch(function () {});
+}
+
+function renderSectorFlow() {
+    var box = document.getElementById('sectorFlowSummary');
+    if (!box) return;
+    var items = _computeSectorFlow();
+    if (!items) { box.innerHTML = ''; return; }
+    var top = items.slice(0, 2);
+    var bottom = items.slice(-2).reverse();
+    var curQuad = (typeof MACRO_DATA !== 'undefined' && MACRO_DATA && MACRO_DATA.quad) ? MACRO_DATA.quad.current : null;
+
+    // 회전 신호 — 가장 큰 순위 상승/하락 (2계단 이상)
+    var climber = null, faller = null;
+    items.forEach(function (x) {
+        if (x.rankDelta > 0 && (!climber || x.rankDelta > climber.rankDelta)) climber = x;
+        if (x.rankDelta < 0 && (!faller || x.rankDelta < faller.rankDelta)) faller = x;
+    });
+    var rotParts = [];
+    if (climber && climber.rankDelta >= 2) rotParts.push('<span class="text-red-300 font-bold">' + climber.name + '</span> <span class="text-slate-400">' + (climber.prevRank + 1) + '위→' + (items.indexOf(climber) + 1) + '위 유입↑</span>');
+    if (faller && faller.rankDelta <= -2) rotParts.push('<span class="text-blue-300 font-bold">' + faller.name + '</span> <span class="text-slate-400">' + (faller.prevRank + 1) + '위→' + (items.indexOf(faller) + 1) + '위 이탈↓</span>');
+    var rotHtml = rotParts.length ? '<div class="text-[10px] bg-slate-800/40 border border-slate-700/50 rounded-lg px-2.5 py-1.5 mb-2"><i class="fa-solid fa-arrows-rotate text-cyan-400 mr-1"></i><span class="text-slate-500 font-bold mr-1">회전</span>' + rotParts.join(' · ') + '</div>' : '';
+
+    box.innerHTML =
+        '<div class="text-[10px] font-bold text-slate-500 mb-1.5"><i class="fa-solid fa-fire text-red-400 mr-1"></i>돈이 몰리는 곳 <span class="text-slate-600 font-normal">· 자금흐름 상위</span></div>'
+        + '<div class="space-y-1.5 mb-2">' + top.map(function (x, i) { return _flowCard(x, i + 1, curQuad); }).join('') + '</div>'
+        + rotHtml
+        + '<div class="text-[10px] font-bold text-slate-500 mb-1"><i class="fa-solid fa-droplet text-blue-400 mr-1"></i>빠지는 곳</div>'
+        + '<div class="grid grid-cols-2 gap-1.5">' + bottom.map(function (x) { return _flowMini(x); }).join('') + '</div>';
+    _fillFlowQuotes(box);
+}
+
+function toggleSectorBars() {
+    var w = document.getElementById('sectorBarsWrap'), c = document.getElementById('sectorBarsChev');
+    if (!w) return;
+    var hidden = w.classList.toggle('hidden');
+    if (c) c.style.transform = hidden ? 'rotate(-90deg)' : '';
+    if (!hidden) renderSectors();
+}
+
 // 섹터 ETF 차트 (기존 매크로 차트 모달 재사용)
 function openSectorChart(sym, name) {
     var _ivBarS = document.getElementById('indexIvBar'); if (_ivBarS) _ivBarS.classList.add('hidden');
