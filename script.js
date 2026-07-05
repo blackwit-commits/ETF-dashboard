@@ -3530,30 +3530,30 @@ function _renderSectorInfo(sym) {
 
 // ===== 지금 뜨는 ETF (테마·섹터 ETF 모멘텀 강세순) =====
 var HOT_ETF_UNIVERSE = [
-    { sym: 'SMH', theme: '반도체', lev: 'SOXL' },
-    { sym: 'QQQ', theme: '나스닥100', lev: 'TQQQ' },
-    { sym: 'IWM', theme: '소형주', lev: 'TNA' },
-    { sym: 'XLF', theme: '금융', lev: 'FAS' },
-    { sym: 'XLE', theme: '에너지', lev: 'NRGU' },
-    { sym: 'GDX', theme: '금광', lev: 'NUGT' },
-    { sym: 'GLD', theme: '금', lev: 'UGL' },
-    { sym: 'XBI', theme: '바이오', lev: 'LABU' },
-    { sym: 'XLV', theme: '헬스케어', lev: 'CURE' },
-    { sym: 'IYR', theme: '부동산', lev: 'DRN' },
-    { sym: 'DIA', theme: '다우', lev: 'UDOW' },
-    { sym: 'BITO', theme: '비트코인', lev: 'BITX' },
-    { sym: 'BOTZ', theme: 'AI·로봇', lev: null },
-    { sym: 'URA', theme: '우라늄·원전', lev: null },
-    { sym: 'ITA', theme: '방산', lev: null },
-    { sym: 'ICLN', theme: '클린에너지', lev: null },
-    { sym: 'LIT', theme: '리튬·배터리', lev: null },
-    { sym: 'CIBR', theme: '사이버보안', lev: null },
-    { sym: 'ARKK', theme: '혁신성장', lev: null },
-    { sym: 'TAN', theme: '태양광', lev: null },
-    { sym: 'COPX', theme: '구리', lev: null },
-    { sym: 'SLV', theme: '은', lev: null },
-    { sym: 'JETS', theme: '항공', lev: null },
-    { sym: 'INDA', theme: '인도', lev: null }
+    { sym: 'SMH', theme: '반도체', lev: 'SOXL', desc: '미 반도체 대표 (엔비디아·TSMC 등)' },
+    { sym: 'QQQ', theme: '나스닥100', lev: 'TQQQ', desc: '미 기술 대형주 100' },
+    { sym: 'IWM', theme: '소형주', lev: 'TNA', desc: '미 러셀2000 중소형주 (경기·유동성 민감)' },
+    { sym: 'XLF', theme: '금융', lev: 'FAS', desc: '은행·보험·카드 (금리 수혜)' },
+    { sym: 'XLE', theme: '에너지', lev: 'NRGU', desc: '석유·가스 (유가·인플레 연동)' },
+    { sym: 'GDX', theme: '금광', lev: 'NUGT', desc: '금광 기업 (금값 레버리지)' },
+    { sym: 'GLD', theme: '금', lev: 'UGL', desc: '금 현물 (안전자산·인플레 헤지)' },
+    { sym: 'XBI', theme: '바이오', lev: 'LABU', desc: '바이오테크 (신약·M&A 모멘텀)' },
+    { sym: 'XLV', theme: '헬스케어', lev: 'CURE', desc: '제약·의료 (경기 방어)' },
+    { sym: 'IYR', theme: '부동산', lev: 'DRN', desc: '미 리츠·부동산 (금리 민감)' },
+    { sym: 'DIA', theme: '다우', lev: 'UDOW', desc: '다우30 우량주' },
+    { sym: 'BITO', theme: '비트코인', lev: 'BITX', desc: '비트코인 선물 ETF' },
+    { sym: 'BOTZ', theme: 'AI·로봇', lev: null, desc: 'AI·로보틱스 성장주' },
+    { sym: 'URA', theme: '우라늄·원전', lev: null, desc: '우라늄·원자력 (전력 수요)' },
+    { sym: 'ITA', theme: '방산', lev: null, desc: '항공우주·방위산업' },
+    { sym: 'ICLN', theme: '클린에너지', lev: null, desc: '태양광·풍력 등 신재생' },
+    { sym: 'LIT', theme: '리튬·배터리', lev: null, desc: '리튬·2차전지 밸류체인' },
+    { sym: 'CIBR', theme: '사이버보안', lev: null, desc: '사이버 보안 소프트웨어' },
+    { sym: 'ARKK', theme: '혁신성장', lev: null, desc: 'ARK 파괴적 혁신주' },
+    { sym: 'TAN', theme: '태양광', lev: null, desc: '글로벌 태양광' },
+    { sym: 'COPX', theme: '구리', lev: null, desc: '구리 광산 (전기화·인프라)' },
+    { sym: 'SLV', theme: '은', lev: null, desc: '은 현물 (산업·귀금속)' },
+    { sym: 'JETS', theme: '항공', lev: null, desc: '항공사 (여행 수요)' },
+    { sym: 'INDA', theme: '인도', lev: null, desc: '인도 대형주' }
 ];
 var _hotEtfData = null;
 var _hotMode = 'strong';   // 'strong'=모멘텀 강세순 / 'pullback'=상승추세 눌림목
@@ -3597,14 +3597,17 @@ function _pullbackScore(d) {
     if (ema8 > 0) { var dev = Math.abs(price - ema8) / ema8; s += Math.max(0, 1 - dev / 0.04) * 15; if (dev <= 0.04) tags.push('EMA근접'); } // 단기지지 부근
     return { score: s, rsi: rsi, tags: tags, w: w, m: m };
 }
-function _hotCard(sym, theme, lev, rank, subLine, rightBig, rightCls, rightSub) {
+function _hotCard(sym, theme, desc, lev, rank, subLine, rightBig, rightCls, rightSub) {
+    var medal = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : ''));
+    var rankBadge = '<span class="text-[9px] font-black shrink-0 ' + (rank <= 3 ? 'text-amber-300' : 'text-slate-500') + '">' + medal + rank + '위</span>';
+    var descHtml = desc ? '<div class="text-[9px] text-slate-500 truncate leading-tight">' + escapeHtml(desc) + '</div>' : '';
     var bridge = lev
         ? '<button type="button" onclick="event.stopPropagation();openAnalysisModal(\'' + lev + '\')" class="mt-1 text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 font-bold whitespace-nowrap">' + lev + ' ↗</button>'
         : '<div class="mt-1 text-[9px] text-slate-600">레버리지 없음</div>';
     return '<div class="glass-panel p-3 rounded-xl flex justify-between items-center cursor-pointer hover:bg-slate-800 transition" onclick="openIndexChart(\'' + sym + '\',\'' + theme + ' (' + sym + ')\')">'
         + '<div class="flex items-center gap-3 min-w-0">'
         +   '<div class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center font-black text-white text-[10px] shadow-inner shrink-0">' + sym + '</div>'
-        +   '<div class="min-w-0"><div class="flex items-center gap-2"><span class="font-bold text-white text-sm truncate">' + theme + '</span><span class="text-[9px] text-slate-500 shrink-0">#' + rank + '</span></div>' + subLine + '</div>'
+        +   '<div class="min-w-0"><div class="flex items-center gap-2"><span class="font-bold text-white text-sm truncate">' + theme + '</span>' + rankBadge + '</div>' + descHtml + subLine + '</div>'
         + '</div>'
         + '<div class="text-right shrink-0 ml-2"><div class="text-base font-black ' + rightCls + '">' + rightBig + '</div>' + (rightSub || '') + bridge + '</div>'
         + '</div>';
@@ -3634,7 +3637,7 @@ function renderHotEtf() {
             var tagHtml = c.ps.tags.slice(0, 4).map(function (t) { return '<span class="text-[8px] px-1 py-0.5 rounded bg-slate-700/70 text-emerald-300 font-bold">' + t + '</span>'; }).join(' ');
             var sub = '<div class="flex items-center gap-1 flex-wrap mt-1">' + tagHtml + '</div>'
                 + '<div class="text-[10px] text-slate-500 mt-0.5">1주 <span class="' + chgClass(c.ps.w) + '">' + fmtChgPct(c.ps.w) + '</span> · 1개월 <span class="' + chgClass(c.ps.m) + '">' + fmtChgPct(c.ps.m) + '</span></div>';
-            return _hotCard(c.h.sym, c.h.theme, c.h.lev, i + 1, sub, conf, cls, '<div class="text-[8px] text-slate-500 -mt-0.5">매력도</div>');
+            return _hotCard(c.h.sym, c.h.theme, c.h.desc, c.h.lev, i + 1, sub, conf, cls, '<div class="text-[8px] text-slate-500 -mt-0.5">매력도</div>');
         }).join('');
         box.innerHTML = pc + _hotMoreBtn(cands.length);
         return;
@@ -3652,7 +3655,7 @@ function renderHotEtf() {
     var rows = _hotExpanded ? all : all.slice(0, 3);
     var cardHtml = rows.map(function (r, i) {
         var sub = '<div class="text-[10px] text-slate-500 mt-0.5">1주 <span class="' + chgClass(r.w) + '">' + fmtChgPct(r.w) + '</span> · 1개월 <span class="' + chgClass(r.m) + '">' + fmtChgPct(r.m) + '</span></div>';
-        return _hotCard(r.h.sym, r.h.theme, r.h.lev, i + 1, sub, fmtChgPct(r.m), chgClass(r.m), '<div class="text-[8px] text-slate-500 -mt-0.5">1개월</div>');
+        return _hotCard(r.h.sym, r.h.theme, r.h.desc, r.h.lev, i + 1, sub, fmtChgPct(r.m), chgClass(r.m), '<div class="text-[8px] text-slate-500 -mt-0.5">1개월</div>');
     }).join('');
     box.innerHTML = cardHtml + _hotMoreBtn(all.length);
 }
