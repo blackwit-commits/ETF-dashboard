@@ -1648,6 +1648,7 @@ function initApp() {
         startPriceTicker();
         startSectorRotation();
         startHotEtf();
+        startGoldHedge();
         syncPositionsToWorker();
         fetchMarketDataInBackground();
         // 종목 시세 주기 갱신 (90초) — 전략탭/ETF카드 가격이 멈추지 않도록
@@ -2756,6 +2757,7 @@ function updateMacroDashboard() {
     try { renderHoldingStatus(); } catch(e) { console.error('[Macro] renderHoldingStatus:', e); }
     try { renderMarketFlow(); } catch(e) {} // 홈 Quad와 시장흐름 Quad 동기화
     try { renderSectorFlow(); } catch(e) {} // 자금흐름 Quad 정합 태그 갱신
+    try { renderGoldHedge(); } catch(e) {} // 금 헷지 달러·금리 조건 갱신
     try { maybeRerenderEtfList(); } catch(e) { console.error('[Macro] maybeRerenderEtfList:', e); }
     // 상단 전광판은 Google News RSS (startNewsTicker)가 담당
 }
@@ -4054,6 +4056,66 @@ function startSectorRotation() {
     loadSectorRotation();
     if (window._sectorTimer) clearInterval(window._sectorTimer);
     window._sectorTimer = setInterval(function () { if (!document.hidden) loadSectorRotation(); }, 5 * 60 * 1000);
+}
+
+// ===== 금 헷지 진단 (금 우호 조건에서만 편입 추천 — 하락추세면 현금 대기) =====
+var _goldHedgeData = null;
+function startGoldHedge() {
+    loadGoldHedge();
+    if (window._goldTimer) clearInterval(window._goldTimer);
+    window._goldTimer = setInterval(function () { if (!document.hidden) loadGoldHedge(); }, 10 * 60 * 1000);
+}
+async function loadGoldHedge() {
+    try {
+        var res = await fetch(API_BASE_URL + '/sectors?symbols=GLD,%5EVIX').then(function (r) { return r.json(); }).catch(function () { return []; });
+        var map = {}; (res || []).forEach(function (q) { map[q.symbol] = q; });
+        _goldHedgeData = { gld: map['GLD'], vix: map['^VIX'], ts: Date.now() };
+        renderGoldHedge();
+    } catch (e) { /* 실패 시 조용히 무시 */ }
+}
+function _ncSig(axis, key) {
+    var nc = (typeof MACRO_DATA !== 'undefined' && MACRO_DATA && MACRO_DATA.nowcast) ? MACRO_DATA.nowcast : null;
+    if (!nc || !nc.signals || !nc.signals[axis]) return null;
+    return nc.signals[axis].find(function (s) { return s.key === key; }) || null;
+}
+function renderGoldHedge() {
+    var el = document.getElementById('goldHedgeCard'); if (!el) return;
+    var gd = _goldHedgeData;
+    var dxy = _ncSig('inflation', 'dxy'), us10y = _ncSig('growth', 'us10y');
+    var conds = [];
+    // 1) 달러 약세 (DXY 하락 = 금 우호)
+    if (dxy && dxy.chg20d != null) conds.push({ name: '달러 약세', fav: dxy.chg20d < 0, val: (dxy.chg20d < 0 ? '약세 ' : '강세 ') + (dxy.chg20d > 0 ? '+' : '') + dxy.chg20d + '%' });
+    else conds.push({ name: '달러 약세', fav: null, val: '—' });
+    // 2) 실질금리 하락 (10Y 금리 하락 = 금 우호)
+    if (us10y && us10y.chg20d != null) conds.push({ name: '실질금리 하락', fav: us10y.chg20d < 0, val: (us10y.chg20d < 0 ? '하락' : '상승') });
+    else conds.push({ name: '실질금리 하락', fav: null, val: '—' });
+    // 3) 위험회피 수요 (VIX 상승 = 헷지 수요)
+    var vix = (gd && gd.vix && gd.vix.price != null) ? gd.vix.price : null;
+    if (vix != null) conds.push({ name: '위험회피(VIX)', fav: vix >= 20, val: vix.toFixed(1) + (vix >= 20 ? ' 높음' : ' 안정') });
+    else conds.push({ name: '위험회피(VIX)', fav: null, val: '—' });
+    // 4) GLD 추세 (MA50 위 = 상승추세)
+    if (gd && gd.gld && gd.gld.price != null && gd.gld.ma50 != null) conds.push({ name: 'GLD 추세', fav: gd.gld.price > gd.gld.ma50, val: (gd.gld.price > gd.gld.ma50 ? 'MA50 위' : 'MA50 아래') });
+    else conds.push({ name: 'GLD 추세', fav: null, val: '—' });
+
+    var favCount = conds.filter(function (c) { return c.fav === true; }).length;
+    var known = conds.filter(function (c) { return c.fav !== null; }).length || 4;
+    var vcls, vlabel, action;
+    if (favCount >= 3) { vcls = 'text-emerald-300'; vlabel = '🟢 유리'; action = '금 분할 편입 유리 — 5%씩 시작'; }
+    else if (favCount === 2) { vcls = 'text-amber-300'; vlabel = '🟡 중립'; action = '관망 · 소량만 편입'; }
+    else { vcls = 'text-red-300'; vlabel = '🔴 역풍'; action = '금 편입 보류 · 현금 대기'; }
+
+    var rows = conds.map(function (c) {
+        var dot = c.fav === true ? '🟢' : (c.fav === false ? '🔴' : '⚪');
+        return '<div class="flex items-center justify-between py-0.5 text-[11px]"><span class="text-slate-300">' + c.name + '</span>'
+            + '<span class="flex items-center gap-2"><span class="text-slate-400">' + c.val + '</span><span>' + dot + '</span></span></div>';
+    }).join('');
+
+    el.classList.remove('hidden');
+    el.innerHTML = '<div class="flex items-center justify-between mb-2"><h3 class="text-sm font-bold text-white"><i class="fa-solid fa-shield-heart text-amber-400 mr-1.5"></i>금 헷지 진단</h3>'
+        + '<span class="text-[11px] font-black ' + vcls + '">' + vlabel + ' ' + favCount + '/' + known + '</span></div>'
+        + '<div class="rounded-lg bg-slate-800/40 border border-slate-700/50 px-2.5 py-1.5 mb-2">' + rows + '</div>'
+        + '<div class="text-[12px]"><span class="font-bold ' + vcls + '">▶ ' + action + '</span></div>'
+        + '<div class="text-[9px] text-slate-500 mt-1">달러·금리=나우캐스트 · VIX·GLD=실시간 · 조건 3/4↑ 충족 시 5%씩 분할 편입 (주식70·금15·현금15 기준)</div>';
 }
 async function loadSectorRotation() {
     var box = document.getElementById('sectorRotationList');
