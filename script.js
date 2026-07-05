@@ -573,6 +573,13 @@ function _riskRead(x) {
     if (x.rsi != null && x.rsi <= 35) return '과매도 반등 초기 — 되돌림 가능성 유의';
     return '추세 양호 — 급등일보다 조정 시 분할 접근';
 }
+// 빠지는 곳: 약세 사유 한 줄 (기술적 기반 — 방향과 톤 일치 보장)
+function _outflowReason(x) {
+    if (x.price != null && x.ma50 != null && x.price < x.ma50) return 'MA50 이탈 — 차익실현·순환매 이탈 진행';
+    if (x.rsi != null && x.rsi <= 40) return '모멘텀 약화 — 매수세 위축';
+    if (x.chg1w != null && x.chg1w < 0) return '주간 약세 — 상대적으로 소외';
+    return '상대 약세 — 자금이 다른 섹터로 이동';
+}
 // Gemini 섹터 서사/뉴스에서 해당 섹터 관련 한 줄 찾기 (추가 호출 없음)
 function _whyNow(x) {
     var d = _briefGeminiData;
@@ -689,16 +696,26 @@ function renderBriefingData() {
                 + (repHtml ? '<div class="mt-1.5 pt-1.5 border-t border-slate-700/40"><div class="text-[9px] text-slate-500 mb-1">대표 종목 (실시간)</div><div class="flex flex-wrap items-center">' + repHtml + '</div></div>' : '')
                 + '</div>';
 
-            // 차선 섹터 (Top2, 간략)
+            // 차선 섹터 (Top2) — 설명 + 왜
             var sInfo = SECTOR_INFO[second.sym] || {};
-            var secondHtml = '<div class="flex items-center gap-1.5 mt-1.5 rounded-lg bg-slate-800/25 border border-slate-700/40 px-2.5 py-1.5">'
-                + '<span class="text-[10px]">🥈</span><i class="fa-solid ' + second.icon + ' ' + second.color + ' text-[10px]"></i>'
-                + '<span class="text-[11px] font-bold text-slate-200 shrink-0">' + second.name + '</span>'
-                + '<span class="text-[10px] text-slate-500 truncate ml-1">' + (sInfo.desc || '').slice(0, 26) + '…</span>'
-                + '<span class="text-[11px] font-black ml-auto shrink-0 ' + chgClass(second.chg1d) + '">' + (second.chg1d > 0 ? '+' : '') + second.chg1d.toFixed(1) + '%</span></div>';
+            var sWhy = _whyNow(second);
+            var secondHtml = '<div class="mt-1.5 rounded-lg bg-slate-800/25 border border-slate-700/40 p-2.5">'
+                + '<div class="flex items-center gap-1.5"><span class="text-[11px]">🥈</span><span class="text-[9px] text-slate-500 font-bold">차선</span>'
+                +   '<i class="fa-solid ' + second.icon + ' ' + second.color + ' text-[10px] ml-0.5"></i>'
+                +   '<span class="text-[12px] font-black text-white">' + second.name + '</span>'
+                +   '<span class="text-[12px] font-black ml-auto ' + chgClass(second.chg1d) + '">' + (second.chg1d > 0 ? '+' : '') + second.chg1d.toFixed(2) + '%</span></div>'
+                + (sInfo.desc ? '<div class="text-[10.5px] text-slate-400 leading-snug mt-1">' + sInfo.desc + '</div>' : '')
+                + (sWhy ? '<div class="text-[10.5px] text-slate-300 leading-snug mt-1 pl-2 border-l-2 border-red-500/30"><span class="text-slate-500 font-bold">왜 </span>' + escapeHtml(sWhy) + '</div>' : '');
+            secondHtml += '</div>';
 
+            // 빠지는 곳 (Bottom2) — 약세 사유 간략
             var botHtml = bottom.map(function (x) {
-                return '<span class="text-[11px] mr-3"><span class="text-slate-300 font-bold">' + x.name + '</span> <span class="font-black ' + chgClass(x.chg1d) + '">' + (x.chg1d > 0 ? '+' : '') + x.chg1d.toFixed(1) + '%</span></span>';
+                return '<div class="rounded-lg bg-slate-800/20 border border-slate-700/30 px-2.5 py-1.5 mb-1 last:mb-0">'
+                    + '<div class="flex items-center gap-1.5"><i class="fa-solid ' + x.icon + ' ' + x.color + ' text-[10px]"></i>'
+                    +   '<span class="text-[11px] font-bold text-slate-300">' + x.name + '</span>'
+                    +   '<span class="text-[11px] font-black ml-auto ' + chgClass(x.chg1d) + '">' + (x.chg1d > 0 ? '+' : '') + x.chg1d.toFixed(2) + '%</span></div>'
+                    + '<div class="text-[10px] text-slate-500 leading-snug mt-0.5">' + escapeHtml(_outflowReason(x)) + '</div>'
+                    + '</div>';
             }).join('');
 
             var inner = ovHtml + deep + secondHtml
