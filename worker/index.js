@@ -38,11 +38,12 @@ export default {
     // 섹터 로테이션 (/sectors?symbols=XLK,XLF,...) — 1일/1주/1개월 등락률
     if (path === "/sectors") {
       const raw = (url.searchParams.get("symbols") || "").trim();
-      const syms = raw.split(",").map(s => s.trim()).filter(Boolean).slice(0, 20);
+      const syms = raw.split(",").map(s => s.trim()).filter(Boolean).slice(0, 30);
       if (!syms.length) return new Response("[]", { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       const results = await Promise.all(syms.map(async (s) => {
         const q = await fetchSectorChanges(s);
-        return { symbol: s, price: q ? q.price : null, chg1d: q ? q.chg1d : null, chg1w: q ? q.chg1w : null, chg1m: q ? q.chg1m : null };
+        return { symbol: s, price: q ? q.price : null, chg1d: q ? q.chg1d : null, chg1w: q ? q.chg1w : null, chg1m: q ? q.chg1m : null,
+                 rsi: q ? q.rsi : null, ema8: q ? q.ema8 : null, ma50: q ? q.ma50 : null, volume: q ? q.volume : null };
       }));
       return new Response(JSON.stringify(results), {
         headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=120" }
@@ -872,13 +873,19 @@ async function fetchLiveQuote(symbol) {
 }
 
 // 섹터 로테이션용 — 1일/1주(5거래일)/1개월(21거래일) 등락률 (종가배열 기반)
+// 기술지표 헬퍼 (종가 배열 기반)
+function _sma(cl, p) { if (cl.length < p) return null; let s = 0; for (let i = cl.length - p; i < cl.length; i++) s += cl[i]; return s / p; }
+function _ema(cl, p) { if (cl.length < p) return null; const k = 2 / (p + 1); let e = cl[cl.length - p]; for (let i = cl.length - p + 1; i < cl.length; i++) e = cl[i] * k + e * (1 - k); return e; }
+function _rsi(cl, p = 14) { if (cl.length < p + 1) return null; let g = 0, l = 0; for (let i = cl.length - p; i < cl.length; i++) { const df = cl[i] - cl[i - 1]; if (df >= 0) g += df; else l -= df; } const ag = g / p, al = l / p; if (al === 0) return 100; return 100 - 100 / (1 + ag / al); }
+
 async function fetchSectorChanges(symbol) {
   try {
     const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=3mo`, { headers: { "User-Agent": "Mozilla/5.0" } });
     const d = await r.json();
     const res = d.chart.result[0];
     const meta = res.meta;
-    const closes = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []).filter(v => v != null);
+    const q0 = (res.indicators && res.indicators.quote && res.indicators.quote[0]) || {};
+    const closes = (q0.close || []).filter(v => v != null);
     const price = meta.regularMarketPrice != null ? meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
     const pct = (nBack) => {
       const idx = closes.length - 1 - nBack;
@@ -886,7 +893,12 @@ async function fetchSectorChanges(symbol) {
       const base = closes[idx];
       return base ? ((price - base) / base) * 100 : null;
     };
-    return { price, chg1d: pct(1), chg1w: pct(5), chg1m: pct(21) };
+    // 눌림목 스크린용 지표 (같은 3개월 데이터에서 계산)
+    return {
+      price, chg1d: pct(1), chg1w: pct(5), chg1m: pct(21),
+      rsi: _rsi(closes, 14), ema8: _ema(closes, 8), ma50: _sma(closes, 50),
+      volume: meta.regularMarketVolume != null ? meta.regularMarketVolume : null
+    };
   } catch (e) { return null; }
 }
 async function fetchMarketSnapshot() {

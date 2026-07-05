@@ -3556,7 +3556,7 @@ var HOT_ETF_UNIVERSE = [
     { sym: 'INDA', theme: '인도', lev: null }
 ];
 var _hotEtfData = null;
-var _hotPeriod = 'chg1w';
+var _hotMode = 'strong';   // 'strong'=모멘텀 강세순 / 'pullback'=상승추세 눌림목
 function startHotEtf() {
     loadHotEtf();
     if (window._hotEtfTimer) clearInterval(window._hotEtfTimer);
@@ -3579,50 +3579,82 @@ async function loadHotEtf() {
         if (!_hotEtfData && box) box.innerHTML = '<div class="text-center text-slate-500 text-xs py-3">불러오지 못했습니다</div>';
     }
 }
-function setHotPeriod(p) {
-    _hotPeriod = p;
-    [['1w', 'chg1w'], ['1m', 'chg1m']].forEach(function (pair) { var b = document.getElementById('hotP_' + pair[0]); if (b) b.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (pair[1] === p ? 'bg-orange-600 text-white' : 'text-slate-400'); });
+function setHotMode(m) {
+    _hotMode = m; _hotExpanded = false;
+    [['strong', 'strong'], ['pull', 'pullback']].forEach(function (pair) { var b = document.getElementById('hotM_' + pair[0]); if (b) b.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (pair[1] === m ? 'bg-orange-600 text-white' : 'text-slate-400'); });
     renderHotEtf();
 }
 var _hotExpanded = false;
 function toggleHotEtf() { _hotExpanded = !_hotExpanded; renderHotEtf(); }
+// 눌림목 점수: 상승추세(가격>MA50 & 1개월↑) 게이트 + RSI·눌림 깊이·EMA8 근접
+function _pullbackScore(d) {
+    var price = d.price || 0, ma50 = d.ma50 || 0, ema8 = d.ema8 || 0, rsi = (d.rsi != null ? d.rsi : 50), m = (d.chg1m != null ? d.chg1m : 0), w = (d.chg1w != null ? d.chg1w : 0);
+    if (!(ma50 > 0 && price > ma50 && m > 0)) return null;    // 상승추세 아니면 제외
+    var s = 0, tags = [];
+    s += Math.min(1, m / 15) * 20; tags.push('추세');                                 // 추세 강도(1개월)
+    var pull = Math.max(0, Math.min(1, (-w) / 8)); s += pull * 25; if (w <= 0.5) tags.push('눌림');   // 최근 1주 조정 깊이
+    var rsiS = Math.max(0, 1 - Math.abs(rsi - 47) / 13); s += rsiS * 30; if (rsi >= 40 && rsi <= 58) tags.push('RSI' + Math.round(rsi)); // RSI 47 이상적
+    if (ema8 > 0) { var dev = Math.abs(price - ema8) / ema8; s += Math.max(0, 1 - dev / 0.04) * 15; if (dev <= 0.04) tags.push('EMA근접'); } // 단기지지 부근
+    return { score: s, rsi: rsi, tags: tags, w: w, m: m };
+}
+function _hotCard(sym, theme, lev, rank, subLine, rightBig, rightCls, rightSub) {
+    var bridge = lev
+        ? '<button type="button" onclick="event.stopPropagation();openAnalysisModal(\'' + lev + '\')" class="mt-1 text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 font-bold whitespace-nowrap">' + lev + ' ↗</button>'
+        : '<div class="mt-1 text-[9px] text-slate-600">레버리지 없음</div>';
+    return '<div class="glass-panel p-3 rounded-xl flex justify-between items-center cursor-pointer hover:bg-slate-800 transition" onclick="openIndexChart(\'' + sym + '\',\'' + theme + ' (' + sym + ')\')">'
+        + '<div class="flex items-center gap-3 min-w-0">'
+        +   '<div class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center font-black text-white text-[10px] shadow-inner shrink-0">' + sym + '</div>'
+        +   '<div class="min-w-0"><div class="flex items-center gap-2"><span class="font-bold text-white text-sm truncate">' + theme + '</span><span class="text-[9px] text-slate-500 shrink-0">#' + rank + '</span></div>' + subLine + '</div>'
+        + '</div>'
+        + '<div class="text-right shrink-0 ml-2"><div class="text-base font-black ' + rightCls + '">' + rightBig + '</div>' + (rightSub || '') + bridge + '</div>'
+        + '</div>';
+}
+function _hotMoreBtn(total) {
+    if (total <= 3) return '';
+    return _hotExpanded
+        ? '<button type="button" onclick="toggleHotEtf()" class="w-full mt-1 py-2 text-[11px] text-slate-400 bg-slate-800/60 rounded-lg font-bold">접기 <i class="fa-solid fa-chevron-up ml-1"></i></button>'
+        : '<button type="button" onclick="toggleHotEtf()" class="w-full mt-1 py-2 text-[11px] text-orange-300 bg-slate-800/60 rounded-lg font-bold">더보기 (' + (total - 3) + '개) <i class="fa-solid fa-chevron-down ml-1"></i></button>';
+}
 function renderHotEtf() {
     var box = document.getElementById('hotEtfList');
     if (!box || !_hotEtfData) return;
+    var note = document.getElementById('hotEtfNote');
+
+    if (_hotMode === 'pullback') {
+        var cands = HOT_ETF_UNIVERSE.map(function (h) { var d = _hotEtfData[h.sym] || {}; var ps = _pullbackScore(d); return ps ? { h: h, d: d, ps: ps } : null; }).filter(Boolean);
+        var maxTv = Math.max.apply(null, cands.map(function (c) { return (c.d.price || 0) * (c.d.volume || 0); }).concat([1]));
+        cands.forEach(function (c) { var tv = (c.d.price || 0) * (c.d.volume || 0); c.ps.score += (tv / maxTv) * 10; if (tv / maxTv >= 0.4) c.ps.tags.push('거래대금'); });
+        cands.sort(function (a, b) { return b.ps.score - a.ps.score; });
+        if (note) note.innerText = '상승추세(가격>50일선·월 상승) + 단기 눌림(RSI 40~58·EMA8 근접)·거래대금 종합 · 매수 타이밍 참고용';
+        if (!cands.length) { box.innerHTML = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">지금 상승추세 + 눌림 조건에 맞는 ETF가 없어요</div>'; return; }
+        var pr = _hotExpanded ? cands : cands.slice(0, 3);
+        var pc = pr.map(function (c, i) {
+            var conf = Math.max(0, Math.min(100, Math.round(c.ps.score)));
+            var cls = conf >= 65 ? 'text-red-300' : (conf >= 45 ? 'text-amber-300' : 'text-slate-300');
+            var tagHtml = c.ps.tags.slice(0, 4).map(function (t) { return '<span class="text-[8px] px-1 py-0.5 rounded bg-slate-700/70 text-emerald-300 font-bold">' + t + '</span>'; }).join(' ');
+            var sub = '<div class="flex items-center gap-1 flex-wrap mt-1">' + tagHtml + '</div>'
+                + '<div class="text-[10px] text-slate-500 mt-0.5">1주 <span class="' + chgClass(c.ps.w) + '">' + fmtChgPct(c.ps.w) + '</span> · 1개월 <span class="' + chgClass(c.ps.m) + '">' + fmtChgPct(c.ps.m) + '</span></div>';
+            return _hotCard(c.h.sym, c.h.theme, c.h.lev, i + 1, sub, conf, cls, '<div class="text-[8px] text-slate-500 -mt-0.5">매력도</div>');
+        }).join('');
+        box.innerHTML = pc + _hotMoreBtn(cands.length);
+        return;
+    }
+
+    // ===== 강세순 (모멘텀) =====
+    if (note) note.innerText = '테마·섹터 ETF를 모멘텀(1주·1개월 수익률) 강세순 · 탭하면 차트 · 우측은 내 레버리지';
     var all = HOT_ETF_UNIVERSE.map(function (h) {
         var d = _hotEtfData[h.sym] || {};
         var w = (d.chg1w != null ? d.chg1w : null), m = (d.chg1m != null ? d.chg1m : null);
-        var hot = (w != null ? w : 0) * 0.6 + (m != null ? m : 0) * 0.4;   // 1주 60% + 1개월 40%
+        var hot = (w != null ? w : 0) * 0.6 + (m != null ? m : 0) * 0.4;
         return { h: h, w: w, m: m, hot: hot, has: (w != null || m != null) };
     }).filter(function (r) { return r.has; }).sort(function (a, b) { return b.hot - a.hot; }).slice(0, 12);
     if (!all.length) { box.innerHTML = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">데이터 없음</div>'; return; }
     var rows = _hotExpanded ? all : all.slice(0, 3);
-    // ETF 리스트 카드 스타일
     var cardHtml = rows.map(function (r, i) {
-        var primary = (_hotPeriod === 'chg1w') ? r.w : r.m;
-        var lev = r.h.lev;
-        var bridge = lev
-            ? '<button type="button" onclick="event.stopPropagation();openAnalysisModal(\'' + lev + '\')" class="mt-1 text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 font-bold whitespace-nowrap">' + lev + ' ↗</button>'
-            : '<div class="mt-1 text-[9px] text-slate-600">레버리지 없음</div>';
-        return '<div class="glass-panel p-3 rounded-xl flex justify-between items-center cursor-pointer hover:bg-slate-800 transition" onclick="openIndexChart(\'' + r.h.sym + '\',\'' + r.h.theme + ' (' + r.h.sym + ')\')">'
-            + '<div class="flex items-center gap-3 min-w-0">'
-            +   '<div class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center font-black text-white text-[10px] shadow-inner shrink-0">' + r.h.sym + '</div>'
-            +   '<div class="min-w-0">'
-            +     '<div class="flex items-center gap-2"><span class="font-bold text-white text-sm truncate">' + r.h.theme + '</span><span class="text-[9px] text-slate-500 shrink-0">#' + (i + 1) + '</span></div>'
-            +     '<div class="text-[10px] text-slate-500 mt-0.5">1주 <span class="' + chgClass(r.w) + '">' + fmtChgPct(r.w) + '</span> · 1개월 <span class="' + chgClass(r.m) + '">' + fmtChgPct(r.m) + '</span></div>'
-            +   '</div>'
-            + '</div>'
-            + '<div class="text-right shrink-0 ml-2"><div class="text-base font-black ' + chgClass(primary) + '">' + fmtChgPct(primary) + '</div>' + bridge + '</div>'
-            + '</div>';
+        var sub = '<div class="text-[10px] text-slate-500 mt-0.5">1주 <span class="' + chgClass(r.w) + '">' + fmtChgPct(r.w) + '</span> · 1개월 <span class="' + chgClass(r.m) + '">' + fmtChgPct(r.m) + '</span></div>';
+        return _hotCard(r.h.sym, r.h.theme, r.h.lev, i + 1, sub, fmtChgPct(r.m), chgClass(r.m), '<div class="text-[8px] text-slate-500 -mt-0.5">1개월</div>');
     }).join('');
-    // 3개 초과 시 펼치기/접기
-    var moreBtn = '';
-    if (all.length > 3) {
-        moreBtn = _hotExpanded
-            ? '<button type="button" onclick="toggleHotEtf()" class="w-full mt-1 py-2 text-[11px] text-slate-400 bg-slate-800/60 rounded-lg font-bold">접기 <i class="fa-solid fa-chevron-up ml-1"></i></button>'
-            : '<button type="button" onclick="toggleHotEtf()" class="w-full mt-1 py-2 text-[11px] text-orange-300 bg-slate-800/60 rounded-lg font-bold">더보기 (' + (all.length - 3) + '개) <i class="fa-solid fa-chevron-down ml-1"></i></button>';
-    }
-    box.innerHTML = cardHtml + moreBtn;
+    box.innerHTML = cardHtml + _hotMoreBtn(all.length);
 }
 
 function startSectorRotation() {
