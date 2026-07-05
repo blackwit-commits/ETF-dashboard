@@ -4867,11 +4867,11 @@ function renderStrategyProgressCard(sym) {
         }
         return '총 ' + t + '단계 중 1단계 대기';
     };
-    const baseText = makeStageText('그리드', stage.baseCompleted, stage.baseInProgress, stage.baseTotal);
+    const baseText = makeStageText('케이던스', stage.baseCompleted, stage.baseInProgress, stage.baseTotal);
     const boosterText = (stage.boosterTotal > 0)
         ? makeStageText('부스터', stage.boosterCompleted, stage.boosterInProgress ? (stage.boosterInProgress - (stage.baseTotal || 0)) : 0, stage.boosterTotal)
         : '';
-    const stageLine = boosterText ? ('그리드: ' + baseText + ' · 부스터: ' + boosterText) : ('그리드: ' + baseText);
+    const stageLine = boosterText ? ('케이던스: ' + baseText + ' · 부스터: ' + boosterText) : ('케이던스: ' + baseText);
     set('progressStage', stageLine);
     // 부스터 활성 상세
     var boosterBox = document.getElementById('progressBoosterInfo');
@@ -5785,7 +5785,13 @@ function refreshModeCards() {
 }
 function selectBuyMode(m) {
     var sel = document.getElementById('configMode'); if (!sel) return;
-    sel.value = m;
+    var d = portfolios[activeTicker];
+    if (m === 'GRID') {
+        // 케이던스 계열: 부스터가 켜져 있었으면 BOOSTER 상태 유지 (부스터 사라짐 방지)
+        sel.value = (d && d.config && d.config.boosterOn === true) ? 'BOOSTER' : 'GRID';
+    } else {
+        sel.value = m;
+    }
     refreshModeCards();
     updateConfig();
 }
