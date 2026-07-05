@@ -906,6 +906,112 @@ async function fetchMarketSnapshot() {
   return { sp, ndx, dow, vix };
 }
 
+// ─────────────────────────────────────────────────────────────
+// Quad 시장 나우캐스트 — Yahoo 라이브 프록시로 성장/인플레 2축을 실측 판정
+// (Gemini 단일 판단을 교차검증 + 판정 근거 데이터 제공)
+// ─────────────────────────────────────────────────────────────
+
+// 3개월 일봉 종가 시리즈 (나우캐스트 20일 변화율 계산용)
+async function fetchCloseSeries(symbol) {
+  try {
+    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=3mo`, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const d = await r.json();
+    const res = d.chart.result[0];
+    const meta = res.meta;
+    const closes = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []).filter(v => v != null);
+    const last = meta.regularMarketPrice != null ? meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
+    return { last, closes };
+  } catch (e) { return null; }
+}
+// n거래일 전 대비 % 변화
+function _pctBack(closes, nBack) {
+  if (!closes || closes.length <= nBack) return null;
+  const a = closes[closes.length - 1], b = closes[closes.length - 1 - nBack];
+  return b ? ((a - b) / b) * 100 : null;
+}
+
+// 2축 프록시 정의 — 각 신호는 20일 변화율의 부호로 가속/감속 투표
+const QUAD_NOWCAST_DEFS = {
+  inflation: [
+    { key: "wti", name: "유가(WTI)", sym: "CL=F", invert: false, fmt: "n", why: "원유는 운송·제조 원가에 직접 반영 — 유가↑는 헤드라인 인플레의 1차 동력." },
+    { key: "copgold", name: "구리/금 비율", a: "HG=F", b: "GC=F", invert: false, fmt: "r", why: "구리=실물수요(인플레), 금=공포. 비율↑ = 실물 인플레 압력이 안전선호를 이김." },
+    { key: "dxy", name: "달러(DXY)", sym: "DX-Y.NYB", invert: true, fmt: "n", why: "강달러는 수입물가를 눌러 인플레를 식힘 — 달러는 인플레에 역방향으로 작동." },
+    { key: "breakeven", name: "기대인플레(TIP/IEF)", a: "TIP", b: "IEF", invert: false, fmt: "r", why: "물가연동채(TIP)가 명목채(IEF)보다 세면 시장이 미래 인플레를 크게 반영 중." },
+  ],
+  growth: [
+    { key: "cycdef", name: "경기민감/방어(XLY/XLP)", a: "XLY", b: "XLP", invert: false, fmt: "r", why: "임의소비(XLY)가 필수소비(XLP)를 이기면 소비·경기 자신감↑." },
+    { key: "credit", name: "신용스프레드(HYG/TLT)", a: "HYG", b: "TLT", invert: false, fmt: "r", why: "하이일드(HYG)가 국채(TLT)보다 세면 신용위험 감내↑ = 경기 낙관." },
+    { key: "smallcap", name: "소형주(IWM/SPY)", a: "IWM", b: "SPY", invert: false, fmt: "r", why: "소형주는 내수·경기에 민감 — 대형주 대비 강세면 성장 기대↑." },
+    { key: "us10y", name: "10년물 금리", sym: "^TNX", invert: false, fmt: "y", why: "장기금리는 성장·물가 기대를 반영 — 완만한 상승은 성장 가속 신호." },
+  ],
+};
+
+function _fmtNowVal(v, fmt) {
+  if (v == null) return "—";
+  if (fmt === "y") return v.toFixed(2) + "%";               // ^TNX는 이미 %단위 (4.48)
+  if (fmt === "r") { const dec = v < 0.01 ? 4 : (v < 1 ? 3 : 2); return v.toFixed(dec); }
+  return v.toFixed(2);
+}
+
+async function computeQuadNowcast() {
+  const defs = QUAD_NOWCAST_DEFS;
+  const syms = new Set();
+  for (const ax of ["growth", "inflation"]) for (const s of defs[ax]) { if (s.sym) syms.add(s.sym); if (s.a) syms.add(s.a); if (s.b) syms.add(s.b); }
+  const series = {};
+  await Promise.all([...syms].map(async (sym) => { series[sym] = await fetchCloseSeries(sym); }));
+  const N = 20;
+  const buildSig = (s) => {
+    let chg20 = null, value = null;
+    if (s.sym) {
+      const ser = series[s.sym];
+      if (ser) { chg20 = _pctBack(ser.closes, N); value = ser.last; }
+    } else {
+      const A = series[s.a], B = series[s.b];
+      if (A && B) {
+        const pA = _pctBack(A.closes, N), pB = _pctBack(B.closes, N);
+        chg20 = (pA != null && pB != null) ? (pA - pB) : null;
+        value = (A.last && B.last) ? A.last / B.last : null;
+      }
+    }
+    const ok = chg20 != null;
+    const accel = ok ? (s.invert ? chg20 < 0 : chg20 > 0) : null;
+    return {
+      key: s.key, name: s.name, why: s.why, invert: !!s.invert,
+      value, valueStr: _fmtNowVal(value, s.fmt), chg20d: chg20 != null ? +chg20.toFixed(1) : null,
+      dir: ok ? (chg20 > 0 ? "up" : "down") : null,
+      vote: ok ? (accel ? "accel" : "decel") : null,
+    };
+  };
+  const axisVerdict = (sigs) => {
+    const valid = sigs.filter(x => x.vote);
+    let accel = 0, decel = 0, net = 0;
+    for (const x of valid) { if (x.vote === "accel") accel++; else decel++; net += (x.invert ? -x.chg20d : x.chg20d); }
+    const isAccel = accel !== decel ? accel > decel : net > 0;   // 동수면 순변화량으로 결정
+    return { verdict: valid.length ? (isAccel ? "accelerating" : "decelerating") : null, accel, decel, net: +net.toFixed(1) };
+  };
+  const gSigs = defs.growth.map(buildSig), iSigs = defs.inflation.map(buildSig);
+  const g = axisVerdict(gSigs), i = axisVerdict(iSigs);
+  const quadMap = { "acc|dec": 1, "acc|acc": 2, "dec|acc": 3, "dec|dec": 4 };
+  const gk = g.verdict === "accelerating" ? "acc" : "dec", ik = i.verdict === "accelerating" ? "acc" : "dec";
+  const quad = (g.verdict && i.verdict) ? quadMap[gk + "|" + ik] : null;
+  const quadNames = { 1: "골디락스", 2: "과열", 3: "스태그플레이션", 4: "침체" };
+  // 내부 신뢰도: 두 축 투표가 얼마나 일방적인지 (4:0 → 높음, 2:2 → 낮음)
+  const axisConf = (v) => { const t = v.accel + v.decel; return t ? Math.abs(v.accel - v.decel) / t : 0; };
+  const confidence = Math.round(50 + 45 * ((axisConf(g) + axisConf(i)) / 2));
+  // 전환 임박: 순변화량 절대값이 작은 축이 뒤집힐 확률↑
+  const swing = Math.abs(g.net) <= Math.abs(i.net)
+    ? { axis: "growth", net: g.net }
+    : { axis: "inflation", net: i.net };
+  return {
+    quad, name: quad ? quadNames[quad] : null,
+    growth: g.verdict, inflation: i.verdict,
+    votes: { growth: { accel: g.accel, decel: g.decel }, inflation: { accel: i.accel, decel: i.decel } },
+    scores: { growth: g.net, inflation: i.net },
+    signals: { growth: gSigs, inflation: iSigs },
+    swing, confidence, asOf: Date.now(),
+  };
+}
+
 function sentLabel(s) {
   if (s == null) return "";
   if (s <= -0.35) return "🔵 약세";
@@ -1473,6 +1579,23 @@ const MACRO_KV_KEY = "macro_latest";
 // Quad 매크로 분석을 실행해 KV에 저장하고 결과 반환 (크론/온디맨드 공용)
 async function refreshMacroToKV(env, source) {
   const result = await callGeminiMacroAnalysis(env.GEMINI_API_KEY);
+  // 시장 나우캐스트로 Gemini Quad 판정 교차검증 (성장/인플레 축별 일치도 → 신뢰도 재산출)
+  try {
+    const nc = await computeQuadNowcast();
+    result.nowcast = nc;
+    if (result.quad) {
+      const agG = result.quad.growth === nc.growth;
+      const agI = result.quad.inflation === nc.inflation;
+      const agreeAxes = (agG ? 1 : 0) + (agI ? 1 : 0);
+      result.quad.marketQuad = nc.quad;
+      result.quad.agreement = agreeAxes === 2 ? "full" : (agreeAxes === 1 ? "partial" : "conflict");
+      result.quad.agreeGrowth = agG;
+      result.quad.agreeInflation = agI;
+      // Gemini가 지어낸 confidence 대신, 나우캐스트 신뢰도 × 판정 일치도로 재산출
+      const factor = agreeAxes === 2 ? 1.0 : (agreeAxes === 1 ? 0.82 : 0.62);
+      result.quad.confidence = Math.max(40, Math.min(95, Math.round(nc.confidence * factor)));
+    }
+  } catch (e) { /* 나우캐스트 실패는 무시 (Gemini 판정 그대로 사용) */ }
   result._cachedAt = Date.now();
   result._source = source || "ondemand";
   if (env.UMT_KV) {

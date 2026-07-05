@@ -19,7 +19,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260705d">
+    <link rel="stylesheet" href="style.css?v=20260705e">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -106,6 +106,17 @@
                 <div id="quadCompactSub" class="text-[11px] text-slate-300 font-bold mt-1.5 ml-0.5"></div>
                 <div id="quadDetail" class="hidden mt-3">
                     <div id="quadList"></div>
+                    <!-- 판정 근거 (시장 나우캐스트 — 실시간 지표) -->
+                    <div id="quadNowcastArea" class="hidden mt-2.5 pt-2.5 border-t border-slate-700/50">
+                        <button type="button" onclick="toggleNowcast()" class="w-full flex items-center justify-between text-left">
+                            <span class="text-[9px] text-slate-500 font-bold uppercase tracking-wider"><i class="fa-solid fa-flask mr-1"></i>판정 근거 · 실시간 지표</span>
+                            <span class="flex items-center gap-1.5">
+                                <span id="nowcastAgreeBadge" class="text-[9px] font-black px-1.5 py-0.5 rounded"></span>
+                                <i class="fa-solid fa-chevron-down text-[10px] text-slate-500 transition-transform" id="nowcastChev" style="transform:rotate(-90deg)"></i>
+                            </span>
+                        </button>
+                        <div id="nowcastBody" class="hidden mt-2.5"></div>
+                    </div>
                     <div id="quadTransitionBar" class="hidden mt-2.5 pt-2.5 border-t border-slate-700/50">
                         <div class="text-[9px] text-slate-500 font-bold mb-2 uppercase tracking-wider">다음 국면 전환 가능성</div>
                         <div class="space-y-1.5" id="quadTransitionGrid"></div>
@@ -1039,7 +1050,7 @@
             <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20260705d"></script>
+    <script src="script.js?v=20260705e"></script>
     <script>
     if('serviceWorker' in navigator){
         window.addEventListener('load',function(){

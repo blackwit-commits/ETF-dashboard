@@ -2361,6 +2361,126 @@ function toggleQuadDetail() {
     if (c) c.style.transform = nowHidden ? 'rotate(-90deg)' : '';
 }
 
+// ── Quad 판정 근거 패널 (시장 나우캐스트) ──
+var NOWCAST_QUAD_NAMES = { 1: '골디락스', 2: '과열', 3: '스태그플레이션', 4: '침체' };
+
+function toggleNowcast() {
+    var b = document.getElementById('nowcastBody');
+    var c = document.getElementById('nowcastChev');
+    if (!b) return;
+    var hidden = b.classList.toggle('hidden');
+    if (c) c.style.transform = hidden ? 'rotate(-90deg)' : '';
+}
+function toggleNowcastWhy(id) {
+    var e = document.getElementById(id);
+    if (e) e.classList.toggle('hidden');
+}
+
+// 2×2 Quad 지도 — 시장 프록시(채움) vs AI 판정(테두리) 위치
+function renderNowcastMap(mq, gq) {
+    var order = [3, 2, 4, 1]; // 좌상 Q3 · 우상 Q2 · 좌하 Q4 · 우하 Q1
+    var cells = order.map(function(n) {
+        var m = QUAD_META[n] || {};
+        var isMkt = (n === mq), isAI = (n === gq);
+        var cls = isMkt ? (m.bg + ' ' + m.bdr) : 'bg-slate-800/40 border-slate-700/40';
+        var ring = (isAI && !isMkt) ? ' ring-1 ring-slate-300/70' : '';
+        return '<div class="rounded-md p-1.5 text-center border ' + cls + ring + '">'
+            + '<div class="text-[10px] font-black ' + (isMkt ? (m.txt || 'text-white') : 'text-slate-500') + '">Q' + n + '</div>'
+            + '<div class="text-[8px] leading-tight ' + (isMkt ? 'text-slate-300' : 'text-slate-600') + '">' + (m.name || '') + '</div>'
+            + (isMkt ? '<div class="text-[7px] font-bold mt-0.5 ' + (m.txt || '') + '">● 시장</div>' : (isAI ? '<div class="text-[7px] font-bold text-slate-400 mt-0.5">◌ AI</div>' : ''))
+            + '</div>';
+    }).join('');
+    return '<div class="mb-2.5">'
+        + '<div class="flex items-center justify-between mb-1 text-[8px] text-slate-600 font-bold"><span>← 성장 둔화</span><span>성장 가속 →</span></div>'
+        + '<div class="grid grid-cols-2 gap-1">' + cells + '</div>'
+        + '<div class="flex items-center justify-between mt-1 text-[8px] text-slate-600 font-bold"><span>물가 ↑상단 · ↓하단</span><span>채움=시장 · 테두리=AI</span></div>'
+        + '</div>';
+}
+
+// 축별 스코어카드 (지표·현재값·20일변화·판정 + ℹ️ 교육 툴팁)
+function renderNowcastAxis(axisKey, axisLabel, nc, q) {
+    var sigs = (nc.signals && nc.signals[axisKey]) || [];
+    var verdict = nc[axisKey];
+    var votes = (nc.votes && nc.votes[axisKey]) || { accel: 0, decel: 0 };
+    var isAcc = verdict === 'accelerating';
+    var vCls = isAcc ? 'text-amber-300' : 'text-sky-300';
+    var total = (votes.accel || 0) + (votes.decel || 0);
+    var agreeFlag = q ? (axisKey === 'growth' ? q.agreeGrowth : q.agreeInflation) : null;
+    var agreeTag = (agreeFlag === true) ? '<span class="text-[9px] text-emerald-400 ml-auto">✓ AI와 일치</span>'
+                 : (agreeFlag === false ? '<span class="text-[9px] text-red-400 ml-auto">✗ AI와 불일치</span>' : '');
+
+    var header = '<div class="flex items-center gap-1.5 py-1 text-[9px] text-slate-600 font-bold border-b border-slate-700/30">'
+        + '<span class="flex-1">지표</span><span class="w-12 text-right">현재값</span><span class="w-14 text-right">20일</span><span class="w-8 text-center">판정</span><span class="w-2.5"></span></div>';
+
+    var rows = sigs.map(function(s) {
+        var id = 'ncw_' + axisKey + '_' + s.key;
+        var chg = s.chg20d;
+        var chgCls = chg == null ? 'text-slate-500' : (chg >= 0 ? 'text-red-400' : 'text-blue-400');
+        var chgStr = chg == null ? '—' : ((chg >= 0 ? '+' : '') + chg + '%');
+        var voteCls = s.vote === 'accel' ? 'text-amber-300 bg-amber-500/10' : (s.vote === 'decel' ? 'text-sky-300 bg-sky-500/10' : 'text-slate-500 bg-slate-700/40');
+        var voteLbl = s.vote === 'accel' ? '가속' : (s.vote === 'decel' ? '감속' : '—');
+        return '<div>'
+            + '<div class="flex items-center gap-1.5 py-1 cursor-pointer" onclick="toggleNowcastWhy(\'' + id + '\')">'
+            +   '<span class="text-[11px] text-slate-300 flex-1 truncate">' + escapeHtml(s.name) + '</span>'
+            +   '<span class="text-[10px] text-slate-500 tabular-nums w-12 text-right">' + (s.valueStr || '—') + '</span>'
+            +   '<span class="text-[11px] font-black tabular-nums w-14 text-right ' + chgCls + '">' + chgStr + '</span>'
+            +   '<span class="text-[9px] font-bold px-1 py-0.5 rounded w-8 text-center ' + voteCls + '">' + voteLbl + '</span>'
+            +   '<i class="fa-solid fa-circle-info text-[9px] text-slate-600"></i>'
+            + '</div>'
+            + '<div id="' + id + '" class="hidden text-[10px] text-slate-500 leading-relaxed pb-1.5 pl-1 pr-6"><i class="fa-solid fa-lightbulb text-amber-500/60 mr-1"></i>' + escapeHtml(s.why || '') + '</div>'
+            + '</div>';
+    }).join('');
+
+    return '<div class="mb-2.5">'
+        + '<div class="flex items-center gap-2 mb-1">'
+        +   '<span class="text-[11px] font-black text-white">' + (axisKey === 'growth' ? '📈' : '🔥') + ' ' + axisLabel + ' 축</span>'
+        +   '<span class="text-[11px] font-black ' + vCls + '">→ ' + (isAcc ? '가속 ↑' : '감속 ↓') + '</span>'
+        +   '<span class="text-[9px] text-slate-500">' + (isAcc ? votes.accel : votes.decel) + '/' + total + '</span>'
+        +   agreeTag
+        + '</div>'
+        + '<div class="rounded-lg bg-slate-800/30 border border-slate-700/40 px-2">' + header + rows + '</div>'
+        + '</div>';
+}
+
+function renderNowcast() {
+    var area = document.getElementById('quadNowcastArea');
+    var body = document.getElementById('nowcastBody');
+    if (!area || !body) return;
+    var nc = MACRO_DATA && MACRO_DATA.nowcast;
+    var q = MACRO_DATA && MACRO_DATA.quad;
+    if (!nc || !nc.signals) { area.classList.add('hidden'); return; }
+    area.classList.remove('hidden');
+
+    var agree = (q && q.agreement) || null;
+    var badge = document.getElementById('nowcastAgreeBadge');
+    if (badge) {
+        if (agree === 'full') { badge.textContent = '지표 일치 ✓'; badge.className = 'text-[9px] font-black px-1.5 py-0.5 rounded text-emerald-300 bg-emerald-500/15 border border-emerald-500/30'; }
+        else if (agree === 'partial') { badge.textContent = '부분 일치'; badge.className = 'text-[9px] font-black px-1.5 py-0.5 rounded text-amber-300 bg-amber-500/15 border border-amber-500/30'; }
+        else if (agree === 'conflict') { badge.textContent = '불일치 ⚠'; badge.className = 'text-[9px] font-black px-1.5 py-0.5 rounded text-red-300 bg-red-500/15 border border-red-500/30'; }
+        else { badge.textContent = ''; badge.className = ''; }
+    }
+
+    var mq = nc.quad, gq = q && q.current;
+    var html = '<div class="rounded-lg bg-slate-800/40 border border-slate-700/50 p-2.5 mb-2.5 text-[11px] leading-relaxed">'
+        + '<div class="flex items-center justify-between"><span class="text-slate-400">시장 프록시 판정</span>'
+        +   '<span class="font-black ' + (QUAD_COLORS[mq] || 'text-white') + '">Q' + (mq || '?') + ' ' + (NOWCAST_QUAD_NAMES[mq] || '') + ' · 신뢰 ' + (nc.confidence || 0) + '%</span></div>'
+        + '<div class="flex items-center justify-between mt-1"><span class="text-slate-400">AI(Gemini) 판정</span>'
+        +   '<span class="font-bold ' + (QUAD_COLORS[gq] || 'text-slate-300') + '">Q' + (gq || '?') + ' ' + (NOWCAST_QUAD_NAMES[gq] || '') + '</span></div>'
+        + (mq && gq && mq !== gq ? '<div class="text-[10px] text-amber-300/90 mt-1.5 pt-1.5 border-t border-slate-700/50"><i class="fa-solid fa-triangle-exclamation mr-1"></i>두 판정이 달라 신뢰도를 낮췄습니다. 아래 지표로 어디서 갈리는지 확인하세요.</div>' : '')
+        + '</div>';
+
+    html += renderNowcastMap(mq, gq);
+    html += renderNowcastAxis('growth', '성장', nc, q);
+    html += renderNowcastAxis('inflation', '인플레', nc, q);
+
+    if (nc.swing) {
+        var sw = nc.swing.axis === 'growth' ? '성장' : '인플레';
+        html += '<div class="text-[10px] text-amber-300/90 bg-amber-500/5 border border-amber-500/20 rounded-lg px-2.5 py-2"><i class="fa-solid fa-scale-unbalanced mr-1"></i><b>' + sw + ' 축</b>이 가장 얇게 걸려 있습니다 (순 ' + (nc.swing.net > 0 ? '+' : '') + nc.swing.net + '). 이 축이 뒤집히면 국면이 전환됩니다.</div>';
+    }
+
+    body.innerHTML = html;
+}
+
 function updateMacroDashboard() {
     if (!MACRO_DATA) return;
     try { renderQuadHeader(); } catch(e) { console.error('[Macro] renderQuadHeader:', e); }
@@ -2380,6 +2500,9 @@ function renderQuadHeader() {
 
     // 2×2 매트릭스 + 요약/확신도
     renderQuadMatrix(q);
+
+    // 판정 근거 패널 (시장 나우캐스트)
+    try { renderNowcast(); } catch(e) { console.error('[Macro] renderNowcast:', e); }
 
     // 갱신 시간
     var tEl = document.getElementById('quadUpdateTime');
