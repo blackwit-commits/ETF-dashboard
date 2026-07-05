@@ -4991,6 +4991,7 @@ function renderStrategyProgressCard(sym) {
     } else {
         boosterHint.classList.add('hidden');
     }
+    try { renderAegisPanel(sym); } catch(e) {}   // 이지스 판정 실시간 갱신
 }
 
 // 부스터 원탭/자동 활성화 — boosterOn=true + BOOSTER 모드로 전환(설정 노출), 계획만 확장(자동 매수 X)
@@ -5023,7 +5024,9 @@ function loadTickerData(sym) {
     document.getElementById('activeTickerDesc').innerText = meta.name; 
     
     document.getElementById('configMode').value = d.config.mode || 'GRID';
-    document.getElementById('configMdd').value = d.config.mdd || 20; 
+    try { refreshModeCards(); } catch(e) {}
+    try { renderAegisPanel(sym); } catch(e) {}
+    document.getElementById('configMdd').value = d.config.mdd || 20;
     document.getElementById('configStages').value = d.config.stages || 4; 
     document.getElementById('planBasePrice').value = d.config.basePrice || 0;
     const sec = document.getElementById('boosterConfigSection');
@@ -5765,6 +5768,80 @@ function updateConfig() {
     saveAll();
     calculatePlan();
     try { renderPositionOverview(); } catch(e) {}
+    try { renderAegisPanel(activeTicker); } catch(e) {}
+}
+
+// ===== 매수 모드 카드 (케이던스 / 이지스) =====
+function refreshModeCards() {
+    var sel = document.getElementById('configMode'); if (!sel) return;
+    var primary = (sel.value === 'AEGIS') ? 'AEGIS' : 'GRID';   // BOOSTER는 케이던스 계열
+    var cards = document.querySelectorAll('#modeCards [data-mode]');
+    cards.forEach(function (b) {
+        var mm = b.getAttribute('data-mode');
+        var on = (mm === primary);
+        var onCls = (mm === 'AEGIS') ? 'border-2 border-amber-400 bg-amber-500/10' : 'border-2 border-cyan-400 bg-cyan-500/10';
+        b.className = 'text-left rounded-xl p-2.5 transition ' + (on ? onCls : 'border border-slate-700 bg-slate-800/40 opacity-60');
+    });
+}
+function selectBuyMode(m) {
+    var sel = document.getElementById('configMode'); if (!sel) return;
+    sel.value = m;
+    refreshModeCards();
+    updateConfig();
+}
+
+// 이지스 탕수 = 현재 사이클의 매수 체결 횟수 (탕 = 주 1회 매수)
+function _aegisTangCount(d) {
+    if (!d || !Array.isArray(d.history)) return 0;
+    var activeCycleId = (d.currentCycleId != null) ? d.currentCycleId : (function () {
+        if ((d.qty || 0) > 0) { var m = d.history.reduce(function (mm, h) { return (h && h.cycleId != null && h.cycleId > mm) ? h.cycleId : mm; }, 0); return m > 0 ? m : null; }
+        return null;
+    })();
+    return d.history.filter(function (h) {
+        if (!h || h.type !== 'BUY') return false;
+        if (activeCycleId != null) return h.cycleId === activeCycleId;
+        return true;
+    }).length;
+}
+
+// 이지스 판정 패널 — 4탕까지 계획, 5탕부터 수익률로 추가/익절 (레버리지별 기준)
+function renderAegisPanel(sym) {
+    var el = document.getElementById('aegisPanel'); if (!el) return;
+    var d = sym ? portfolios[sym] : null;
+    if (!d || !d.config || d.config.mode !== 'AEGIS') { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+
+    var tang = _aegisTangCount(d);
+    var qty = d.qty || 0, avg = d.avgPrice || 0;
+    var cur = (typeof curPriceOf === 'function') ? curPriceOf(sym, avg) : avg;
+    var profitPct = (avg > 0 && cur) ? ((cur - avg) / avg * 100) : null;
+    var meta = (typeof ETF_DB !== 'undefined' && ETF_DB.find) ? (ETF_DB.find(function (e) { return e.sym === sym; }) || {}) : {};
+    var levMag = (typeof _levMag === 'function') ? _levMag(meta.lev) : 1;
+    var is3x = levMag >= 2;
+    var thr = is3x ? 8 : 3;
+
+    var head = '<div class="flex items-center gap-1.5 mb-1.5"><i class="fa-solid fa-shield-halved text-amber-400"></i><span class="text-[12px] font-black text-white">이지스 판정</span>'
+        + '<span class="text-[9px] text-slate-500 ml-auto">' + (is3x ? ('레버리지 ' + (meta.lev || '') + ' · 기준 ' + thr + '%') : ('1배 · 기준 ' + thr + '%')) + '</span></div>';
+    var statLine = '<div class="flex items-center gap-3 text-[11px] mb-1.5"><span class="text-slate-400">진행 <b class="text-white">' + tang + '탕</b></span>'
+        + '<span class="text-slate-400">수익률 <b class="' + (profitPct == null ? 'text-slate-300' : (profitPct >= 0 ? 'text-red-400' : 'text-blue-400')) + '">' + (profitPct == null ? '—' : ((profitPct > 0 ? '+' : '') + profitPct.toFixed(1) + '%')) + '</b></span>'
+        + '<span class="text-slate-500 text-[10px] ml-auto">탕 = 주 1회 매수</span></div>';
+
+    var verdict;
+    if (qty <= 0) {
+        verdict = '<div class="rounded-lg bg-slate-800/60 border border-slate-700/60 p-2 text-[11px] text-slate-300">진입 전 — <b>1탕부터 계획대로</b> 매수하세요.</div>';
+    } else if (tang < 4) {
+        verdict = '<div class="rounded-lg bg-cyan-500/10 border border-cyan-500/30 p-2 text-[11px]"><b class="text-cyan-300">🟢 계획 매수 구간</b> — 4탕까지는 수익률과 무관하게 계획대로. <span class="text-slate-400">(지금 ' + tang + '탕, 전체 자금 절반 이내)</span></div>';
+    } else if (profitPct == null) {
+        verdict = '<div class="text-[11px] text-slate-400">현재가 확인 중…</div>';
+    } else if (is3x && profitPct < 0) {
+        verdict = '<div class="rounded-lg bg-red-500/10 border border-red-500/30 p-2 text-[11px]"><b class="text-red-300">🔴 추가 금지 (3배·손실 구간)</b><br><span class="text-slate-300">3배 ETF는 손실 중 물타기가 변동성 감쇠까지 키웁니다. 추세·시장 국면부터 재점검하세요.</span></div>';
+    } else if (profitPct > thr) {
+        verdict = '<div class="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-2 text-[11px]"><b class="text-emerald-300">🟢 1탕 추가 가능</b><br><span class="text-slate-300">수익 쿠션 +' + profitPct.toFixed(1) + '% (> ' + thr + '%) — 다음 탕 진입 구간입니다.</span></div>';
+    } else {
+        verdict = '<div class="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-[11px]"><b class="text-amber-300">🟡 50% 일부매도 권장</b><br><span class="text-slate-300">수익 얇음 +' + profitPct.toFixed(1) + '% (≤ ' + thr + '%) — 절반 익절해 탕수를 되돌리면(예: 4탕→2탕) 다시 이어갈 여력이 생깁니다.</span></div>';
+    }
+    var tip = '<div class="text-[9px] text-slate-500 mt-1.5 leading-snug">※ 일부매도금은 현금·재진입·금헷지로 분산. 4탕까지 계획, 5탕부터 이 판정을 따르세요.</div>';
+    el.innerHTML = '<div class="rounded-xl border border-amber-500/20 bg-amber-500/[0.03] p-2.5">' + head + statLine + verdict + tip + '</div>';
 }
 
 // --- UI/UX & Data ---
