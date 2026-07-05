@@ -563,7 +563,7 @@ function ensureBriefingData() {
 }
 async function loadBriefingMarketData() {
     try {
-        var idxComm = ['^GSPC','^IXIC','^DJI','^VIX','^KS11','GC=F','CL=F','BTC-USD','ETH-USD','005930.KS','000660.KS'].join(',');
+        var idxComm = ['^GSPC','^IXIC','^DJI','^VIX','^KS11','^KQ11','GC=F','CL=F','BTC-USD','ETH-USD','005930.KS','000660.KS'].join(',');
         var secSyms = SECTOR_LIST.map(function (s) { return s.sym; }).join(',');
         var res = await Promise.all([
             fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(idxComm)).then(function (r) { return r.json(); }).catch(function () { return []; }),
@@ -585,11 +585,11 @@ function _briefQuoteRow(label, q, opts) {
     var chg = q.chg;
     var arw = chg == null ? '' : (chg > 0 ? '<span class="text-red-400">▲</span>' : (chg < 0 ? '<span class="text-blue-400">▼</span>' : '<span class="text-slate-500">—</span>'));
     var priceStr = opts.krw ? ('₩' + fmtNum(q.price, 0)) : ((opts.prefix || '') + fmtNum(q.price, opts.dp != null ? opts.dp : 2));
-    return '<div class="flex items-center justify-between py-0.5">'
-        + '<span class="text-[12px] font-bold text-slate-200">' + label + '</span>'
-        + '<span class="flex items-center gap-2">'
+    return '<div class="flex items-center justify-between gap-2 py-0.5">'
+        + '<span class="text-[12px] font-bold text-slate-200 shrink-0">' + label + '</span>'
+        + '<span class="flex items-baseline gap-1.5 shrink-0 whitespace-nowrap ml-auto">'
         +   '<span class="text-[12px] text-slate-300 tabular-nums">' + priceStr + '</span>'
-        +   '<span class="text-[12px] font-black tabular-nums w-[64px] text-right ' + chgClass(chg) + '">' + arw + ' ' + (chg == null ? '--' : ((chg > 0 ? '+' : '') + chg.toFixed(2) + '%')) + '</span>'
+        +   '<span class="text-[12px] font-black tabular-nums text-right ' + chgClass(chg) + '">' + arw + (chg == null ? ' --' : (' ' + (chg > 0 ? '+' : '') + chg.toFixed(2) + '%')) + '</span>'
         + '</span></div>';
 }
 
@@ -642,6 +642,7 @@ function renderBriefingData() {
     var krEl = document.getElementById('briefKorea');
     if (krEl) {
         var kr = _briefQuoteRow('코스피', Q['^KS11'])
+            + _briefQuoteRow('코스닥', Q['^KQ11'])
             + _briefQuoteRow('삼성전자', Q['005930.KS'], { krw: true })
             + _briefQuoteRow('SK하이닉스', Q['000660.KS'], { krw: true });
         krEl.innerHTML = kr ? _briefCard('🇰🇷 한국 시장', kr) : '';
@@ -2506,6 +2507,30 @@ function renderNowcastMap(mq, gq) {
 }
 
 // 축별 스코어카드 (지표·현재값·20일변화·판정 + ℹ️ 교육 툴팁)
+// 나우캐스트 지표 쉬운 설명 (일상 비유 + 오르면/내리면 + 지금 해석)
+var NOWCAST_EXPLAIN = {
+    wti:       { plain: '기름값이에요. 기름은 물건을 만들고 옮기는 거의 모든 곳에 들어가서, 오르면 전체 물가도 따라 오릅니다.', up: '오르면: 물가 자극 (인플레 가속)', down: '내리면: 물가 진정 (인플레 감속)' },
+    copgold:   { plain: '구리는 공장·건설에 쓰여 "경기 좋다" 신호, 금은 "불안하다" 신호예요. 구리가 금보다 세면 사람들이 경기를 낙관한다는 뜻.', up: '오르면: 경기·물가 기대 ↑', down: '내리면: 불안·경기 둔화 (인플레 감속)' },
+    dxy:       { plain: '달러의 가치예요. 달러가 세지면 수입품이 싸져 물가를 낮추고, 약해지면 수입품이 비싸져 물가를 올립니다. (그래서 물가와 반대로 봅니다)', up: '달러 오르면: 물가 진정 (인플레 감속)', down: '달러 내리면: 물가 자극 (인플레 가속)' },
+    breakeven: { plain: '물가만큼 이자를 더 주는 채권(TIP)이 일반 채권보다 인기면, 사람들이 "앞으로 물가가 오를 것"이라 베팅하는 겁니다.', up: '오르면: 미래 인플레 기대 ↑', down: '내리면: 인플레 기대 ↓' },
+    cycdef:    { plain: '여행·자동차 같은 "있으면 좋은 소비"가 생필품보다 잘 팔리면, 지갑이 넉넉하다는 뜻 = 경기 좋음.', up: '오르면: 경기 자신감 ↑ (성장 가속)', down: '내리면: 방어 심리 ↑ (성장 둔화)' },
+    credit:    { plain: '위험한 회사의 빚(고위험 채권)이 안전한 국채보다 잘 나가면, 투자자들이 위험을 감수할 만큼 경기를 낙관한다는 신호.', up: '오르면: 위험 선호 ↑ (성장 낙관)', down: '내리면: 안전 선호 ↑ (경기 우려)' },
+    smallcap:  { plain: '작은 회사들은 경기를 많이 탑니다. 대형주보다 소형주가 세면 경기 회복 기대가 크다는 뜻.', up: '오르면: 경기 기대 ↑ (성장 가속)', down: '내리면: 경기 신중 (성장 둔화)' },
+    us10y:     { plain: '10년 만기 국채 금리예요. 경제가 좋아지고 물가가 오를 것 같으면 금리가 완만히 오릅니다.', up: '오르면: 성장·물가 기대 ↑', down: '내리면: 성장 둔화·안전 선호' },
+};
+function _nowcastWhyHtml(s) {
+    var e = NOWCAST_EXPLAIN[s.key];
+    if (!e) return '<i class="fa-solid fa-lightbulb text-amber-500/60 mr-1"></i>' + escapeHtml(s.why || '');
+    var voteLbl = s.vote === 'accel' ? '가속' : (s.vote === 'decel' ? '감속' : '—');
+    var nowLine = (s.chg20d != null)
+        ? '<div class="mt-1 pt-1 border-t border-slate-700/40 text-slate-400">지금: 20일 <b class="' + (s.chg20d >= 0 ? 'text-red-400' : 'text-blue-400') + '">' + (s.chg20d > 0 ? '+' : '') + s.chg20d + '%</b> → <b class="' + (s.vote === 'accel' ? 'text-amber-300' : 'text-sky-300') + '">' + voteLbl + '</b> 신호</div>'
+        : '';
+    return '<div class="text-slate-400 leading-relaxed">'
+        + '<div><i class="fa-solid fa-lightbulb text-amber-500/60 mr-1"></i>' + escapeHtml(e.plain) + '</div>'
+        + '<div class="mt-1 flex flex-col gap-0.5 text-[10px]"><span class="text-slate-300">' + escapeHtml(e.up) + '</span><span class="text-slate-300">' + escapeHtml(e.down) + '</span></div>'
+        + nowLine + '</div>';
+}
+
 function renderNowcastAxis(axisKey, axisLabel, nc, q) {
     var sigs = (nc.signals && nc.signals[axisKey]) || [];
     var verdict = nc[axisKey];
@@ -2535,7 +2560,7 @@ function renderNowcastAxis(axisKey, axisLabel, nc, q) {
             +   '<span class="text-[9px] font-bold px-1 py-0.5 rounded w-8 text-center ' + voteCls + '">' + voteLbl + '</span>'
             +   '<i class="fa-solid fa-circle-info text-[9px] text-slate-600"></i>'
             + '</div>'
-            + '<div id="' + id + '" class="hidden text-[10px] text-slate-500 leading-relaxed pb-1.5 pl-1 pr-6"><i class="fa-solid fa-lightbulb text-amber-500/60 mr-1"></i>' + escapeHtml(s.why || '') + '</div>'
+            + '<div id="' + id + '" class="hidden text-[10px] leading-relaxed pb-1.5 pl-1 pr-2">' + _nowcastWhyHtml(s) + '</div>'
             + '</div>';
     }).join('');
 
