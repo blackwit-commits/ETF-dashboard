@@ -5804,6 +5804,41 @@ function _aegisTangCount(d) {
     }).length;
 }
 
+// 선제매수 폭락 기준(%) — 수동 우선, 없으면 ATR 자동(일일 ATR% × 4, SOXL≈15/표준3배≈8/1배≈3)
+function _aegisPreloadThreshold(sym, d) {
+    if (d && d.config && d.config.preloadPct != null && !isNaN(d.config.preloadPct) && Number(d.config.preloadPct) > 0) {
+        return { pct: Number(d.config.preloadPct), auto: false };
+    }
+    var md = MARKET_SNAPSHOT[sym];
+    var price = (md && md.price > 0) ? md.price : ((d && d.avgPrice) || 0);
+    if (md && md.atr != null && !isNaN(md.atr) && Number(md.atr) > 0 && price > 0) {
+        var atrPct = (Number(md.atr) / price) * 100;
+        return { pct: Math.max(3, Math.min(25, Math.round(atrPct * 4))), auto: true };
+    }
+    var meta = (typeof ETF_DB !== 'undefined' && ETF_DB.find) ? (ETF_DB.find(function (e) { return e.sym === sym; }) || {}) : {};
+    var levMag = (typeof _levMag === 'function') ? _levMag(meta.lev) : 1;
+    return { pct: levMag >= 2 ? 8 : 3, auto: true };
+}
+// 현재 사이클의 마지막(가장 최근) 매수가
+function _aegisLastBuyPrice(d) {
+    if (!d || !Array.isArray(d.history)) return null;
+    var activeCycleId = (d.currentCycleId != null) ? d.currentCycleId : (function () {
+        if ((d.qty || 0) > 0) { var m = d.history.reduce(function (mm, h) { return (h && h.cycleId != null && h.cycleId > mm) ? h.cycleId : mm; }, 0); return m > 0 ? m : null; }
+        return null;
+    })();
+    var buys = d.history.filter(function (h) { if (!h || h.type !== 'BUY') return false; if (activeCycleId != null) return h.cycleId === activeCycleId; return true; });
+    if (!buys.length) return null;
+    var last = buys[buys.length - 1];
+    return (last && last.price != null && !isNaN(last.price)) ? Number(last.price) : null;
+}
+function setAegisPreload(sym, val) {
+    var d = portfolios[sym]; if (!d || !d.config) return;
+    var v = parseFloat(val);
+    d.config.preloadPct = (val === '' || isNaN(v) || v <= 0) ? null : v;
+    try { saveAll(); } catch (e) {}
+    renderAegisPanel(sym);
+}
+
 // 이지스 판정 패널 — 4탕까지 계획, 5탕부터 수익률로 추가/익절 (레버리지별 기준)
 function renderAegisPanel(sym) {
     var el = document.getElementById('aegisPanel'); if (!el) return;
@@ -5826,6 +5861,23 @@ function renderAegisPanel(sym) {
         + '<span class="text-slate-400">수익률 <b class="' + (profitPct == null ? 'text-slate-300' : (profitPct >= 0 ? 'text-red-400' : 'text-blue-400')) + '">' + (profitPct == null ? '—' : ((profitPct > 0 ? '+' : '') + profitPct.toFixed(1) + '%')) + '</b></span>'
         + '<span class="text-slate-500 text-[10px] ml-auto">탕 = 주 1회 매수</span></div>';
 
+    // 선제매수(폭락 시 다음 탕 50% 당겨 매수) — 1~4탕 축적 구간에서만
+    var preloadHtml = '', thrFieldHtml = '';
+    if (qty > 0 && tang >= 1 && tang < 4) {
+        var thrObj = _aegisPreloadThreshold(sym, d);
+        var lastBuy = _aegisLastBuyPrice(d);
+        var dropFromLast = (lastBuy && cur) ? ((lastBuy - cur) / lastBuy * 100) : null;
+        thrFieldHtml = '<div class="flex items-center gap-1.5 mt-1.5 text-[10px] text-slate-500"><span>폭락 기준</span>'
+            + '<input type="number" value="' + thrObj.pct + '" onchange="setAegisPreload(\'' + sym + '\', this.value)" class="w-11 bg-slate-900 rounded px-1 py-0.5 text-center text-slate-200 border border-slate-700">%'
+            + '<span class="text-slate-600">' + (thrObj.auto ? '(ATR 자동)' : '(수동)') + '</span>'
+            + (thrObj.auto ? '' : '<button type="button" onclick="setAegisPreload(\'' + sym + '\',\'\')" class="text-cyan-400/80 underline">자동으로</button>') + '</div>';
+        if (dropFromLast != null && dropFromLast >= thrObj.pct) {
+            preloadHtml = '<div class="rounded-lg bg-orange-500/10 border border-orange-500/40 p-2 text-[11px] mb-1.5"><b class="text-orange-300">⚡ 폭락 감지 — 다음 탕 50% 선제매수 가능</b><br>'
+                + '<span class="text-slate-300">직전 탕가 대비 <b class="text-blue-400">-' + dropFromLast.toFixed(1) + '%</b> (기준 -' + thrObj.pct + '%). 다음 탕의 <b>절반</b>을 지금 당겨 사고, 다음 주 정규 탕은 나머지 절반만.</span>'
+                + '<div class="text-[9px] text-slate-500 mt-0.5">※ 사이클당 1회 · 총 투입 계획은 그대로 유지</div></div>';
+        }
+    }
+
     var verdict;
     if (qty <= 0) {
         verdict = '<div class="rounded-lg bg-slate-800/60 border border-slate-700/60 p-2 text-[11px] text-slate-300">진입 전 — <b>1탕부터 계획대로</b> 매수하세요.</div>';
@@ -5841,7 +5893,7 @@ function renderAegisPanel(sym) {
         verdict = '<div class="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-[11px]"><b class="text-amber-300">🟡 50% 일부매도 권장</b><br><span class="text-slate-300">수익 얇음 +' + profitPct.toFixed(1) + '% (≤ ' + thr + '%) — 절반 익절해 탕수를 되돌리면(예: 4탕→2탕) 다시 이어갈 여력이 생깁니다.</span></div>';
     }
     var tip = '<div class="text-[9px] text-slate-500 mt-1.5 leading-snug">※ 일부매도금은 현금·재진입·금헷지로 분산. 4탕까지 계획, 5탕부터 이 판정을 따르세요.</div>';
-    el.innerHTML = '<div class="rounded-xl border border-amber-500/20 bg-amber-500/[0.03] p-2.5">' + head + statLine + verdict + tip + '</div>';
+    el.innerHTML = '<div class="rounded-xl border border-amber-500/20 bg-amber-500/[0.03] p-2.5">' + head + statLine + preloadHtml + verdict + thrFieldHtml + tip + '</div>';
 }
 
 // --- UI/UX & Data ---
