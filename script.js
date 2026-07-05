@@ -3782,6 +3782,7 @@ function openIndexChart(sym, name) {
     modal.classList.remove('hidden'); modal.classList.add('flex');
     _renderIndexToggle();
     _renderIndexDetail();
+    _renderHotHoldings(sym);   // 뜨는 ETF 테마면 대표 종목 실시간 시세
     _drawIndexChart();
 }
 function setIndexChartInterval(iv) { _indexInterval = iv; _renderIndexToggle(); _drawIndexChart(); }
@@ -3816,7 +3817,50 @@ function _renderIndexDetail() {
         + '<span class="text-2xl font-black text-white">' + (q.price != null ? fmtNum(q.price, dec) : '--') + '</span>'
         + (q.price != null ? '<span class="text-sm font-bold ' + chgCls + '">' + fmtChgPct(q.chg) + (chgUsd != null ? ' (' + (chgUsd >= 0 ? '+' : '') + fmtNum(chgUsd, dec) + ')' : '') + '</span>' : '')
         + '</div>'
-        + '<div id="idxStatGrid" class="grid grid-cols-3 gap-1.5"></div>';
+        + '<div id="idxStatGrid" class="grid grid-cols-3 gap-1.5"></div>'
+        + '<div id="idxHoldings"></div>';
+}
+// 뜨는 ETF 테마의 대표 종목 (실시간 시세) — 차트 하단
+var HOT_ETF_HOLDINGS = {
+    SMH: [{ s: 'NVDA', n: '엔비디아' }, { s: 'TSM', n: 'TSMC' }, { s: 'AVGO', n: '브로드컴' }, { s: 'AMD', n: 'AMD' }, { s: 'ASML', n: 'ASML' }],
+    QQQ: [{ s: 'AAPL', n: '애플' }, { s: 'MSFT', n: '마이크로소프트' }, { s: 'NVDA', n: '엔비디아' }, { s: 'AMZN', n: '아마존' }, { s: 'META', n: '메타' }],
+    XLF: [{ s: 'BRK-B', n: '버크셔' }, { s: 'JPM', n: 'JP모건' }, { s: 'V', n: '비자' }, { s: 'MA', n: '마스터카드' }, { s: 'BAC', n: '뱅크오브아메리카' }],
+    XLE: [{ s: 'XOM', n: '엑슨모빌' }, { s: 'CVX', n: '셰브론' }, { s: 'COP', n: '코노코필립스' }, { s: 'WMB', n: '윌리엄스' }, { s: 'EOG', n: 'EOG' }],
+    GDX: [{ s: 'NEM', n: '뉴몬트' }, { s: 'AEM', n: '애그니코' }, { s: 'GOLD', n: '배릭골드' }, { s: 'WPM', n: '휘튼' }, { s: 'FNV', n: '프랑코네바다' }],
+    XBI: [{ s: 'VRTX', n: '버텍스' }, { s: 'REGN', n: '리제네론' }, { s: 'GILD', n: '길리어드' }, { s: 'AMGN', n: '암젠' }, { s: 'MRNA', n: '모더나' }],
+    XLV: [{ s: 'LLY', n: '일라이릴리' }, { s: 'UNH', n: '유나이티드헬스' }, { s: 'JNJ', n: '존슨앤존슨' }, { s: 'ABBV', n: '애브비' }, { s: 'MRK', n: '머크' }],
+    IYR: [{ s: 'PLD', n: '프로로지스' }, { s: 'AMT', n: '아메리칸타워' }, { s: 'EQIX', n: '에퀴닉스' }, { s: 'WELL', n: '웰타워' }, { s: 'SPG', n: '사이먼' }],
+    DIA: [{ s: 'UNH', n: '유나이티드헬스' }, { s: 'GS', n: '골드만삭스' }, { s: 'MSFT', n: '마이크로소프트' }, { s: 'HD', n: '홈디포' }, { s: 'CAT', n: '캐터필러' }],
+    BOTZ: [{ s: 'NVDA', n: '엔비디아' }, { s: 'ISRG', n: '인튜이티브서지컬' }, { s: 'ABB', n: 'ABB' }],
+    URA: [{ s: 'CCJ', n: '카메코' }, { s: 'NXE', n: '넥스젠에너지' }, { s: 'UEC', n: '유라늄에너지' }],
+    ITA: [{ s: 'RTX', n: 'RTX' }, { s: 'GE', n: 'GE에어로' }, { s: 'BA', n: '보잉' }, { s: 'LMT', n: '록히드마틴' }, { s: 'NOC', n: '노스롭그루먼' }],
+    ICLN: [{ s: 'FSLR', n: '퍼스트솔라' }, { s: 'ENPH', n: '엔페이즈' }, { s: 'NEE', n: '넥스트에라' }],
+    LIT: [{ s: 'ALB', n: '앨버말' }, { s: 'SQM', n: 'SQM' }, { s: 'TSLA', n: '테슬라' }],
+    CIBR: [{ s: 'CRWD', n: '크라우드스트라이크' }, { s: 'PANW', n: '팔로알토' }, { s: 'FTNT', n: '포티넷' }, { s: 'ZS', n: '지스케일러' }],
+    ARKK: [{ s: 'TSLA', n: '테슬라' }, { s: 'COIN', n: '코인베이스' }, { s: 'ROKU', n: '로쿠' }, { s: 'HOOD', n: '로빈후드' }],
+    TAN: [{ s: 'FSLR', n: '퍼스트솔라' }, { s: 'ENPH', n: '엔페이즈' }, { s: 'SEDG', n: '솔라엣지' }],
+    COPX: [{ s: 'FCX', n: '프리포트' }, { s: 'SCCO', n: '서던코퍼' }, { s: 'TECK', n: '테크리소스' }],
+    JETS: [{ s: 'DAL', n: '델타' }, { s: 'UAL', n: '유나이티드항공' }, { s: 'LUV', n: '사우스웨스트' }, { s: 'AAL', n: '아메리칸항공' }],
+    INDA: [{ s: 'INFY', n: '인포시스' }, { s: 'HDB', n: 'HDFC은행' }, { s: 'IBN', n: 'ICICI은행' }]
+};
+function _renderHotHoldings(sym) {
+    var box = document.getElementById('idxHoldings');
+    if (!box) return;
+    var top = HOT_ETF_HOLDINGS[sym];
+    if (!top || !top.length) { box.innerHTML = ''; return; }
+    var rows = top.map(function (h) {
+        return '<div class="flex justify-between items-center py-1 border-b border-slate-800 last:border-0"><span class="text-[12px]"><span class="font-bold text-white">' + h.s + '</span> <span class="text-slate-400 text-[10px]">' + h.n + '</span></span><span class="text-[11px] font-bold text-slate-500" data-hh="' + h.s + '">…</span></div>';
+    }).join('');
+    box.innerHTML = '<div class="pt-2 mt-2 border-t border-slate-700/60"><div class="text-[10px] font-bold text-slate-500 mb-1">대표 종목 (실시간)</div>' + rows + '</div>';
+    var syms = top.map(function (h) { return h.s; }).join(',');
+    fetch(API_BASE_URL + '/quotes?symbols=' + encodeURIComponent(syms)).then(function (r) { return r.json(); }).then(function (data) {
+        var map = {}; (data || []).forEach(function (q) { map[q.symbol] = q; });
+        box.querySelectorAll('[data-hh]').forEach(function (el) {
+            var q = map[el.getAttribute('data-hh')];
+            if (q && q.chg != null) { el.className = 'text-[11px] font-bold ' + chgClass(q.chg); el.textContent = (q.price != null ? '$' + fmtNum(q.price, 2) + '  ' : '') + fmtChgPct(q.chg); }
+            else { el.textContent = '—'; }
+        });
+    }).catch(function () {});
 }
 async function _drawIndexChart() {
     var cont = document.getElementById('macroChartContainer');
