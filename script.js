@@ -5895,6 +5895,9 @@ function renderAegisPlanTable(sym) {
     var tangs = parseInt(d.config.aegisTangs) || 8;
     var allocUsd = getTotalEquityUSD() * ((d.config.alloc || 0) / 100);
     var perTang = tangs > 0 ? allocUsd / tangs : 0;
+    // ⑤ 탕당액 원화 병기 (안내 노트)
+    var note = document.getElementById('aegisPlanNote');
+    if (note) note.innerHTML = '<i class="fa-solid fa-shield-halved mr-1"></i>주 1회 균등 · 탕당 <b class="text-slate-300">$' + Math.round(perTang).toLocaleString() + '</b> · ' + (typeof formatKrw === 'function' ? formatKrw(perTang) : '') + ' · 1~4탕 계획, 5탕부터 판정';
     var activeCycleId = (d.currentCycleId != null) ? d.currentCycleId : (function () {
         if ((d.qty || 0) > 0 && Array.isArray(d.history)) { var m = d.history.reduce(function (mm, h) { return (h && h.cycleId != null && h.cycleId > mm) ? h.cycleId : mm; }, 0); return m > 0 ? m : null; }
         return null;
@@ -5920,6 +5923,10 @@ function renderAegisPlanTable(sym) {
             + '<td class="p-2 text-center align-middle">' + (avgP > 0 ? '$' + avgP.toFixed(2) : '—') + '</td>'
             + '<td class="p-2 text-center align-middle">' + ((b && b.qty) ? b.qty : '—') + '</td>'
             + '<td class="p-2 text-center align-middle">' + status + '</td></tr>';
+        // ③ 계획/판정 구간 구분선
+        if (i === 4 && tangs > 4) {
+            rows += '<tr><td colspan="5" class="py-1 text-center text-[9px] font-bold text-amber-400/80 bg-amber-500/[0.06] border-y border-amber-500/20">── 여기부터 수익률 판정 (5탕~) ──</td></tr>';
+        }
     }
     body.innerHTML = rows;
 }
@@ -6049,6 +6056,24 @@ function setAegisPreload(sym, val) {
     renderAegisPanel(sym);
 }
 
+// 탕 진행 스텝퍼 — 계획(1~4)=시안 / 판정(5~)=앰버, 완료=채움·다음=강조링, 4탕 뒤 구분선
+function _aegisStepper(tang, total) {
+    total = total || 8;
+    var seg = '';
+    for (var i = 1; i <= total; i++) {
+        var isPlan = i <= 4, cls;
+        if (i <= tang) cls = isPlan ? 'bg-cyan-500 text-white' : 'bg-amber-500 text-slate-900';
+        else if (i === tang + 1) cls = 'bg-slate-700 text-white ring-2 ' + (isPlan ? 'ring-cyan-400' : 'ring-amber-400');
+        else cls = 'bg-slate-800 text-slate-500';
+        seg += '<span class="w-5 h-5 shrink-0 rounded-full flex items-center justify-center text-[9px] font-black ' + cls + '">' + i + '</span>';
+        if (i === 4 && total > 4) seg += '<span class="w-px h-4 bg-slate-500 mx-0.5 shrink-0"></span>';
+    }
+    var labels = total > 4
+        ? '<div class="flex text-[8px] font-bold mt-1"><span class="text-cyan-400/70">◀ 계획 (1~4탕)</span><span class="ml-auto text-amber-400/70">판정 (5탕~) ▶</span></div>'
+        : '';
+    return '<div class="mt-2 mb-1"><div class="flex items-center gap-1 flex-wrap">' + seg + '</div>' + labels + '</div>';
+}
+
 // 이지스 판정 패널 — 4탕까지 계획, 5탕부터 수익률로 추가/익절 (레버리지별 기준)
 function renderAegisPanel(sym) {
     var el = document.getElementById('aegisPanel'); if (!el) return;
@@ -6065,11 +6090,15 @@ function renderAegisPanel(sym) {
     var is3x = levMag >= 2;
     var thr = is3x ? 8 : 3;
 
-    var head = '<div class="flex items-center gap-1.5 mb-1.5"><i class="fa-solid fa-shield-halved text-amber-400"></i><span class="text-[12px] font-black text-white">이지스 판정</span>'
+    var totalTangs = parseInt(d.config.aegisTangs) || 8;
+    var profCls = profitPct == null ? 'text-slate-300' : (profitPct >= 0 ? 'text-red-400' : 'text-blue-400');
+    var profStr = profitPct == null ? '—' : ((profitPct > 0 ? '+' : '') + profitPct.toFixed(1) + '%');
+    // ④ 이지스 테마 헤더 (배지 + 진행/수익률 요약)
+    var head = '<div class="flex items-center gap-2 mb-0.5"><span class="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300"><i class="fa-solid fa-shield-halved mr-1"></i>이지스</span>'
+        + '<span class="text-[13px] font-black text-white">' + tang + '/' + totalTangs + '탕</span>'
+        + '<span class="text-[13px] font-black ' + profCls + '">' + profStr + '</span>'
         + '<span class="text-[9px] text-slate-500 ml-auto">' + (is3x ? ('레버리지 ' + (meta.lev || '') + ' · 기준 ' + thr + '%') : ('1배 · 기준 ' + thr + '%')) + '</span></div>';
-    var statLine = '<div class="flex items-center gap-3 text-[11px] mb-1.5"><span class="text-slate-400">진행 <b class="text-white">' + tang + '탕</b></span>'
-        + '<span class="text-slate-400">수익률 <b class="' + (profitPct == null ? 'text-slate-300' : (profitPct >= 0 ? 'text-red-400' : 'text-blue-400')) + '">' + (profitPct == null ? '—' : ((profitPct > 0 ? '+' : '') + profitPct.toFixed(1) + '%')) + '</b></span>'
-        + '<span class="text-slate-500 text-[10px] ml-auto">탕 = 주 1회 매수</span></div>';
+    var statLine = _aegisStepper(tang, totalTangs);   // ① 진행 스텝퍼
 
     // 선제매수(폭락 시 다음 탕 50% 당겨 매수) — 1~4탕 축적 구간에서만
     var preloadHtml = '', thrFieldHtml = '';
@@ -6102,8 +6131,10 @@ function renderAegisPanel(sym) {
     } else {
         verdict = '<div class="rounded-lg bg-amber-500/10 border border-amber-500/30 p-2 text-[11px]"><b class="text-amber-300">🟡 50% 일부매도 권장</b><br><span class="text-slate-300">수익 얇음 +' + profitPct.toFixed(1) + '% (≤ ' + thr + '%) — 절반 익절해 탕수를 되돌리면(예: 4탕→2탕) 다시 이어갈 여력이 생깁니다.</span></div>';
     }
-    var tip = '<div class="text-[9px] text-slate-500 mt-1.5 leading-snug">※ 일부매도금은 현금·재진입·금헷지로 분산. 4탕까지 계획, 5탕부터 이 판정을 따르세요.</div>';
-    el.innerHTML = '<div class="rounded-xl border border-amber-500/20 bg-amber-500/[0.03] p-2.5">' + head + statLine + preloadHtml + verdict + thrFieldHtml + tip + '</div>';
+    var tip = '<div class="text-[9px] text-slate-500 mt-1.5 leading-snug">※ 탕 = 주 1회 매수 · 일부매도금은 현금·재진입·금헷지로 분산 · 4탕까지 계획, 5탕부터 판정</div>';
+    // ② 액션 배너 — '지금 할 일'로 판정을 명확히
+    var actionBanner = '<div class="mt-2"><div class="text-[9px] text-slate-500 font-bold mb-1 uppercase tracking-wider"><i class="fa-solid fa-bullseye mr-1 text-amber-400/70"></i>지금 할 일</div>' + verdict + '</div>';
+    el.innerHTML = '<div class="rounded-xl border border-amber-500/25 bg-amber-500/[0.04] p-2.5">' + head + statLine + preloadHtml + actionBanner + thrFieldHtml + tip + '</div>';
 }
 
 // --- UI/UX & Data ---
