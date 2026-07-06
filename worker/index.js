@@ -815,6 +815,14 @@ function fmtChg(c) {
   return (c >= 0 ? "+" : "") + c.toFixed(2) + "%";
 }
 
+// 직전 종가 선택 — 지수(^KS11 등) 일봉 배열이 하루 지연될 때 대응
+// regularMarketPrice(최신)가 배열 마지막 종가와 유의미하게 다르면 = 최신 봉이 배열에 아직 없음 → 직전=배열 마지막
+function _pickPrevClose(closes, price) {
+  const lastArr = closes.length ? closes[closes.length - 1] : null;
+  if (lastArr != null && price != null && Math.abs(price - lastArr) > lastArr * 0.0005) return lastArr;
+  return closes.length >= 2 ? closes[closes.length - 2] : null;
+}
+
 async function fetchQuoteBrief(symbol) {
   try {
     const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=7d`, { headers: { "User-Agent": "Mozilla/5.0" } });
@@ -824,8 +832,8 @@ async function fetchQuoteBrief(symbol) {
     // chartPreviousClose가 엉터리 값일 때가 있어 종가 배열 기준으로 등락 계산 (전광판과 동일 방식)
     const closes = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []).filter(v => v != null);
     const price = meta.regularMarketPrice != null ? meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
-    let prev = closes.length >= 2 ? closes[closes.length - 2] : null;
-    if (prev == null) prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
+    let prev = _pickPrevClose(closes, price);
+    if (prev == null) prev = meta.previousClose != null ? meta.previousClose : meta.chartPreviousClose;
     const chg = (prev && price) ? ((price - prev) / prev) * 100 : 0;
     return { price, chg };
   } catch (e) { return null; }
@@ -840,8 +848,8 @@ async function fetchQuoteSimple(symbol) {
     const meta = res.meta;
     const closes = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []).filter(v => v != null);
     const price = meta.regularMarketPrice != null ? meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
-    let prev = closes.length >= 2 ? closes[closes.length - 2] : null;
-    if (prev == null) prev = meta.chartPreviousClose != null ? meta.chartPreviousClose : meta.previousClose;
+    let prev = _pickPrevClose(closes, price);
+    if (prev == null) prev = meta.previousClose != null ? meta.previousClose : meta.chartPreviousClose;
     const chg = (prev && price) ? ((price - prev) / prev) * 100 : 0;
     // 프리/애프터장 (정규장 종가 대비 등락)
     const state = meta.marketState || "REGULAR";
