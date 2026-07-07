@@ -453,6 +453,7 @@ function renderHotIssues(data) {
     var list = document.getElementById('hotIssuesList');
     if (!list) return;
     _briefGeminiData = data;   // 심층분석 서사 매칭용 (추가 Gemini 호출 없이 재사용)
+    try { detectBriefingNotif(data); } catch (e) {}   // 새 브리핑 알림 감지
     // 세션 라벨/휴장 배지
     var sess = _briefingSession();
     var sl = document.getElementById('briefingSessionLabel'); if (sl) sl.innerText = sess.label;
@@ -1330,6 +1331,16 @@ function _applyEconResults(data, allowToast) {
             try { showToast(msg); } catch (e) {}
         }
     }
+    // 인앱 알림: 최근(2일 내) 신규 발표결과를 알림센터에 추가 (id로 중복 방지)
+    if (seen > 0) {
+        try {
+            data.results.filter(function (r) { return r && r.actual && (r.ts || 0) > seen && (Date.now() - (r.ts || 0)) < 2 * 86400000; }).forEach(function (r) {
+                var sp2 = _econSurprise(r.surprise);
+                pushNotif({ id: 'econ-' + _econNameNorm(r.name) + '-' + (r.date || ''), type: 'econ', title: (r.name || '경제지표') + ' 발표',
+                    desc: '실제 ' + (r.actual || '') + (r.forecast ? (' (예상 ' + r.forecast + ')') : '') + (sp2 ? (' · ' + sp2.t) : ''), ts: r.ts || Date.now(), target: { action: 'econ' } });
+            });
+        } catch (e) {}
+    }
     try { var c = JSON.parse(localStorage.getItem(CALENDAR_CACHE_KEY) || 'null'); if (c && document.getElementById('econCalendarList')) renderEconCalendar(c); } catch (e) {}
     try { renderMarketSummary(); } catch (e) {}
 }
@@ -1374,6 +1385,97 @@ function markEconResultsSeen() {
     var d = _econCached(); if (!d) return;
     localStorage.setItem(ECON_SEEN_KEY, String(_econLatestTs(d)));
     var badge = document.getElementById('newsBadge'); if (badge) badge.classList.add('hidden');
+}
+
+// ===== 인앱 알림 센터 (벨) — 브리핑·경제발표·Quad전환 통합 =====
+var NOTIF_KEY = 'umt_notifs';
+var NOTIF_BRIEF_SEEN = 'umt_notif_brief_ts';
+function _notifsLoad() { try { return JSON.parse(localStorage.getItem(NOTIF_KEY) || '[]') || []; } catch (e) { return []; } }
+function _notifsSave(a) { try { localStorage.setItem(NOTIF_KEY, JSON.stringify(a.slice(0, 30))); } catch (e) {} }
+function pushNotif(n) {
+    if (!n || !n.id) return;
+    var a = _notifsLoad();
+    if (a.some(function (x) { return x.id === n.id; })) return;   // 중복 방지
+    a.unshift({ id: n.id, type: n.type, title: n.title, desc: n.desc || '', ts: n.ts || Date.now(), read: false, target: n.target || null });
+    _notifsSave(a);
+    renderNotifBell();
+}
+function renderNotifBell() {
+    var unread = _notifsLoad().filter(function (x) { return !x.read; }).length;
+    var b = document.getElementById('notifBadge');
+    if (b) { b.textContent = unread > 9 ? '9+' : String(unread); b.classList.toggle('hidden', unread <= 0); }
+}
+function markAllNotifsRead() { var a = _notifsLoad(); a.forEach(function (x) { x.read = true; }); _notifsSave(a); renderNotifBell(); renderNotifList(); }
+function _notifTimeAgo(ts) { var m = Math.round((Date.now() - ts) / 60000); return m < 1 ? '방금' : (m < 60 ? (m + '분 전') : (Math.round(m / 60) + '시간 전')); }
+function _notifIcon(t) { return t === 'briefing' ? '📰' : (t === 'econ' ? '📊' : (t === 'quad' ? '🧭' : '🔔')); }
+function openNotifTarget(id) {
+    var a = _notifsLoad(); var n = a.find(function (x) { return x.id === id; }); if (!n) return;
+    n.read = true; _notifsSave(a); renderNotifBell(); closeNotifCenter();
+    var t = n.target || {};
+    try {
+        if (t.action === 'briefing') { goToBriefing(); }
+        else if (t.action === 'econ') { goToNewsTab(); setTimeout(scrollToEconResults, 450); }
+        else if (t.action === 'quad') {
+            switchTab('home');
+            setTimeout(function () {
+                var det = document.getElementById('quadDetail');
+                if (det && det.classList.contains('hidden')) { try { toggleQuadDetail(); } catch (e) {} }
+                var el = document.getElementById('quadDashboardCard');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 300);
+        }
+    } catch (e) {}
+}
+function renderNotifList() {
+    var panel = document.getElementById('notifCenter'); if (!panel) return;
+    var a = _notifsLoad();
+    var head = '<div class="flex items-center justify-between px-3 py-2 border-b border-slate-700 sticky top-0 bg-slate-800 z-10"><span class="text-[12px] font-black text-white"><i class="fa-solid fa-bell mr-1.5 text-amber-400"></i>알림</span>'
+        + (a.length ? '<button type="button" onclick="markAllNotifsRead()" class="text-[10px] text-cyan-400 font-bold">모두 읽음</button>' : '') + '</div>';
+    var body = !a.length
+        ? '<div class="p-6 text-center text-slate-500 text-[11px]">새 알림이 없습니다</div>'
+        : a.map(function (n) {
+            return '<button type="button" onclick="openNotifTarget(\'' + n.id + '\')" class="w-full text-left px-3 py-2.5 border-b border-slate-700/50 active:bg-slate-700/40 ' + (n.read ? 'opacity-50' : '') + '">'
+                + '<div class="flex items-start gap-2"><span class="text-[14px] shrink-0">' + _notifIcon(n.type) + '</span>'
+                + '<div class="min-w-0 flex-1"><div class="flex items-center gap-1.5"><span class="text-[12px] font-bold text-white truncate">' + escapeHtml(n.title) + '</span>'
+                + (n.read ? '' : '<span class="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0"></span>') + '</div>'
+                + (n.desc ? '<div class="text-[10.5px] text-slate-400 leading-snug mt-0.5">' + escapeHtml(n.desc) + '</div>' : '')
+                + '<div class="text-[9px] text-slate-500 mt-0.5">' + _notifTimeAgo(n.ts) + '</div></div></div></button>';
+        }).join('');
+    panel.innerHTML = head + body;
+}
+function toggleNotifCenter() {
+    var panel = document.getElementById('notifCenter');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'notifCenter';
+        panel.className = 'hidden fixed top-14 right-2 z-[120] w-72 max-h-[70vh] overflow-y-auto rounded-xl bg-slate-800 border border-slate-700 shadow-2xl';
+        document.body.appendChild(panel);
+    }
+    var hidden = panel.classList.toggle('hidden');
+    if (!hidden) renderNotifList();
+}
+function closeNotifCenter() { var p = document.getElementById('notifCenter'); if (p) p.classList.add('hidden'); }
+
+// 감지 훅
+function detectBriefingNotif(data) {
+    if (!data || !data._cachedAt) return;
+    var last = parseInt(localStorage.getItem(NOTIF_BRIEF_SEEN) || '0', 10) || 0;
+    if (data._cachedAt > last) {
+        localStorage.setItem(NOTIF_BRIEF_SEEN, String(data._cachedAt));
+        if (last > 0) {   // 최초 로드엔 알림 생성 안 함
+            var ov = String(data.overview || (data.quad && data.quad.summary) || '새 시장 브리핑이 도착했습니다');
+            pushNotif({ id: 'brief-' + data._cachedAt, type: 'briefing', title: '새 시장 브리핑', desc: ov.slice(0, 80), ts: data._cachedAt, target: { action: 'briefing' } });
+        }
+    }
+}
+function detectQuadNotif() {
+    if (typeof MACRO_DATA === 'undefined' || !MACRO_DATA || !MACRO_DATA.quad) return;
+    var q = MACRO_DATA.quad;
+    if (q.transitioned && q.current && q.prevQuad) {
+        var names = { 1: '골디락스', 2: '과열', 3: '스태그플레이션', 4: '침체' };
+        pushNotif({ id: 'quad-' + q.prevQuad + '-' + q.current, type: 'quad', title: 'Quad 전환 Q' + q.prevQuad + '→Q' + q.current,
+            desc: (names[q.prevQuad] || '') + ' → ' + (names[q.current] || '') + (q.confirmed ? ' (확정)' : ' (검토중)'), ts: MACRO_DATA._cachedAt || Date.now(), target: { action: 'quad' } });
+    }
 }
 
 // 최근 발표 결과 피드 (캘린더 상단) — 최근 4일, 최대 8개
@@ -1650,6 +1752,7 @@ function initApp() {
         startSectorRotation();
         startHotEtf();
         startGoldHedge();
+        try { renderNotifBell(); } catch (e) {}   // 알림 배지 초기 표시
         syncPositionsToWorker();
         fetchMarketDataInBackground();
         // 종목 시세 주기 갱신 (90초) — 전략탭/ETF카드 가격이 멈추지 않도록
@@ -2759,6 +2862,7 @@ function updateMacroDashboard() {
     try { renderMarketFlow(); } catch(e) {} // 홈 Quad와 시장흐름 Quad 동기화
     try { renderSectorFlow(); } catch(e) {} // 자금흐름 Quad 정합 태그 갱신
     try { renderGoldHedge(); } catch(e) {} // 금 헷지 달러·금리 조건 갱신
+    try { detectQuadNotif(); } catch(e) {} // Quad 전환 알림 감지
     try { maybeRerenderEtfList(); } catch(e) { console.error('[Macro] maybeRerenderEtfList:', e); }
     // 상단 전광판은 Google News RSS (startNewsTicker)가 담당
 }
