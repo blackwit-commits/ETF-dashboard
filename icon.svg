@@ -1,11 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#0f172a"/>
-  <rect x="64" y="64" width="384" height="384" rx="76" fill="#1e293b"/>
-  <rect x="150" y="392" width="212" height="18" rx="9" fill="#334155"/>
-  <polyline points="130,360 200,300 270,332 340,212 398,150"
-            fill="none" stroke="#34d399" stroke-width="26"
-            stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="130" cy="360" r="16" fill="#22d3ee"/>
-  <circle cx="270" cy="332" r="14" fill="#22d3ee"/>
-  <circle cx="398" cy="150" r="22" fill="#34d399"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#0c1325"/>
+      <stop offset="1" stop-color="#17233a"/>
+    </linearGradient>
+    <radialGradient id="topglow" cx="0.7" cy="0.15" r="0.6">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34d399" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#34d399" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="13" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect width="512" height="512" rx="112" fill="url(#topglow)"/>
+  <path d="M104 356 L196 302 L286 330 L360 208 L414 150 L414 442 L104 442 Z" fill="url(#area)"/>
+  <polyline points="104,356 196,302 286,330 360,208 414,150" fill="none"
+            stroke="#34d399" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="104" cy="356" r="12" fill="#22d3ee" stroke="#0f172a" stroke-width="5"/>
+  <circle cx="286" cy="330" r="12" fill="#22d3ee" stroke="#0f172a" stroke-width="5"/>
+  <g filter="url(#glow)"><circle cx="414" cy="150" r="21" fill="#6ee7b7"/></g>
+  <circle cx="414" cy="150" r="10" fill="#f0fdf8"/>
 </svg>
