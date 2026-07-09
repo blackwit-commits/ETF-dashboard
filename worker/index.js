@@ -212,24 +212,30 @@ export default {
       if (!q) return new Response("[]", { headers: jsonHeaders });
 
       try {
-        // 한글 쿼리는 야후가 지원하지 않으므로 영문으로 변환 (별칭 사전 → 번역 폴백)
-        let term = q;
-        if (/[가-힣]/.test(q)) {
-          term = await koreanToSearchTerm(q);
+        const isHangul = /[가-힣]/.test(q);
+        let list = [];
+
+        // ① 한글이면 먼저 Daum으로 한국 종목명→KRX코드 검색 후 Yahoo로 .KS/.KQ 접미사 확정 (전 종목 커버)
+        if (isHangul) {
+          try { list = await koreanStockSearch(q); } catch (e) { list = []; }
         }
 
-        const yahooUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(term)}&quotesCount=10&newsCount=0&listsCount=0&enableFuzzyQuery=false`;
-        const resp = await fetch(yahooUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
-        const data = await resp.json();
-
-        const list = (data.quotes || [])
-          .filter(x => x.symbol && (x.quoteType === "EQUITY" || x.quoteType === "ETF"))
-          .map(x => ({
-            symbol: x.symbol,
-            name: x.shortname || x.longname || "",
-            type: x.quoteType,
-            exchange: x.exchDisp || x.exchange || ""
-          }));
+        // ② 영문/심볼 또는 한글 결과 없음 → Yahoo 검색 (퍼지 ON + 결과수↑로 신규상장·오타 대응)
+        if (!list.length) {
+          let term = q;
+          if (isHangul) { try { term = await koreanToSearchTerm(q); } catch (e) { /* 변환 실패는 원문 사용 */ } }
+          const yahooUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(term)}&quotesCount=15&newsCount=0&listsCount=0&enableFuzzyQuery=true`;
+          const resp = await fetch(yahooUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+          const data = await resp.json();
+          list = (data.quotes || [])
+            .filter(x => x.symbol && (x.quoteType === "EQUITY" || x.quoteType === "ETF"))
+            .map(x => ({
+              symbol: x.symbol,
+              name: x.shortname || x.longname || "",
+              type: x.quoteType,
+              exchange: x.exchDisp || x.exchange || ""
+            }));
+        }
 
         return new Response(JSON.stringify(list), { headers: jsonHeaders });
       } catch (e) {
@@ -813,6 +819,33 @@ function unixToKstDate(sec) {
 function fmtChg(c) {
   if (c == null) return "";
   return (c >= 0 ? "+" : "") + c.toFixed(2) + "%";
+}
+
+// 한국 종목 한글명 검색 — Daum(한글명→KRX코드) + Yahoo(코드→.KS/.KQ) 조합
+async function koreanStockSearch(q) {
+  const r = await fetch(`https://finance.daum.net/api/search/quotes?q=${encodeURIComponent(q)}&limit=10`, {
+    headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://finance.daum.net/", "Accept": "application/json" }
+  });
+  if (!r.ok) return [];
+  const d = await r.json();
+  const stocks = (d.quotes || []).filter(x => x && x.isStock && !x.isDelisted && x.symbolCode).slice(0, 8);
+  if (!stocks.length) return [];
+  const out = await Promise.all(stocks.map(async (s) => {
+    const code = String(s.symbolCode).replace(/^A/, "");
+    const sym = await yahooResolveKr(code);
+    if (!sym) return null;
+    return { symbol: sym, name: s.name || code, type: "EQUITY", exchange: sym.endsWith(".KS") ? "KOSPI" : "KOSDAQ" };
+  }));
+  return out.filter(Boolean);
+}
+// KRX 6자리 코드 → Yahoo 심볼(.KS/.KQ) 확정
+async function yahooResolveKr(code) {
+  try {
+    const r = await fetch(`https://query1.finance.yahoo.com/v1/finance/search?q=${code}&quotesCount=6&newsCount=0`, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const d = await r.json();
+    const hit = (d.quotes || []).find(x => x.symbol && (x.symbol === code + ".KS" || x.symbol === code + ".KQ"));
+    return hit ? hit.symbol : null;
+  } catch (e) { return null; }
 }
 
 // 직전 종가 선택 — 지수(^KS11 등) 일봉 배열이 하루 지연될 때 대응
