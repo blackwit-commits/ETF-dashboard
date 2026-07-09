@@ -1769,6 +1769,8 @@ function initApp() {
         fetchLiveFxRate();
         // 관심목록 로드 + 초기 시세/추세선
         loadWatchlist();
+        loadWatchGroups();
+        try { renderWatchTabs(); } catch (e) {}
         refreshWatchlist();
         // 갱신 시각 라벨 카운트업 (30초마다 — 데이터 갱신과 무관하게 'N분 전' 증가)
         if (!window._updLabelTimer) window._updLabelTimer = setInterval(_renderUpdTimes, 30000);
@@ -3626,6 +3628,113 @@ function loadWatchlist() {
 }
 function saveWatchlist() { try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist)); } catch (e) {} }
 
+// ===== 관심그룹 (사용자 지정 폴더) =====
+var WATCH_GROUPS_KEY = 'umt_watch_groups';
+var watchGroups = [];            // [{id,name}]
+var _watchAddGroup = null;       // 추가 모달에서 선택된 대상 그룹
+function _genGroupId() { return 'g' + Date.now().toString(36) + Math.floor(Math.random() * 1000); }
+function saveWatchGroups() { try { localStorage.setItem(WATCH_GROUPS_KEY, JSON.stringify(watchGroups)); } catch (e) {} }
+function loadWatchGroups() {
+    try { var a = JSON.parse(localStorage.getItem(WATCH_GROUPS_KEY) || 'null'); if (Array.isArray(a) && a.length) watchGroups = a; } catch (e) {}
+    if (!watchGroups.length) watchGroups = [{ id: 'kr', name: '한국' }, { id: 'us', name: '미국' }];
+    // 마이그레이션: 그룹 미지정 아이템을 시장 기준으로 배정
+    var ids = watchGroups.map(function (g) { return g.id; });
+    var changed = false;
+    watchlist.forEach(function (w) {
+        if (!w.group || ids.indexOf(w.group) < 0) {
+            var m = w.market || _watchMarket(w.sym, '');
+            w.group = (m === 'KR' && ids.indexOf('kr') >= 0) ? 'kr' : (ids.indexOf('us') >= 0 ? 'us' : watchGroups[0].id);
+            changed = true;
+        }
+    });
+    if (changed) saveWatchlist();
+}
+function _defaultGroupForMarket(mkt) {
+    var ids = watchGroups.map(function (g) { return g.id; });
+    if (mkt === 'KR' && ids.indexOf('kr') >= 0) return 'kr';
+    if (mkt === 'US' && ids.indexOf('us') >= 0) return 'us';
+    return watchGroups.length ? watchGroups[0].id : 'us';
+}
+function _tabCls(id) { return 'shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold ' + (_watchFilter === id ? 'bg-cyan-600 text-white' : 'text-slate-400'); }
+function renderWatchTabs() {
+    var bar = document.getElementById('watchTabs'); if (!bar) return;
+    var html = '<button onclick="setWatchFilter(\'all\')" class="' + _tabCls('all') + '">전체</button>';
+    watchGroups.forEach(function (g) {
+        var cnt = watchlist.filter(function (w) { return w.group === g.id; }).length;
+        if (_watchEdit) {
+            html += '<span class="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md ' + (_watchFilter === g.id ? 'bg-cyan-600 text-white' : 'bg-slate-700/60 text-slate-300') + '">'
+                + '<button onclick="setWatchFilter(\'' + g.id + '\')" class="text-[10px] font-bold">' + escapeHtml(g.name) + '</button>'
+                + '<button onclick="event.stopPropagation();renameWatchGroup(\'' + g.id + '\')" title="이름변경" class="opacity-80"><i class="fa-solid fa-pen text-[8px]"></i></button>'
+                + '<button onclick="event.stopPropagation();deleteWatchGroup(\'' + g.id + '\')" title="삭제" class="text-red-300"><i class="fa-solid fa-xmark text-[9px]"></i></button>'
+                + '</span>';
+        } else {
+            html += '<button onclick="setWatchFilter(\'' + g.id + '\')" class="' + _tabCls(g.id) + '">' + escapeHtml(g.name) + ' <span class="opacity-60">' + cnt + '</span></button>';
+        }
+    });
+    html += '<button onclick="addWatchGroup()" title="그룹 추가" class="shrink-0 px-2 py-0.5 rounded-md text-[11px] font-bold text-cyan-400 hover:text-cyan-300"><i class="fa-solid fa-plus"></i></button>';
+    bar.innerHTML = html;
+}
+function addWatchGroup() {
+    uiPrompt('새 관심그룹 이름', '', function (name) {
+        if (!name) return;
+        watchGroups.push({ id: _genGroupId(), name: name.slice(0, 16) });
+        saveWatchGroups(); renderWatchTabs();
+    });
+}
+function renameWatchGroup(id) {
+    var g = watchGroups.find(function (x) { return x.id === id; }); if (!g) return;
+    uiPrompt('그룹 이름 변경', g.name, function (name) { if (!name) return; g.name = name.slice(0, 16); saveWatchGroups(); renderWatchTabs(); });
+}
+function deleteWatchGroup(id) {
+    if (watchGroups.length <= 1) { showToast('그룹은 최소 1개는 있어야 해요'); return; }
+    var g = watchGroups.find(function (x) { return x.id === id; }); if (!g) return;
+    var cnt = watchlist.filter(function (w) { return w.group === id; }).length;
+    uiConfirm('"' + g.name + '" 그룹을 삭제할까요?' + (cnt ? ('\n안의 ' + cnt + '개 종목은 첫 그룹으로 이동됩니다.') : ''), function () {
+        watchGroups = watchGroups.filter(function (x) { return x.id !== id; });
+        var target = watchGroups[0].id;
+        watchlist.forEach(function (w) { if (w.group === id) w.group = target; });
+        saveWatchGroups(); saveWatchlist();
+        if (_watchFilter === id) _watchFilter = 'all';
+        renderWatchTabs(); renderWatchlist();
+    }, { danger: true, okText: '삭제', title: '그룹 삭제' });
+}
+function moveWatchItem(sym, groupId) {
+    var w = watchlist.find(function (x) { return x.sym === sym; }); if (!w) return;
+    w.group = groupId; saveWatchlist(); renderWatchlist();
+}
+// 추가 모달 그룹 선택 칩
+function renderWatchAddGroups() {
+    var box = document.getElementById('watchAddGroupChips'); if (!box) return;
+    box.innerHTML = watchGroups.map(function (g) {
+        var on = (_watchAddGroup === g.id);
+        return '<button onclick="_watchAddGroup=\'' + g.id + '\';renderWatchAddGroups()" class="px-2.5 py-1 rounded-full text-[11px] font-bold ' + (on ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700') + '">' + escapeHtml(g.name) + '</button>';
+    }).join('');
+}
+// 앱 스타일 입력 프롬프트
+function uiPrompt(title, defVal, onOk) {
+    var ov = document.getElementById('uiPromptOverlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'uiPromptOverlay';
+        ov.className = 'fixed inset-0 z-[210] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6';
+        ov.style.display = 'none';
+        ov.innerHTML = '<div class="w-full max-w-xs rounded-2xl bg-slate-800 border border-slate-700 p-4 shadow-2xl">'
+            + '<div id="uiPromptTitle" class="text-sm font-black text-white mb-2"></div>'
+            + '<input id="uiPromptInput" maxlength="16" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm mb-4 focus:outline-none focus:border-cyan-500">'
+            + '<div class="flex gap-2"><button id="uiPromptCancel" class="flex-1 py-2.5 rounded-lg bg-slate-700 text-slate-200 text-sm font-bold">취소</button>'
+            + '<button id="uiPromptOk" class="flex-1 py-2.5 rounded-lg bg-cyan-600 text-white text-sm font-black">확인</button></div></div>';
+        document.body.appendChild(ov);
+    }
+    document.getElementById('uiPromptTitle').textContent = title || '';
+    var inp = document.getElementById('uiPromptInput'); inp.value = defVal || '';
+    ov.style.display = 'flex'; setTimeout(function () { try { inp.focus(); } catch (e) {} }, 50);
+    function close() { ov.style.display = 'none'; }
+    document.getElementById('uiPromptOk').onclick = function () { var v = inp.value.trim(); close(); if (onOk) onOk(v); };
+    document.getElementById('uiPromptCancel').onclick = function () { close(); };
+    inp.onkeydown = function (e) { if (e.key === 'Enter') document.getElementById('uiPromptOk').click(); };
+    ov.onclick = function (e) { if (e.target === ov) close(); };
+}
+
 function _watchMarket(sym, exchange) {
     var s = String(sym || '').toUpperCase();
     if (/\.(KS|KQ)$/.test(s) || s === '^KS11' || s === '^KQ11') return 'KR';
@@ -3642,10 +3751,7 @@ function fmtVolume(v) {
 
 function setWatchFilter(f) {
     _watchFilter = f;
-    ['all', 'KR', 'US'].forEach(function (x) {
-        var b = document.getElementById('watchF_' + x);
-        if (b) b.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (x === f ? 'bg-cyan-600 text-white' : 'text-slate-400');
-    });
+    renderWatchTabs();
     renderWatchlist();
 }
 function setWatchSort(s) { _watchSort = s; renderWatchlist(); }
@@ -3653,6 +3759,7 @@ function toggleWatchEdit() {
     _watchEdit = !_watchEdit;
     var b = document.getElementById('watchEditBtn');
     if (b) b.className = 'w-7 h-7 flex items-center justify-center rounded-full text-[11px] ' + (_watchEdit ? 'bg-amber-500 text-white' : 'bg-slate-800 text-slate-400 hover:text-white');
+    renderWatchTabs();
     renderWatchlist();
 }
 
@@ -3683,6 +3790,9 @@ function _watchRowHtml(w) {
     if (sc && isExt && q.extPrice != null) sc = sc.concat([q.extPrice]);   // 프리/애프터가를 선 끝에 이어붙임
     var spark = sc ? '<span class="inline-block align-middle" style="width:54px;height:13px">' + sparkSvg(sc, 54, 13, base) + '</span>' : '';
     var del = _watchEdit ? '<button onclick="event.stopPropagation();removeFromWatch(\'' + w.sym + '\')" class="w-6 h-6 flex items-center justify-center bg-red-500/20 text-red-400 rounded-full text-[11px] shrink-0"><i class="fa-solid fa-minus"></i></button>' : '';
+    // 편집 모드: 그룹 이동 셀렉트
+    var moveCtl = _watchEdit ? '<select onclick="event.stopPropagation()" onchange="event.stopPropagation();moveWatchItem(\'' + w.sym + '\',this.value)" class="shrink-0 bg-slate-800 text-[9px] text-slate-300 rounded px-1 py-0.5 border border-slate-700 max-w-[70px]">'
+        + watchGroups.map(function (g) { return '<option value="' + g.id + '"' + (g.id === w.group ? ' selected' : '') + '>' + escapeHtml(g.name) + '</option>'; }).join('') + '</select>' : '';
     return '<div class="py-2 flex items-center gap-2 cursor-pointer active:bg-slate-800/40" onclick="openIndexChart(\'' + w.sym + '\',\'' + escapeHtml(w.name || w.sym).replace(/'/g, '') + '\')">'
         + del
         + '<div class="flex-1 min-w-0">'
@@ -3691,6 +3801,7 @@ function _watchRowHtml(w) {
         + '<span class="text-[10px] text-slate-400 truncate">' + escapeHtml(w.name || '') + '</span></div>'
         + '<div class="text-[10px] text-slate-500 mt-0.5 flex items-center"><span class="shrink-0" style="width:82px">거래량 ' + fmtVolume(q.volume) + '</span>' + (spark ? spark : '') + '</div>'
         + '</div>'
+        + moveCtl
         + '<div class="text-right shrink-0"><div class="text-[13px] font-black text-white">' + priceStr + extTag + '</div>'
         + '<div class="text-[11px] font-bold ' + chgClass(showChg) + '">' + fmtChgPct(showChg) + '</div></div>'
         + '</div>';
@@ -3710,17 +3821,20 @@ function renderWatchlist() {
         if (_watchSort === 'name') return String(a.name || a.sym).localeCompare(String(b.name || b.sym));
         return 0;
     };
-    // 필터(시장) → 유형별 섹션 그룹 (미국 ETF / 미국 개별종목 / 국내 …)
-    var groups = WATCH_GROUPS.filter(function (g) { return _watchFilter === 'all' || g.market === _watchFilter; });
+    try { renderWatchTabs(); } catch (e) {}
+    // 사용자 지정 그룹으로 분류 — 전체=그룹별 섹션 / 특정 그룹=평면 리스트
+    var groupsToShow = (_watchFilter === 'all') ? watchGroups : watchGroups.filter(function (g) { return g.id === _watchFilter; });
     var html = '', shown = 0;
-    groups.forEach(function (g) {
-        var items = watchlist.filter(function (w) { return w.market === g.market && _watchType(w) === g.type; }).slice().sort(sortFn);
+    groupsToShow.forEach(function (g) {
+        var items = watchlist.filter(function (w) { return w.group === g.id; }).slice().sort(sortFn);
         if (!items.length) return;
         shown += items.length;
-        html += '<div class="pt-2 first:pt-0"><div class="text-[10px] font-bold text-slate-500 px-0.5 pb-1">' + g.label + ' <span class="text-slate-600">' + items.length + '</span></div>'
-            + '<div class="divide-y divide-slate-700/50">' + items.map(_watchRowHtml).join('') + '</div></div>';
+        var header = (_watchFilter === 'all')
+            ? '<div class="text-[10px] font-bold text-slate-500 px-0.5 pb-1 pt-2 first:pt-0">' + escapeHtml(g.name) + ' <span class="text-slate-600">' + items.length + '</span></div>'
+            : '';
+        html += '<div>' + header + '<div class="divide-y divide-slate-700/50">' + items.map(_watchRowHtml).join('') + '</div></div>';
     });
-    if (!shown) { box.innerHTML = '<div class="py-6 text-center text-slate-500 text-xs">해당 조건에 담은 종목이 없어요.</div>'; return; }
+    if (!shown) { box.innerHTML = '<div class="py-6 text-center text-slate-500 text-xs">이 그룹에 담은 종목이 없어요.<br><span class="text-slate-600">우측 상단 <i class="fa-solid fa-plus"></i> 로 담아보세요.</span></div>'; return; }
     box.innerHTML = html;
 }
 
@@ -3762,6 +3876,9 @@ function openWatchAddModal() {
     m.classList.remove('hidden'); m.classList.add('flex');
     var inp = document.getElementById('watchSearchInput'); if (inp) inp.value = '';
     _watchSearchSeq++; _lastWatchQuery = null;
+    // 대상 그룹 기본값: 현재 활성 그룹(특정) → 아니면 첫 그룹
+    _watchAddGroup = (_watchFilter && _watchFilter !== 'all') ? _watchFilter : (watchGroups.length ? watchGroups[0].id : null);
+    renderWatchAddGroups();
     renderWatchSearchLocal(ETF_DB);   // 기본: 등록 ETF 유니버스 제안
 }
 function closeWatchAddModal() { var m = document.getElementById('watchAddModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
@@ -3824,7 +3941,10 @@ function addToWatch(sym, name, market, type) {
     if (watchlist.some(function (w) { return w.sym === sym; })) { showToast('이미 관심목록에 있어요'); return; }
     var mkt = market || _watchMarket(sym, '');
     var typ = (type === 'ETF' || type === 'STOCK') ? type : (ETF_DB.some(function (e) { return e.sym === sym; }) ? 'ETF' : 'STOCK');
-    watchlist.push({ sym: sym, name: name || sym, market: mkt, type: typ });
+    // 대상 그룹: 추가모달에서 고른 그룹 → 없으면 현재 활성 그룹 → 시장 기준 기본
+    var grp = _watchAddGroup || (_watchFilter && _watchFilter !== 'all' ? _watchFilter : _defaultGroupForMarket(mkt));
+    if (!watchGroups.some(function (g) { return g.id === grp; })) grp = _defaultGroupForMarket(mkt);
+    watchlist.push({ sym: sym, name: name || sym, market: mkt, type: typ, group: grp });
     saveWatchlist();
     WATCH_SPARK[sym] = null; _watchSparkTs = 0;
     renderWatchlist(); refreshWatchlist();

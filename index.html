@@ -19,7 +19,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260710b">
+    <link rel="stylesheet" href="style.css?v=20260710c">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -160,12 +160,8 @@
                     </div>
                 </div>
                 <div class="flex justify-between items-center mb-2 gap-2">
-                    <div class="flex gap-1 bg-slate-800/70 rounded-lg p-0.5">
-                        <button id="watchF_all" onclick="setWatchFilter('all')" class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-cyan-600 text-white">전체</button>
-                        <button id="watchF_KR" onclick="setWatchFilter('KR')" class="px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-400">🇰🇷 국내</button>
-                        <button id="watchF_US" onclick="setWatchFilter('US')" class="px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-400">🇺🇸 미국</button>
-                    </div>
-                    <select id="watchSort" onchange="setWatchSort(this.value)" class="bg-slate-800 text-slate-300 text-[10px] font-bold rounded-lg px-2 py-1 border border-slate-700 focus:outline-none">
+                    <div id="watchTabs" class="flex gap-1 bg-slate-800/70 rounded-lg p-0.5 overflow-x-auto min-w-0"></div>
+                    <select id="watchSort" onchange="setWatchSort(this.value)" class="shrink-0 bg-slate-800 text-slate-300 text-[10px] font-bold rounded-lg px-2 py-1 border border-slate-700 focus:outline-none">
                         <option value="chg">등락률순</option>
                         <option value="volume">거래량순</option>
                         <option value="name">이름순</option>
@@ -1015,7 +1011,7 @@
     <div id="etfSearchModal" class="fixed inset-0 bg-black/90 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm"><div class="bg-slate-900 rounded-2xl w-full max-w-lg h-[80vh] flex flex-col border border-slate-700 shadow-2xl"><div class="p-4 border-b border-slate-700 flex justify-between items-center"><h3 class="font-bold text-white text-lg">종목 추가 (ETF · 일반 주식)</h3><button onclick="closeEtfSearchModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark fa-lg"></i></button></div><div class="p-3 bg-slate-800"><div class="relative"><i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-500"></i><input type="text" id="etfSearchInput" placeholder="심볼/이름 검색 또는 직접 입력 (예: TQQQ, AAPL, NVDA)" class="w-full p-3 pl-10 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold" oninput="filterEtfSearch()"></div><div class="text-[10px] text-slate-500 mt-1.5 ml-1">목록에 없는 일반 종목은 심볼을 입력하면 직접 추가할 수 있습니다.</div></div><div class="flex-1 overflow-y-auto p-3 grid gap-2 content-start" id="etfSearchGrid"></div></div></div>
     
     <!-- 관심목록 추가(검색) 모달 -->
-    <div id="watchAddModal" class="fixed inset-0 bg-black/90 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm"><div class="bg-slate-900 rounded-2xl w-full max-w-lg h-[80vh] flex flex-col border border-slate-700 shadow-2xl"><div class="p-4 border-b border-slate-700 flex justify-between items-center"><h3 class="font-bold text-white text-lg"><i class="fa-solid fa-star text-amber-400 mr-2"></i>관심목록에 추가</h3><button onclick="closeWatchAddModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark fa-lg"></i></button></div><div class="p-3 bg-slate-800"><div class="relative"><i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-500"></i><input type="text" id="watchSearchInput" placeholder="종목명·심볼 검색 (예: 애플, AAPL, 삼성전자)" class="w-full p-3 pl-10 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold" oninput="filterWatchSearch()"></div><div class="text-[10px] text-slate-500 mt-1.5 ml-1">국내 종목은 자동으로 🇰🇷로 분류됩니다. 심볼 직접 입력도 가능.</div></div><div class="flex-1 overflow-y-auto p-3 grid gap-2 content-start" id="watchSearchGrid"></div></div></div>
+    <div id="watchAddModal" class="fixed inset-0 bg-black/90 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm"><div class="bg-slate-900 rounded-2xl w-full max-w-lg h-[80vh] flex flex-col border border-slate-700 shadow-2xl"><div class="p-4 border-b border-slate-700 flex justify-between items-center"><h3 class="font-bold text-white text-lg"><i class="fa-solid fa-star text-amber-400 mr-2"></i>관심목록에 추가</h3><button onclick="closeWatchAddModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark fa-lg"></i></button></div><div class="p-3 bg-slate-800"><div class="relative"><i class="fa-solid fa-magnifying-glass absolute left-4 top-3.5 text-slate-500"></i><input type="text" id="watchSearchInput" placeholder="종목명·심볼 검색 (예: 애플, AAPL, 삼성전자)" class="w-full p-3 pl-10 rounded-xl bg-slate-900 border border-slate-700 text-white font-bold" oninput="filterWatchSearch()"></div><div class="text-[10px] text-slate-500 mt-1.5 ml-1">담을 그룹을 고르세요 · 심볼 직접 입력도 가능</div><div id="watchAddGroupChips" class="flex gap-1.5 flex-wrap mt-2"></div></div><div class="flex-1 overflow-y-auto p-3 grid gap-2 content-start" id="watchSearchGrid"></div></div></div>
 
     <div id="cycleResetModal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-slate-900 rounded-2xl w-full max-w-sm border border-purple-500/40 shadow-2xl overflow-hidden">
@@ -1075,7 +1071,7 @@
             <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20260710b"></script>
+    <script src="script.js?v=20260710c"></script>
     <script>
     if('serviceWorker' in navigator){
         window.addEventListener('load',function(){
