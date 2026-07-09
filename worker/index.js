@@ -1673,8 +1673,31 @@ async function refreshMacroNowcastOnly(env) {
 const HOT_KV_KEY = "hot_latest";
 const HOT_KV_TTL_MS = 3 * 60 * 60 * 1000; // 3시간 신선도 (초과 시 stale 반환 + 백그라운드 갱신)
 
+// 브리핑용 실측 미국 섹터 등락 (6:30 기준) — 서사 방향 오류 방지
+const HOT_SECTORS = [["SMH", "반도체"], ["XLK", "기술"], ["XLC", "커뮤니케이션"], ["XLY", "임의소비"], ["XLF", "금융"], ["XLE", "에너지"], ["XLV", "헬스케어"], ["XLI", "산업재"], ["XLB", "소재"], ["XLP", "필수소비"], ["XLU", "유틸리티"], ["XLRE", "부동산"]];
+// 섹터명 키워드 → 대표 심볼 (Gemini 섹터명 매칭용)
+const HOT_SECTOR_KW = { "반도체": ["SMH", "XLK"], "기술": ["XLK"], "IT": ["XLK"], "소프트": ["XLK"], "커뮤니": ["XLC"], "미디어": ["XLC"], "인터넷": ["XLC"], "임의소비": ["XLY"], "소비": ["XLY"], "금융": ["XLF"], "은행": ["XLF"], "에너지": ["XLE"], "석유": ["XLE"], "정유": ["XLE"], "헬스": ["XLV"], "바이오": ["XLV"], "제약": ["XLV"], "산업": ["XLI"], "방산": ["XLI"], "항공": ["XLI"], "소재": ["XLB"], "화학": ["XLB"], "필수": ["XLP"], "유틸": ["XLU"], "부동산": ["XLRE"], "리츠": ["XLRE"] };
+
 async function refreshHotToKV(env, source) {
-  const result = await callGeminiHotIssues(env.GEMINI_API_KEY);
+  // 실측 섹터 등락 + 세션 판정 (KST 06:30~15:30 = 미국 마감 브리핑)
+  let realCtx = "", secBySym = {};
+  const kstMin = Math.floor(((Date.now() / 60000) + 9 * 60) % 1440);
+  const session = (kstMin >= 6 * 60 + 30 && kstMin < 15 * 60 + 30) ? "US" : "KR";
+  try {
+    const rows = await Promise.all(HOT_SECTORS.map(([s, ko]) =>
+      fetchSectorChanges(s).then(q => ({ s, ko, chg: (q && q.chg1d != null) ? q.chg1d : null })).catch(() => ({ s, ko, chg: null }))));
+    rows.forEach(r => { if (r.chg != null) secBySym[r.s] = r.chg; });
+    const valid = rows.filter(r => r.chg != null);
+    const up = valid.filter(r => r.chg > 0.2).sort((a, b) => b.chg - a.chg);
+    const dn = valid.filter(r => r.chg < -0.2).sort((a, b) => a.chg - b.chg);
+    const fmt = (r) => r.ko + "(" + (r.chg > 0 ? "+" : "") + r.chg.toFixed(1) + "%)";
+    if (valid.length) realCtx = "실제 최근 미국장 섹터 등락(6:30 KST 기준): "
+      + (up.length ? "강세 " + up.map(fmt).join(", ") : "뚜렷한 강세 없음")
+      + " / " + (dn.length ? "약세 " + dn.map(fmt).join(", ") : "뚜렷한 약세 없음");
+  } catch (e) { /* 실측 실패는 무시 */ }
+
+  const result = await callGeminiHotIssues(env.GEMINI_API_KEY, [], realCtx, session);
+
   // 실제 지수 등락으로 시장 방향(dir) 보정 — Gemini가 상승/하락을 틀리게 판정하는 문제 방지
   try {
     if (result && result.markets) {
@@ -1685,6 +1708,27 @@ async function refreshHotToKV(env, source) {
       if (result.markets.kr && dk) result.markets.kr.dir = dk;
     }
   } catch (e) { /* 보정 실패는 무시 */ }
+
+  // 섹터 방향 실측 보정 — Gemini sectors[].dir을 실제 등락 방향에 강제 일치 (반도체 상승인데 하락 표기 방지)
+  try {
+    if (result && Array.isArray(result.sectors) && Object.keys(secBySym).length) {
+      result.sectors.forEach(sec => {
+        if (!sec || !sec.name) return;
+        for (const k in HOT_SECTOR_KW) {
+          if (sec.name.indexOf(k) >= 0) {
+            for (const sym of HOT_SECTOR_KW[k]) {
+              if (secBySym[sym] != null) {
+                const realDir = secBySym[sym] > 0 ? "up" : "down";
+                if (sec.dir !== realDir) { sec.dir = realDir; sec.reason = ""; }  // 방향 뒤집힘 → 모순되는 이유 제거
+                return;
+              }
+            }
+          }
+        }
+      });
+    }
+  } catch (e) { /* 무시 */ }
+  result._session = session;
   result._cachedAt = Date.now();
   result._source = source || "ondemand";
   if (env.UMT_KV) {
@@ -1962,11 +2006,20 @@ function salvageObjects(text, pred) {
   return found;
 }
 
-async function callGeminiHotIssues(apiKey, symbols = []) {
+async function callGeminiHotIssues(apiKey, symbols = [], realCtx = "", session = "") {
+  let prompt = HOT_PROMPT;
+  // 세션: 오전 6:30 미국 마감 브리핑 → 미국 중심(+중요 해외이슈), 한국 시장 서술 생략
+  if (session === "US") {
+    prompt += `\n\n[세션] 지금은 오전 6시반 '미국 마감 브리핑'입니다. 전날 밤(한국 23시~오전 6시) 미국 정규장에서 시장을 움직인 핵심 뉴스·실적·발언을 우선하세요. overview·markets·sectors·items를 모두 미국 시장 중심으로 작성하세요. markets.kr은 dir을 'mixed', reason을 빈 문자열("")로 두어 한국 시장 서술은 생략합니다. 단, 시장에 영향을 준 중요한 해외/글로벌 이슈(지정학·무역·타 지역 급변 등)가 있으면 items에 반드시 포함하세요.`;
+  }
+  // 실측 섹터 등락 주입 — 서사 방향을 실제와 일치시킴
+  if (realCtx) {
+    prompt += `\n\n[실측 데이터 — 반드시 준수] ${realCtx}\nsectors[]의 dir(방향)과 reason은 위 실제 등락과 반드시 일치해야 합니다. 실제로 오른 섹터를 내렸다고 쓰지 마세요. 각 섹터가 왜 그 방향으로 움직였는지(간밤 미국장 실적·뉴스·금리·유가 등)를 이유로 설명하세요.`;
+  }
   // 보유 종목이 주어지면 종목별 '오늘 등락 이유'를 한국어로 분석하도록 프롬프트에 주입
-  const prompt = HOT_PROMPT + (symbols && symbols.length
-    ? `\n\n추가 작업: 다음 보유 종목 각각에 대해 '오늘(또는 최근 거래일) 주가가 오른/내린 이유'를 한국어 1~2문장으로 명확히 분석해, 최상위 "holdings_analysis" 객체에 {"<티커>":"<상승 또는 하락 + 핵심 원인>"} 형태로 포함하세요. 방향(상승/하락)을 반드시 밝히고 구체적 원인을 쓰세요. 대상 종목: ${symbols.join(", ")}`
-    : "");
+  if (symbols && symbols.length) {
+    prompt += `\n\n추가 작업: 다음 보유 종목 각각에 대해 '오늘(또는 최근 거래일) 주가가 오른/내린 이유'를 한국어 1~2문장으로 명확히 분석해, 최상위 "holdings_analysis" 객체에 {"<티커>":"<상승 또는 하락 + 핵심 원인>"} 형태로 포함하세요. 방향(상승/하락)을 반드시 밝히고 구체적 원인을 쓰세요. 대상 종목: ${symbols.join(", ")}`;
+  }
   let lastErr = "unknown";
   for (let attempt = 0; attempt < 2; attempt++) {
     const data = await callGeminiWithFallback(apiKey, {

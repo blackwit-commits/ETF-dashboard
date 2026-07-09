@@ -726,14 +726,19 @@ function renderBriefingData() {
         } else secEl.innerHTML = '';
     }
 
-    // ③ 한국 시장 (실측)
+    // ③ 한국 시장 (실측) — 오전 6:30 미국 마감 브리핑에서는 숨김(미국 중심)
     var krEl = document.getElementById('briefKorea');
     if (krEl) {
-        var kr = _briefQuoteRow('코스피', Q['^KS11'])
-            + _briefQuoteRow('코스닥', Q['^KQ11'])
-            + _briefQuoteRow('삼성전자', Q['005930.KS'], { krw: true })
-            + _briefQuoteRow('SK하이닉스', Q['000660.KS'], { krw: true });
-        krEl.innerHTML = kr ? _briefCard('🇰🇷 한국 시장', kr) : '';
+        var _sess = (typeof _briefingSession === 'function') ? _briefingSession() : { market: 'KR' };
+        if (_sess.market === 'US') {
+            krEl.innerHTML = '';
+        } else {
+            var kr = _briefQuoteRow('코스피', Q['^KS11'])
+                + _briefQuoteRow('코스닥', Q['^KQ11'])
+                + _briefQuoteRow('삼성전자', Q['005930.KS'], { krw: true })
+                + _briefQuoteRow('SK하이닉스', Q['000660.KS'], { krw: true });
+            krEl.innerHTML = kr ? _briefCard('🇰🇷 한국 시장', kr) : '';
+        }
     }
 
     // ④ 원자재 · 암호화폐 (실측)
