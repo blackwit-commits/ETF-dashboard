@@ -5078,7 +5078,9 @@ function renderStrategyProgressCard(sym) {
     set('progressRemainKrw', formatKrw(remainUsd));
     renderExecChart(investedUsd, remainUsd, execRate, allocUsd);
 
-    var currentPrice = (MARKET_SNAPSHOT[sym] && MARKET_SNAPSHOT[sym].price > 0) ? MARKET_SNAPSHOT[sym].price : ((d.marketData && d.marketData.price > 0) ? d.marketData.price : (d.avgPrice || 0));
+    // 현재가는 보유종목 상태 카드와 동일하게 프리/애프터장 반영(mdPrice) — 두 카드 수익률 불일치 방지
+    var _mdCur = MARKET_SNAPSHOT[sym] || d.marketData || {};
+    var currentPrice = (typeof mdPrice === 'function' ? mdPrice(_mdCur) : (_mdCur.price || 0)) || (d.avgPrice || 0);
 
     // 매도 진행 표시 (현재 사이클 기준)
     const sellStageEl = document.getElementById('progressSellStage');
@@ -5900,7 +5902,7 @@ function calculatePlan() {
             else if (boughtQty > 0) statusBadge = '<span class="text-yellow-500 font-bold text-[10px]">진행</span>';
             tbody.innerHTML += `
         <tr class="border-b border-slate-800/50 hover:bg-slate-800/30 transition bg-slate-800/20">
-            <td class="p-2 text-center text-slate-500 font-medium">${stageNum}차 <span class="text-[9px] text-red-400/80 block">부스터 (${bDrop.toFixed(2)}%)</span></td>
+            <td class="p-2 text-center font-medium"><div class="text-slate-300">${stageNum}차</div><span class="inline-flex items-center gap-0.5 text-[8px] font-black px-1 py-0.5 rounded bg-red-500/20 text-red-300 mt-0.5"><i class="fa-solid fa-rocket text-[7px]"></i>부스터 ${bDrop.toFixed(1)}%</span></td>
             <td class="p-2 text-center text-blue-300 font-bold align-middle">$${targetPrice.toFixed(2)}</td>
             <td class="p-2 text-center align-middle">${actualPriceCell(actualBuyPrice, targetPrice)}</td>
             <td class="p-2 text-center align-middle">${actualQtyCell(qty, boughtQty)}</td>
