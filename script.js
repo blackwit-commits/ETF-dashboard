@@ -4466,7 +4466,7 @@ function openIndexChart(sym, name) {
     var titleEl = document.getElementById('macroChartTitle');
     if (!modal) return;
     _idxCtx = { sym: sym, name: name };
-    _indexInterval = '5m';
+    _indexInterval = '1d';   // 기본 일봉 (요청)
     if (titleEl) titleEl.innerText = name;
     modal.classList.remove('hidden'); modal.classList.add('flex');
     _renderIndexToggle();
@@ -4597,7 +4597,8 @@ async function _drawIndexChart() {
         var qd = INDEX_QUOTE_MAP[sym] || {};
         var dec = _symDec(sym);
         var baseP = (qd.price != null && qd.chg != null && (1 + qd.chg / 100) !== 0) ? qd.price / (1 + qd.chg / 100) : null;
-        if (baseP != null) { try { cs.createPriceLine({ price: baseP, color: '#64748b', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '전일' }); } catch (e) {} }
+        // '전일' 기준선은 당일(분봉) 차트에서만 — 일/주봉엔 차트를 가리므로 생략
+        if (intraday && baseP != null) { try { cs.createPriceLine({ price: baseP, color: '#64748b', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '전일' }); } catch (e) {} }
         chart.timeScale().fitContent();
         _indexChart = chart;
 
