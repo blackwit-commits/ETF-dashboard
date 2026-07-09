@@ -5902,7 +5902,7 @@ function calculatePlan() {
             else if (boughtQty > 0) statusBadge = '<span class="text-yellow-500 font-bold text-[10px]">진행</span>';
             tbody.innerHTML += `
         <tr class="border-b border-slate-800/50 hover:bg-slate-800/30 transition bg-slate-800/20">
-            <td class="p-2 text-center font-medium whitespace-normal"><div class="text-slate-300">${stageNum}차</div><span class="inline-block text-[8px] font-black px-1 py-0.5 rounded bg-red-500/20 text-red-300 mt-0.5 leading-tight"><i class="fa-solid fa-rocket text-[7px] mr-0.5"></i>부스터 ${Math.round(bDrop)}%</span></td>
+            <td class="p-2 text-center font-medium leading-tight"><div class="text-slate-300">${stageNum}차</div><span class="inline-block text-[8px] font-black px-1 py-0.5 rounded bg-red-500/20 text-red-300 mt-0.5 whitespace-nowrap"><i class="fa-solid fa-rocket text-[7px] mr-0.5"></i>부스터</span><div class="text-[8px] text-red-400/70 mt-0.5">${Math.round(bDrop)}%</div></td>
             <td class="p-2 text-center text-blue-300 font-bold align-middle">$${targetPrice.toFixed(2)}</td>
             <td class="p-2 text-center align-middle">${actualPriceCell(actualBuyPrice, targetPrice)}</td>
             <td class="p-2 text-center align-middle">${actualQtyCell(qty, boughtQty)}</td>
