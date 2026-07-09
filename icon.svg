@@ -1,29 +1,40 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0.3" y2="1">
-      <stop offset="0" stop-color="#0c1325"/>
-      <stop offset="1" stop-color="#17233a"/>
+      <stop offset="0" stop-color="#0c1325"/><stop offset="1" stop-color="#17233a"/>
     </linearGradient>
-    <radialGradient id="topglow" cx="0.7" cy="0.15" r="0.6">
-      <stop offset="0" stop-color="#38bdf8" stop-opacity="0.16"/>
-      <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="area" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#34d399" stop-opacity="0.34"/>
-      <stop offset="1" stop-color="#34d399" stop-opacity="0"/>
+    <linearGradient id="nut" x1="0" y1="0.35" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8a54a"/><stop offset="1" stop-color="#d26824"/>
+    </linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#aa6834"/><stop offset="1" stop-color="#784824"/>
     </linearGradient>
     <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur stdDeviation="13" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      <feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
+    <clipPath id="nutclip"><path d="M170 214 L342 214 Q392 322 256 412 Q120 322 170 214 Z"/></clipPath>
+    <clipPath id="capclip"><path d="M142 215 A114 97 0 0 1 370 215 Z"/></clipPath>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <rect width="512" height="512" rx="112" fill="url(#topglow)"/>
-  <path d="M104 356 L196 302 L286 330 L360 208 L414 150 L414 442 L104 442 Z" fill="url(#area)"/>
-  <polyline points="104,356 196,302 286,330 360,208 414,150" fill="none"
-            stroke="#34d399" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="104" cy="356" r="12" fill="#22d3ee" stroke="#0f172a" stroke-width="5"/>
-  <circle cx="286" cy="330" r="12" fill="#22d3ee" stroke="#0f172a" stroke-width="5"/>
-  <g filter="url(#glow)"><circle cx="414" cy="150" r="21" fill="#6ee7b7"/></g>
-  <circle cx="414" cy="150" r="10" fill="#f0fdf8"/>
+  <!-- 견과 몸통 -->
+  <path d="M170 214 L342 214 Q392 322 256 412 Q120 322 170 214 Z" fill="url(#nut)"/>
+  <g clip-path="url(#nutclip)">
+    <path d="M214 236 L198 358" stroke="#ffdcaa" stroke-width="16" stroke-linecap="round" opacity="0.5"/>
+    <polygon points="196,352 232,320 266,338 300,290 330,252 330,400 196,400" fill="#ffffff" opacity="0.10"/>
+    <polyline points="196,352 232,320 266,338 300,290 330,252" fill="none" stroke="#ffffff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="196" cy="352" r="6" fill="#ffffff"/><circle cx="266" cy="338" r="6" fill="#ffffff"/>
+  </g>
+  <path d="M170 214 L342 214 Q392 322 256 412 Q120 322 170 214 Z" fill="none" stroke="#4a2611" stroke-width="9" stroke-linejoin="round"/>
+  <!-- 깍정이(캡) -->
+  <path d="M142 215 A114 97 0 0 1 370 215 Z" fill="url(#cap)"/>
+  <g clip-path="url(#capclip)" stroke="#6e4020" stroke-width="4" opacity="0.5" fill="none">
+    <path d="M120 250 L250 90 M170 300 L320 110 M220 320 L380 140 M70 210 L200 70"/>
+    <path d="M392 250 L262 90 M342 300 L192 110 M292 320 L132 140 M442 210 L312 70"/>
+  </g>
+  <path d="M142 215 A114 97 0 0 1 370 215 Z" fill="none" stroke="#4a2611" stroke-width="9" stroke-linejoin="round"/>
+  <line x1="150" y1="214" x2="362" y2="214" stroke="#4a2611" stroke-width="9" stroke-linecap="round"/>
+  <rect x="246" y="92" width="22" height="36" rx="10" fill="#784824" stroke="#4a2611" stroke-width="6"/>
+  <!-- 상승 팁 -->
+  <g filter="url(#glow)"><circle cx="330" cy="252" r="13" fill="#34d399"/></g>
+  <circle cx="330" cy="252" r="6" fill="#f0fdf8"/>
 </svg>
