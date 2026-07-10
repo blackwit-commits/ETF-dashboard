@@ -3794,6 +3794,7 @@ function _watchRowHtml(w) {
     var moveCtl = _watchEdit ? '<select onclick="event.stopPropagation()" onchange="event.stopPropagation();moveWatchItem(\'' + w.sym + '\',this.value)" class="shrink-0 bg-slate-800 text-[9px] text-slate-300 rounded px-1 py-0.5 border border-slate-700 max-w-[70px]">'
         + watchGroups.map(function (g) { return '<option value="' + g.id + '"' + (g.id === w.group ? ' selected' : '') + '>' + escapeHtml(g.name) + '</option>'; }).join('') + '</select>' : '';
     return '<div class="py-2 flex items-center gap-2 cursor-pointer active:bg-slate-800/40" onclick="openIndexChart(\'' + w.sym + '\',\'' + escapeHtml(w.name || w.sym).replace(/'/g, '') + '\')">'
+        + moveCtl
         + del
         + '<div class="flex-1 min-w-0">'
         + '<div class="flex items-baseline gap-1.5"><span class="' + dot + ' text-[8px]">●</span>'
@@ -3801,7 +3802,6 @@ function _watchRowHtml(w) {
         + '<span class="text-[10px] text-slate-400 truncate">' + escapeHtml(w.name || '') + '</span></div>'
         + '<div class="text-[10px] text-slate-500 mt-0.5 flex items-center"><span class="shrink-0" style="width:82px">거래량 ' + fmtVolume(q.volume) + '</span>' + (spark ? spark : '') + '</div>'
         + '</div>'
-        + moveCtl
         + '<div class="text-right shrink-0"><div class="text-[13px] font-black text-white">' + priceStr + extTag + '</div>'
         + '<div class="text-[11px] font-bold ' + chgClass(showChg) + '">' + fmtChgPct(showChg) + '</div></div>'
         + '</div>';
