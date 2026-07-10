@@ -3775,6 +3775,16 @@ var WATCH_GROUPS = [
     { key: 'KR_STOCK', label: '🇰🇷 국내 개별종목', market: 'KR', type: 'STOCK' }
 ];
 
+// 종목 표기: 한국 종목은 이름을 크게(코드는 작게), 미국은 심볼을 크게(이름은 작게)
+function _watchNameHtml(w) {
+    var isKR = (w.market === 'KR') || /\.(KS|KQ)$/i.test(w.sym || '');
+    var hasName = w.name && w.name !== w.sym;
+    var primary, secondary;
+    if (isKR && hasName) { primary = w.name; secondary = String(w.sym).replace(/\.(KS|KQ)$/i, ''); }
+    else { primary = w.sym; secondary = hasName ? w.name : ''; }
+    return '<span class="text-[13px] font-black text-white truncate">' + escapeHtml(primary) + '</span>'
+        + (secondary ? '<span class="text-[10px] text-slate-400 truncate shrink-0">' + escapeHtml(secondary) + '</span>' : '');
+}
 function _watchRowHtml(w) {
     var q = WATCH_QUOTES[w.sym] || {};
     var dec = (w.market === 'KR') ? 0 : 2;
@@ -3797,9 +3807,9 @@ function _watchRowHtml(w) {
         + moveCtl
         + del
         + '<div class="flex-1 min-w-0">'
-        + '<div class="flex items-baseline gap-1.5"><span class="' + dot + ' text-[8px]">●</span>'
-        + '<span class="text-[13px] font-black text-white">' + escapeHtml(w.sym) + '</span>'
-        + '<span class="text-[10px] text-slate-400 truncate">' + escapeHtml(w.name || '') + '</span></div>'
+        + '<div class="flex items-baseline gap-1.5 min-w-0"><span class="' + dot + ' text-[8px] shrink-0">●</span>'
+        + _watchNameHtml(w)
+        + '</div>'
         + '<div class="text-[10px] text-slate-500 mt-0.5 flex items-center"><span class="shrink-0" style="width:82px">거래량 ' + fmtVolume(q.volume) + '</span>' + (spark ? spark : '') + '</div>'
         + '</div>'
         + '<div class="text-right shrink-0"><div class="text-[13px] font-black text-white">' + priceStr + extTag + '</div>'
