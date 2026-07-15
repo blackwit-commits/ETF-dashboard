@@ -785,7 +785,7 @@ async function fetchRssFeed(feedUrl, source, max = 20) {
     const resp = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (!resp.ok) return [];
     const text = await resp.text();
-    const strip = (s) => (s || "").replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+    const strip = (s) => (s || "").replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#0?39;/g, "'").replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&#0?34;/g, '"').replace(/&nbsp;/g, " ").trim();
     const items = [];
     const blocks = text.split("<item>").slice(1);
     for (let block of blocks) {

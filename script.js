@@ -586,8 +586,8 @@ function _whyNow(x) {
     var d = _briefGeminiData;
     if (!d) return '';
     var nm = x.name;
-    // 1) Gemini 섹터별 이슈에서 이름 매칭
-    if (Array.isArray(d.sectors)) {
+    // 1) Gemini 섹터별 이슈에서 이름 매칭 — KR 마감 브리핑의 sectors는 한국 업종 서사라 미국 섹터에 매칭 금지
+    if (Array.isArray(d.sectors) && d._session !== 'KR') {
         for (var i = 0; i < d.sectors.length; i++) {
             var s = d.sectors[i]; var sn = String(s.name || '');
             if (s.reason && (sn.indexOf(nm) >= 0 || nm.indexOf(sn) >= 0)) return s.reason;
