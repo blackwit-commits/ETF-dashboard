@@ -450,14 +450,10 @@ export default {
         const marketText = await marketResp.text();
         let marketRaw = [];
         try { marketRaw = JSON.parse(marketText); } catch (e) {}
-        const MACRO_KW = [/\bfed\b|fomc|powell|federal reserve/i, /\brate|interest rate|rate cut|rate hike/i, /inflation|cpi|\bpce\b|ppi/i, /jobs?|payroll|unemployment|labor market/i, /tariff|trade war|trump|white house/i, /\bwar\b|conflict|missile|attack|sanction|geopolit/i, /oil|crude|opec|energy price/i, /\bgdp\b|recession|economy|economic/i, /treasury|yield|bond market|10-year/i, /dollar|forex|currency/i, /china|beijing|xi jinping/i, /nvidia|apple|microsoft|amazon|tesla|\bmeta\b|alphabet|google|broadcom/i, /earnings|guidance|forecast/i, /nasdaq|s&p 500|s&p500|dow jones|wall street|stocks?|market/i, /rally|sell-?off|plunge|surge|slump|tumble|soar|rout/i, /gold|silver|commodit/i, /semiconductor|\bchip|ai\b|artificial intelligence/i, /bitcoin|crypto|ethereum/i];
-        // 광고·홍보·리스티클성 기사 제외
-        const AD_KW = /motley fool|should you buy|reasons? to buy|worth buying|passive income|millionaire|retire|best stocks?|stocks? to buy|dividend stock|prediction|here'?s why|could make you|smart money|zacks|top \d+|\d+ (stocks?|reasons?|things|ways)|jim cramer|cramer'?s|buy the dip|is it too late/i;
-        const scoreNews = (x) => { const t = ((x.headline || "") + " " + (x.summary || "")); let s = 0; for (const re of MACRO_KW) { if (re.test(t)) s++; } return s; };
         const marketArr = Array.isArray(marketRaw) ? marketRaw : [];
-        // 시장 관련성 있고(키워드 1개+) 광고성 아닌 것만 → 최신순 정렬
+        // 시장 관련성 있고(키워드 1개+) 광고성·시리즈물 아닌 것만 → 최신순 정렬 (키워드는 모듈 공용 MACRO_KW/AD_KW/MOVER_KW)
         const marketFiltered = marketArr
-          .filter((x) => scoreNews(x) > 0 && !AD_KW.test((x.headline || "") + " " + (x.summary || "")))
+          .filter((x) => macroNewsScore(x) > 0 && !AD_KW.test((x.headline || "") + " " + (x.summary || "")) && !MOVER_KW.test(x.headline || ""))
           .sort((a, b) => (b.datetime || 0) - (a.datetime || 0));
         let market = marketFiltered.slice(0, 8).map(mapNews);
         if (market.length < 4) market = sortTrim(marketArr, 8).map(mapNews);   // 걸러진 게 너무 적으면 최신순 폴백
@@ -675,68 +671,45 @@ export default {
       }
     }
 
-    // 12. 글로벌 뉴스 (/usnews?cat=markets) - CNBC RSS 카테고리 파싱
+    // 12. 글로벌 뉴스 (/usnews?cat=markets) - 다중 소스 병합 (CNBC 단독은 '가장 큰 움직임' 시리즈 편중)
     if (path === "/usnews") {
       const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
       const catMap = { economy: "20910258", markets: "20409666", technology: "19854910", finance: "10000664", politics: "10000113", investing: "15839069" };
       const catKey = (url.searchParams.get("cat") || "markets");
       const id = catMap[catKey] || catMap.markets;
       try {
-        const resp = await fetch(`https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=${id}`, { headers: { "User-Agent": "Mozilla/5.0" } });
-        if (!resp.ok) return new Response(JSON.stringify({ error: "RSS " + resp.status }), { headers: jsonHeaders });
-        const text = await resp.text();
-        const strip = (s) => (s || "").replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
-        const items = [];
-        const blocks = text.split("<item>").slice(1);
-        for (let block of blocks) {
-          if (items.length >= 15) break;
-          const end = block.indexOf("</item>");
-          if (end > 0) block = block.substring(0, end);
-          const tm = block.match(/<title>([\s\S]*?)<\/title>/);
-          const lm = block.match(/<link>([\s\S]*?)<\/link>/);
-          const dm = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
-          const sm = block.match(/<description>([\s\S]*?)<\/description>/);
-          if (tm && lm) {
-            let dt = 0;
-            if (dm) { const p = Date.parse(strip(dm[1])); if (!isNaN(p)) dt = Math.floor(p / 1000); }
-            items.push({ headline: strip(tm[1]), url: strip(lm[1]), summary: sm ? strip(sm[1]).substring(0, 200) : "", datetime: dt, source: "CNBC" });
-          }
+        // markets(기본 탭)는 CNBC Top News + MarketWatch + Investing.com 병합, 나머지 카테고리는 CNBC 해당 피드
+        const feeds = catKey === "markets" ? [
+          [CNBC_RSS("100003114"), "CNBC"],                                            // Top News (편집 큐레이션)
+          [CNBC_RSS(id), "CNBC"],                                                     // Markets
+          ["https://feeds.content.dowjones.io/public/rss/mw_topstories", "MarketWatch"],
+          ["https://www.investing.com/rss/news_14.rss", "Investing.com"],             // 경제
+          ["https://www.investing.com/rss/news_25.rss", "Investing.com"],             // 증시
+        ] : [[CNBC_RSS(id), "CNBC"]];
+        let items = await fetchMergedFeeds(feeds, 40);
+        if (!items.length) return new Response(JSON.stringify({ error: "RSS fetch failed" }), { headers: jsonHeaders });
+        // 병합 탭은 매크로 관련성 필터 — 개별 종목 잡뉴스 제거 (걸러진 게 너무 적으면 최신순 폴백)
+        if (catKey === "markets") {
+          const scored = items.filter((x) => macroNewsScore(x) > 0);
+          if (scored.length >= 8) items = scored;
         }
+        items = items.slice(0, 20);
         return new Response(JSON.stringify({ items, cat: catKey, timestamp: new Date().toISOString() }), { headers: jsonHeaders });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { headers: jsonHeaders });
       }
     }
 
-    // 9. 한국 뉴스 (/krnews?cat=economy) - 한국경제 RSS 카테고리 파싱
+    // 9. 한국 뉴스 (/krnews?cat=economy) - 한국경제 RSS (economy는 연합뉴스 경제 병합)
     if (path === "/krnews") {
       const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
       const catMap = { economy: "economy", politics: "politics", society: "society", international: "international", finance: "finance", it: "it" };
       const cat = catMap[(url.searchParams.get("cat") || "economy")] || "economy";
       try {
-        const resp = await fetch(`https://www.hankyung.com/feed/${cat}`, { headers: { "User-Agent": "Mozilla/5.0" } });
-        if (!resp.ok) return new Response(JSON.stringify({ error: "RSS " + resp.status }), { headers: jsonHeaders });
-        const text = await resp.text();
-        const items = [];
-        const blocks = text.split("<item>").slice(1);
-        for (let block of blocks) {
-          if (items.length >= 15) break;
-          const end = block.indexOf("</item>");
-          if (end > 0) block = block.substring(0, end);
-          const tm = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/);
-          const lm = block.match(/<link>([\s\S]*?)<\/link>/);
-          const dm = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
-          if (tm && lm) {
-            let dt = 0;
-            if (dm) { const p = Date.parse(dm[1].trim()); if (!isNaN(p)) dt = Math.floor(p / 1000); }
-            items.push({
-              headline: tm[1].replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim(),
-              url: lm[1].replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").trim(),
-              datetime: dt,
-              source: "한국경제"
-            });
-          }
-        }
+        const feeds = [[`https://www.hankyung.com/feed/${cat}`, "한국경제"]];
+        if (cat === "economy") feeds.push(["https://www.yna.co.kr/rss/economy.xml", "연합뉴스"]);
+        const items = await fetchMergedFeeds(feeds, 20);
+        if (!items.length) return new Response(JSON.stringify({ error: "RSS fetch failed" }), { headers: jsonHeaders });
         return new Response(JSON.stringify({ items, cat, timestamp: new Date().toISOString() }), { headers: jsonHeaders });
       } catch (e) {
         return new Response(JSON.stringify({ error: e.message }), { headers: jsonHeaders });
@@ -793,6 +766,77 @@ export default {
       })());
     }
   },
+};
+
+// --- 뉴스 소스 공통 (다중 RSS 병합·중요도 필터) ---
+
+// 시장 영향 키워드 — 매크로 중요도 스코어 (/stocknews, /usnews 공용)
+const MACRO_KW = [/\bfed\b|fomc|powell|federal reserve/i, /\brate|interest rate|rate cut|rate hike/i, /inflation|cpi|\bpce\b|ppi/i, /jobs?|payroll|unemployment|labor market/i, /tariff|trade war|trump|white house/i, /\bwar\b|conflict|missile|attack|sanction|geopolit/i, /oil|crude|opec|energy price/i, /\bgdp\b|recession|economy|economic/i, /treasury|yield|bond market|10-year/i, /dollar|forex|currency/i, /china|beijing|xi jinping/i, /nvidia|apple|microsoft|amazon|tesla|\bmeta\b|alphabet|google|broadcom/i, /earnings|guidance|forecast/i, /nasdaq|s&p 500|s&p500|dow jones|wall street|stocks?|market/i, /rally|sell-?off|plunge|surge|slump|tumble|soar|rout/i, /gold|silver|commodit/i, /semiconductor|\bchip|ai\b|artificial intelligence/i, /bitcoin|crypto|ethereum/i];
+// 광고·홍보·리스티클성 기사 제외
+const AD_KW = /motley fool|should you buy|reasons? to buy|worth buying|passive income|millionaire|retire|best stocks?|stocks? to buy|dividend stock|prediction|here'?s why|could make you|smart money|zacks|top \d+|\d+ (stocks?|reasons?|things|ways)|jim cramer|cramer'?s|buy the dip|is it too late/i;
+// '가장 큰 움직임' 류 반복 시리즈물 제외 (CNBC markets 피드의 절반가량 차지)
+const MOVER_KW = /biggest moves|market movers|movers?:|premarket movers|midday movers|after-?hours movers|stocks making|what to watch|before the bell|opening bell|closing bell|hot stocks/i;
+// 매크로 키워드 매칭 개수 (0이면 시장 무관 잡뉴스)
+function macroNewsScore(x) { const t = ((x.headline || "") + " " + (x.summary || "")); let s = 0; for (const re of MACRO_KW) { if (re.test(t)) s++; } return s; }
+
+// 범용 RSS 파서 — {headline, url, summary, datetime(초), source} 배열 반환 (실패 시 빈 배열)
+async function fetchRssFeed(feedUrl, source, max = 20) {
+  try {
+    const resp = await fetch(feedUrl, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!resp.ok) return [];
+    const text = await resp.text();
+    const strip = (s) => (s || "").replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+    const items = [];
+    const blocks = text.split("<item>").slice(1);
+    for (let block of blocks) {
+      if (items.length >= max) break;
+      const end = block.indexOf("</item>");
+      if (end > 0) block = block.substring(0, end);
+      const tm = block.match(/<title>([\s\S]*?)<\/title>/);
+      const lm = block.match(/<link>([\s\S]*?)<\/link>/);
+      const dm = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
+      const sm = block.match(/<description>([\s\S]*?)<\/description>/);
+      if (tm && lm) {
+        let dt = 0;
+        if (dm) { const p = Date.parse(strip(dm[1])); if (!isNaN(p)) dt = Math.floor(p / 1000); }
+        items.push({ headline: strip(tm[1]), url: strip(lm[1]), summary: sm ? strip(sm[1]).substring(0, 200) : "", datetime: dt, source });
+      }
+    }
+    return items;
+  } catch (e) { return []; }
+}
+
+// 여러 피드 병합: 제목 중복 제거 + 시리즈물/광고 제외 + 최신순
+async function fetchMergedFeeds(feeds, max = 20) {
+  const results = await Promise.all(feeds.map(([u, s]) => fetchRssFeed(u, s, 15)));
+  const seen = new Set(); const merged = [];
+  for (const arr of results) {
+    for (const x of arr) {
+      if (!x.headline) continue;
+      if (MOVER_KW.test(x.headline) || AD_KW.test(x.headline + " " + (x.summary || ""))) continue;
+      const k = x.headline.toLowerCase().replace(/[^a-z0-9가-힣]+/g, " ").trim().substring(0, 60);
+      if (!k || seen.has(k)) continue;
+      seen.add(k); merged.push(x);
+    }
+  }
+  merged.sort((a, b) => (b.datetime || 0) - (a.datetime || 0));
+  return merged.slice(0, max);
+}
+
+// 브리핑 세션별 헤드라인 소스 (KR=한국 마감 15:30 / US=미국 마감 06:30)
+const CNBC_RSS = (id) => `https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=${id}`;
+const BRIEF_FEEDS = {
+  US: [
+    [CNBC_RSS("100003114"), "CNBC"],                                            // Top News (편집 큐레이션)
+    [CNBC_RSS("20409666"), "CNBC"],                                             // Markets
+    ["https://feeds.content.dowjones.io/public/rss/mw_topstories", "MarketWatch"],
+    ["https://www.investing.com/rss/news_14.rss", "Investing.com"],             // 경제
+  ],
+  KR: [
+    ["https://www.yna.co.kr/rss/economy.xml", "연합뉴스"],
+    ["https://www.hankyung.com/feed/economy", "한국경제"],
+    ["https://www.hankyung.com/feed/finance", "한국경제"],
+  ],
 };
 
 // --- 텔레그램 푸시 ---
@@ -1714,9 +1758,48 @@ const HOT_SECTOR_KW = { "반도체": ["SMH", "XLK"], "기술": ["XLK"], "IT": ["
 async function refreshHotToKV(env, source) {
   // 실측 섹터 등락 + 세션 판정 (KST 06:30~15:30 = 미국 마감 브리핑)
   let realCtx = "", secBySym = {};
-  const kstMin = Math.floor(((Date.now() / 60000) + 9 * 60) % 1440);
+  const nowMs = Date.now();
+  const kstMin = Math.floor(((nowMs / 60000) + 9 * 60) % 1440);
   const session = (kstMin >= 6 * 60 + 30 && kstMin < 15 * 60 + 30) ? "US" : "KR";
+
+  // 세션 시간창: 직전 브리핑 경계(06:30/15:30) 이후 발생한 뉴스만 — 브리핑 간 중복 원천 차단
+  //  · US 세션 → 전일 15:30 KST 이후 / · KR 세션 → 당일(또는 자정 전이면 전일) 06:30 KST 이후
+  const minsSince = session === "US" ? kstMin + 510 : (kstMin >= 930 ? kstMin - 390 : kstMin + 1050);
+  const windowStartMs = nowMs - minsSince * 60000;
+  const windowHours = Math.max(1, Math.round(minsSince / 60));
+
+  // 실제 최신 헤드라인 수집 (세션별 소스) — Gemini는 검색이 아니라 이 목록에서 선별
+  let headlineCtx = "";
   try {
+    const rows = (await Promise.all(BRIEF_FEEDS[session].map(([u, s]) => fetchRssFeed(u, s, 15)))).flat();
+    rows.sort((a, b) => (b.datetime || 0) - (a.datetime || 0));
+    const seen = new Set(); const picked = [];
+    for (const x of rows) {
+      if (!x.headline) continue;
+      if (x.datetime && x.datetime * 1000 < windowStartMs) continue;   // 시간창 밖 제외
+      if (MOVER_KW.test(x.headline) || AD_KW.test(x.headline)) continue;
+      const k = x.headline.replace(/\s+/g, " ").substring(0, 50);
+      if (seen.has(k)) continue;
+      seen.add(k); picked.push(x);
+      if (picked.length >= 25) break;
+    }
+    if (picked.length >= 5) {
+      const ago = (dt) => { const m = Math.max(0, Math.round((nowMs - dt * 1000) / 60000)); return m < 60 ? m + "분 전" : Math.round(m / 60) + "시간 전"; };
+      headlineCtx = picked.map((x) => `- [${x.source}${x.datetime ? ", " + ago(x.datetime) : ""}] ${x.headline}`).join("\n");
+    }
+  } catch (e) { /* 헤드라인 수집 실패 시 기존 검색 방식으로 동작 */ }
+
+  // 직전 브리핑에서 다룬 제목 — 같은 내용 반복 금지용
+  let prevTitles = [];
+  try {
+    if (env.UMT_KV) {
+      const prev = await env.UMT_KV.get(HOT_KV_KEY, "json");
+      if (prev && Array.isArray(prev.items)) prevTitles = prev.items.map((i) => i && i.title).filter(Boolean).slice(0, 10);
+    }
+  } catch (e) { /* 무시 */ }
+  // 미국 섹터 실측은 US 세션에만 주입 — KR 세션 sectors는 한국 업종이라 미국 ETF 등락으로 보정하면 오염됨
+  try {
+    if (session !== "US") throw new Error("skip");
     const rows = await Promise.all(HOT_SECTORS.map(([s, ko]) =>
       fetchSectorChanges(s).then(q => ({ s, ko, chg: (q && q.chg1d != null) ? q.chg1d : null })).catch(() => ({ s, ko, chg: null }))));
     rows.forEach(r => { if (r.chg != null) secBySym[r.s] = r.chg; });
@@ -1729,7 +1812,7 @@ async function refreshHotToKV(env, source) {
       + " / " + (dn.length ? "약세 " + dn.map(fmt).join(", ") : "뚜렷한 약세 없음");
   } catch (e) { /* 실측 실패는 무시 */ }
 
-  const result = await callGeminiHotIssues(env.GEMINI_API_KEY, [], realCtx, session);
+  const result = await callGeminiHotIssues(env.GEMINI_API_KEY, [], realCtx, session, { headlineCtx, prevTitles, windowHours });
 
   // 실제 지수 등락으로 시장 방향(dir) 보정 — Gemini가 상승/하락을 틀리게 판정하는 문제 방지
   try {
@@ -1940,7 +2023,7 @@ async function callGeminiWeeklyReport(apiKey) {
 
 const HOT_PROMPT = `당신은 글로벌 매크로/시장 속보 큐레이터입니다. Google 검색으로 "최근 24시간 이내" 시장을 움직인 발언·뉴스·이벤트를 수집하세요. 모든 텍스트 값은 한국어로 작성합니다.
 
-수집 우선순위:
+수집 우선순위 (아래에 [세션] 지시가 있으면 그 지시의 시장·시간창이 우선):
 1. 트럼프 대통령의 발언/포스팅 (관세, 연준, 무역, 지정학 등 시장 영향)
 2. 연준(Fed) 인사 발언, FOMC, 금리 관련 코멘트
 3. 지정학 이벤트 (전쟁, 분쟁, 제재, 선거)
@@ -2039,11 +2122,22 @@ function salvageObjects(text, pred) {
   return found;
 }
 
-async function callGeminiHotIssues(apiKey, symbols = [], realCtx = "", session = "") {
+async function callGeminiHotIssues(apiKey, symbols = [], realCtx = "", session = "", brief = {}) {
   let prompt = HOT_PROMPT;
-  // 세션: 오전 6:30 미국 마감 브리핑 → 미국 중심(+중요 해외이슈), 한국 시장 서술 생략
+  const windowHours = brief.windowHours || 24;
+  // 세션: 오전 6:30 = 미국 마감 브리핑(미국 중심) / 오후 3:30 = 한국 마감 브리핑(한국 중심)
   if (session === "US") {
-    prompt += `\n\n[세션] 지금은 오전 6시반 '미국 마감 브리핑'입니다. 전날 밤(한국 23시~오전 6시) 미국 정규장에서 시장을 움직인 핵심 뉴스·실적·발언을 우선하세요. overview·markets·sectors·items를 모두 미국 시장 중심으로 작성하세요. markets.kr은 dir을 'mixed', reason을 빈 문자열("")로 두어 한국 시장 서술은 생략합니다. 단, 시장에 영향을 준 중요한 해외/글로벌 이슈(지정학·무역·타 지역 급변 등)가 있으면 items에 반드시 포함하세요.`;
+    prompt += `\n\n[세션] 지금은 오전 6시반 '미국 마감 브리핑'입니다. 전일 오후 3시 30분(약 ${windowHours}시간 전) 이후 발생한 뉴스만 다루세요 — 그 이전 뉴스는 직전 브리핑에서 이미 다뤘습니다(items의 hours_ago가 ${windowHours}을 넘으면 안 됩니다). 방금 마감한 미국 정규장에서 시장을 움직인 핵심 뉴스·실적·발언을 우선하세요. overview·markets·sectors·items를 모두 미국 시장 중심으로 작성하세요. markets.kr은 dir을 'mixed', reason을 빈 문자열("")로 두어 한국 시장 서술은 생략합니다. 단, 시장에 영향을 준 중요한 해외/글로벌 이슈(지정학·무역·타 지역 급변 등)가 있으면 items에 반드시 포함하세요. overview의 마지막 문장은 간밤 미국장 결과를 바탕으로 '오늘 한국장 관전 포인트'로 마무리하세요.`;
+  } else if (session === "KR") {
+    prompt += `\n\n[세션] 지금은 오후 3시 30분 '한국 마감 브리핑'입니다. 오늘 오전 6시 30분(약 ${windowHours}시간 전) 이후 발생한 뉴스만 다루세요 — 간밤 미국장 뉴스는 오전 브리핑에서 이미 다뤘으므로 반복 금지입니다(items의 hours_ago가 ${windowHours}을 넘으면 안 됩니다). overview·markets·sectors·items를 한국 시장 중심으로 작성하세요: 방금 마감한 코스피/코스닥 시황과 주도 업종·수급(외국인/기관), 국내 정책·주요 기업 이슈, 원/달러 환율, 아시아 증시(닛케이/항셍) 흐름. items는 한국·아시아 이슈를 우선하되 오늘 장중 새로 발생한 글로벌 속보(지정학·미 선물 급변 등)도 포함하세요. sectors는 한국 시장 업종 기준으로 작성하세요. markets.us는 미국 선물/프리마켓 특이사항이 있으면 그것을 쓰고, 없으면 dir을 'mixed', reason을 빈 문자열("")로 두세요. overview의 마지막 문장은 '오늘 밤 미국장 관전 포인트'로 마무리하세요.`;
+  }
+  // 실제 수집한 최신 헤드라인 주입 — 검색 grounding의 '옛날 기사' 문제 차단, 1차 소스로 사용
+  if (brief.headlineCtx) {
+    prompt += `\n\n[실제 최신 헤드라인 — 1차 소스] 아래는 신뢰할 수 있는 매체에서 방금 수집한 실제 최신 헤드라인 목록입니다. items는 이 목록에서 시장 영향이 큰 뉴스를 우선 선별해 구성하고, Google 검색은 선별한 뉴스의 배경·상세·인용 보강용으로만 사용하세요. 목록에 없는 뉴스를 검색으로 추가하려면 발생 시각이 위 세션 시간창 이내인 중대 속보일 때만 허용됩니다.\n${brief.headlineCtx}`;
+  }
+  // 직전 브리핑과의 중복 금지
+  if (brief.prevTitles && brief.prevTitles.length) {
+    prompt += `\n\n[직전 브리핑에서 이미 다룬 항목 — 반복 금지] 아래와 같은 내용의 뉴스는 items에 다시 넣지 마세요. 단, 새로운 전개(후속 결과·공식 발표·시장 반응 반전)가 있으면 무엇이 '새 소식'인지 title/summary에 명시하고 포함할 수 있습니다.\n${brief.prevTitles.map((t) => "- " + t).join("\n")}`;
   }
   // 실측 섹터 등락 주입 — 서사 방향을 실제와 일치시킴
   if (realCtx) {
@@ -2069,9 +2163,19 @@ async function callGeminiHotIssues(apiKey, symbols = [], realCtx = "", session =
     let result = null;
     try { result = parseGeminiJson(textContent); }
     catch (e) {
-      // 전체 파싱 실패 → 항목 단위 살리기
+      // 1차 시도 파싱 실패 → 전체 재시도 (부분 복구는 overview·markets·sectors를 잃음)
+      if (attempt === 0) { lastErr = e.message + " | Raw: " + textContent.substring(0, 300); continue; }
+      // 최종 시도도 실패 → 항목 단위 살리기 + 상단 필드 최대 복구
       const items = salvageItems(textContent);
-      if (items.length) result = { items: items };
+      if (items.length) {
+        result = { items: items };
+        const om = textContent.match(/"overview"\s*:\s*"([^"]{20,})"/);
+        if (om) result.overview = om[1];
+        const secs = salvageObjects(textContent, (o) => o && o.name && (o.dir === "up" || o.dir === "down") && o.reason !== undefined && !o.title);
+        if (secs.length) result.sectors = secs.slice(0, 5);
+        const quads = salvageObjects(textContent, (o) => o && o.current >= 1 && o.current <= 4 && o.summary);
+        if (quads.length) result.quad = quads[0];
+      }
       else { lastErr = e.message + " | Raw: " + textContent.substring(0, 300); continue; }
     }
 

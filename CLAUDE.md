@@ -76,5 +76,5 @@ UMT_V2_PRD.md     — V2 기획서
 - ETF_DB 필드: sym, lev, tier(1~4), quad(배열), name, desc, holdings
 - `group` (A/B/C) → `tier` (1~4)로 대체됨
 - 부스터는 자동 활성화 안 됨 (사용자 수동 판단)
-- Worker 배포: `cd worker && npx wrangler deploy --outdir=dist`
+- Worker 배포: `cd worker && npx wrangler@4.40.0 deploy --outdir dist` (최신 wrangler 4.111은 이 PC의 Node 24에서 크래시 — 4.40.0 고정. 종료 코드 9는 종료 시점 libuv 크래시로 무해, "Deployed" 출력 여부로 성공 판단)
 - GitHub Pages 캐시: URL에 `?v=N` 붙여서 강제 새로고침
