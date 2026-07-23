@@ -160,8 +160,8 @@ async function syncMacroFromServer() {
         if (!data || data.error || !data.quad) return;
         var localAt  = (MACRO_DATA && MACRO_DATA._cachedAt) || 0;
         var serverAt = data._cachedAt || Date.now();
-        // 서버가 같거나 더 최신일 때만 교체
-        if (!MACRO_DATA || serverAt >= localAt) {
+        // 서버가 더 최신일 때만 교체 (동일 시각이면 재렌더 생략 — 주기 동기화 시 화면 깜빡임 방지)
+        if (!MACRO_DATA || serverAt > localAt) {
             MACRO_DATA = data;
             saveMacroToCache(data);
             updateMacroDashboard();
@@ -415,25 +415,37 @@ function loadHotFromCache() {
     } catch(e) { return null; }
 }
 
-function startHotIssues() {
+function startHotIssues(silent) {
     var list = document.getElementById('hotIssuesList');
-    if (list) list.classList.remove('hidden');
-    if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>최신 핫이슈 불러오는 중...</div>';
-    var btn = document.getElementById('hotToggleBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-chevron-up text-xs" id="hotChev"></i>';
-
+    if (!silent) {
+        if (list) list.classList.remove('hidden');
+        if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>최신 핫이슈 불러오는 중...</div>';
+        var btn = document.getElementById('hotToggleBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-chevron-up text-xs" id="hotChev"></i>';
+    }
+    var prevAt = 0; try { var pc = JSON.parse(localStorage.getItem(HOT_CACHE_KEY) || 'null'); prevAt = (pc && pc._cachedAt) || 0; } catch (e) {}
     fetch(API_BASE_URL + '/hot', { signal: AbortSignal.timeout ? AbortSignal.timeout(90000) : undefined })
     .then(function(resp) { return resp.json(); })
     .then(function(data) {
         if (data.error) throw new Error(data.error);
-        data._cachedAt = Date.now();
+        // 서버(KV)가 보낸 실제 분석 시각 보존 — "N분 전 업데이트"가 진짜 분석 시점을 가리키도록
+        if (!data._cachedAt) data._cachedAt = Date.now();
         localStorage.setItem(HOT_CACHE_KEY, JSON.stringify(data));
+        if (silent && data._cachedAt === prevAt) return;   // 내용 동일 → 재렌더 생략
         renderHotIssues(data);
         renderMarketFlow();
         renderMarketSummary();
     })
     .catch(function(e) {
-        if (list) list.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i>핫이슈 수집 실패: ' + escapeHtml(e.message).substring(0, 80) + '<br><button onclick="startHotIssues()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
+        if (!silent && list) list.innerHTML = '<div class="glass-panel p-4 text-center text-red-400 text-xs"><i class="fa-solid fa-triangle-exclamation mr-1"></i>핫이슈 수집 실패: ' + escapeHtml(e.message).substring(0, 80) + '<br><button onclick="startHotIssues()" class="mt-2 px-3 py-1 bg-slate-700 rounded text-slate-300 text-[10px]">다시 시도</button></div>';
     });
+}
+
+// 브리핑류(시장브리핑 /hot · 매크로 /macro) 재동기화 — 캐시가 오래되면 조용히 서버 최신본을 가져옴
+// (서버는 KV 캐시 즉답이라 저렴. 앱을 켜둔 채로도 브리핑이 자동으로 최신화되도록 10분 주기 + 앱 복귀 시 호출)
+function syncBriefingsIfStale() {
+    var hot = null; try { hot = JSON.parse(localStorage.getItem(HOT_CACHE_KEY) || 'null'); } catch (e) {}
+    if (!hot || !hot._cachedAt || (Date.now() - hot._cachedAt) > HOT_CACHE_TTL) startHotIssues(true);
+    if (getMacroCacheAge() > 30 * 60 * 1000) syncMacroFromServer();
 }
 
 // 현재 시간대의 마감 브리핑 세션 (KST 06:30~15:30=미국 마감 / 그 외=한국 마감), 주말=휴장
@@ -544,12 +556,12 @@ function renderHotIssues(data) {
     }
     if (!html) html = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">표시할 브리핑이 없습니다</div>';
 
-    // 생성 시간
+    // 생성 시간 (절대 + 상대 — 언제 분석된 내용인지 명확히)
     if (data._cachedAt) {
         var mins = Math.round((Date.now() - data._cachedAt) / 60000);
         var timeStr = mins < 1 ? '방금' : (mins < 60 ? (mins + '분 전') : (Math.round(mins / 60) + '시간 전'));
         var te = document.getElementById('hotIssuesTime');
-        if (te) te.innerText = timeStr + ' 업데이트';
+        if (te) te.innerText = newsAbsStamp(Math.round(data._cachedAt / 1000)) + ' 분석 (' + timeStr + ')';
     }
 
     list.innerHTML = html;
@@ -777,6 +789,7 @@ var STOCKNEWS_CACHE_KEY = 'umt_stocknews_cache';
 var STOCKNEWS_CACHE_TTL = 60 * 60 * 1000; // 1시간
 var STOCKNEWS_SEEN_KEY = 'umt_stocknews_seen'; // NEW 배지 기준(마지막으로 본 최신 뉴스 시각)
 var STOCKNEWS_VIEW_KEY = 'umt_stocknews_view'; // 'grouped' | 'timeline'
+var STOCKNEWS_OPEN_KEY = 'umt_stocknews_open'; // '1'이면 펼침 (기본 접힘 — 헤더 건수/NEW로 확인 후 필요할 때만 펼침)
 var _stockNewsData = null;          // 현재 표시 중 데이터 (뷰 토글/더보기 재렌더용)
 var _stockNewsExpanded = {};        // 섹션별 더보기 상태
 var _newsAutoTimer = null;          // 뉴스탭 자동 갱신 타이머
@@ -799,8 +812,19 @@ function getHeldSymbolsForNews() {
         .slice(0, 10);
 }
 
+function _stockNewsOpen() { return localStorage.getItem(STOCKNEWS_OPEN_KEY) === '1'; }
+function _applyStockNewsCollapse() {
+    var list = document.getElementById('stockNewsList');
+    var btn = document.getElementById('stockNewsToggleBtn');
+    var open = _stockNewsOpen();
+    if (list) list.classList.toggle('hidden', !open);
+    if (btn) btn.innerHTML = '<i class="fa-solid ' + (open ? 'fa-chevron-up' : 'fa-chevron-down') + ' text-xs" id="stockNewsChev"></i>';
+}
+
 // 뉴스 탭 진입 시 자동 로딩: 신선한 캐시(15분 이내)면 표시, 아니면 새로 불러옴 (Finnhub는 빠름)
+// 접힘 상태면 조용히 로드해 헤더(건수/NEW/시각)만 갱신 — 펼침은 사용자가 필요할 때
 function ensureStockNewsLoaded() {
+    _applyStockNewsCollapse();
     var raw = localStorage.getItem(STOCKNEWS_CACHE_KEY);
     if (raw) {
         try {
@@ -808,12 +832,13 @@ function ensureStockNewsLoaded() {
             if (c && c._cachedAt && (Date.now() - c._cachedAt) < 15 * 60 * 1000) { renderStockNews(c); return; }
         } catch (e) {}
     }
-    startStockNews();
+    startStockNews(!_stockNewsOpen());
 }
 
 function startStockNews(silent) {
     var list = document.getElementById('stockNewsList');
     if (!silent) {
+        localStorage.setItem(STOCKNEWS_OPEN_KEY, '1');   // 수동 새로고침 = 보겠다는 의도 → 펼침 유지
         if (list) { list.classList.remove('hidden'); list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-400 text-xs"><i class="fa-solid fa-spinner fa-spin mr-2"></i>뉴스 불러오는 중...</div>'; }
         var btn = document.getElementById('stockNewsToggleBtn'); if (btn) btn.innerHTML = '<i class="fa-solid fa-chevron-up text-xs" id="stockNewsChev"></i>';
     }
@@ -954,6 +979,14 @@ function renderStockNews(data, isFresh) {
     var baseline = data._newBaseline || 0;
     var isNew = function(x) { return baseline > 0 && (x.datetime || 0) > baseline; };
 
+    // 헤더 요약 (건수 + NEW) — 접힌 상태에서도 새 뉴스 유무를 알 수 있게
+    var cntEl = document.getElementById('stockNewsCount');
+    if (cntEl) {
+        var allItems = _stockNewsAllItems(data);
+        var newCnt = allItems.filter(isNew).length;
+        cntEl.innerHTML = allItems.length + '건' + (newCnt ? ' <span class="text-red-400">· NEW ' + newCnt + '</span>' : '');
+    }
+
     var view = localStorage.getItem(STOCKNEWS_VIEW_KEY) || 'grouped';
     var html = '';
 
@@ -1026,6 +1059,7 @@ function toggleStockNews() {
     var btn = document.getElementById('stockNewsToggleBtn');
     if (!list) return;
     var isHidden = list.classList.toggle('hidden');
+    localStorage.setItem(STOCKNEWS_OPEN_KEY, isHidden ? '0' : '1');
     if (btn) { btn.innerHTML = '<i class="fa-solid ' + (isHidden ? 'fa-chevron-down' : 'fa-chevron-up') + ' text-xs" id="stockNewsChev"></i>'; }
 }
 
@@ -1209,7 +1243,7 @@ function renderMarketFlow() {
     if (cur) quadHtml = '<div class="text-[11px] font-bold text-cyan-300 mb-1.5">🧭 현재 국면: Q' + cur + ' ' + escapeHtml(quadNames[cur] || '') + '</div>';
     body.innerHTML = quadHtml + '<div class="text-[12px] text-slate-300 leading-relaxed">' + escapeHtml(hot.overview) + '</div>';
     var te = document.getElementById('marketFlowTime');
-    if (te && hot._cachedAt) { var mins = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = (mins < 60 ? mins + '분 전' : Math.round(mins / 60) + '시간 전') + ' 기준'; }
+    if (te && hot._cachedAt) { var mins = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = newsAbsStamp(Math.round(hot._cachedAt / 1000)) + ' 기준 (' + (mins < 60 ? mins + '분 전' : Math.round(mins / 60) + '시간 전') + ')'; }
 }
 
 // ==========================================
@@ -1763,8 +1797,10 @@ function initApp() {
         // 종목 시세 주기 갱신 (90초) — 전략탭/ETF카드 가격이 멈추지 않도록
         if (window._mktLoopTimer) clearInterval(window._mktLoopTimer);
         window._mktLoopTimer = setInterval(function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); } catch (e) {} } }, 90000);
-        // 앱 복귀 시 즉시 시세 갱신 (주요지수·관심목록 포함)
-        if (!window._mktVisHooked) { window._mktVisHooked = true; document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); refreshIndexQuotes(); refreshWatchQuotes(); } catch (e) {} } }); }
+        // 앱 복귀 시 즉시 시세 갱신 (주요지수·관심목록 포함) + 브리핑류 최신본 동기화
+        if (!window._mktVisHooked) { window._mktVisHooked = true; document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); refreshIndexQuotes(); refreshWatchQuotes(); syncBriefingsIfStale(); } catch (e) {} } }); }
+        // 브리핑류(시장브리핑/뉴스브리핑) 10분 주기 재동기화 — 앱을 켜둔 채로도 최신 브리핑 자동 반영
+        if (!window._briefLoopTimer) window._briefLoopTimer = setInterval(function () { if (!document.hidden) { try { syncBriefingsIfStale(); renderMarketSummary(); } catch (e) {} } }, 10 * 60000);
         fetchMacroIndicatorsLive();
         fetchLiveFxRate();
         // 관심목록 로드 + 초기 시세/추세선
@@ -1794,10 +1830,14 @@ function initApp() {
         var cachedWeekly = loadWeeklyFromCache();
         if (cachedWeekly) renderWeeklyReport(cachedWeekly);
 
-        // 7. 핫이슈: 캐시(30분) 신선하면 사용, 아니면 자동으로 최신 로드 (서버 KV라 즉시 응답)
-        var cachedHot = loadHotFromCache();
-        if (cachedHot) renderHotIssues(cachedHot);
-        else startHotIssues();
+        // 7. 핫이슈: 마지막 캐시 즉시 렌더 → 오래됐으면 백그라운드에서 조용히 최신본 동기화 (서버 KV 즉답)
+        var rawHot = null; try { rawHot = JSON.parse(localStorage.getItem(HOT_CACHE_KEY) || 'null'); } catch (e) {}
+        if (rawHot && rawHot.markets) {
+            renderHotIssues(rawHot);
+            if (!loadHotFromCache()) startHotIssues(true);   // TTL 초과분은 조용히 갱신
+        } else {
+            startHotIssues();
+        }
         try { renderMarketSummary(); } catch(e) {}
 
         // 8. 종목·시장 뉴스 캐시 로드 (1시간 TTL, 없으면 버튼 대기)
@@ -3011,7 +3051,7 @@ function renderNewsBriefing() {
         list.innerHTML = '<div class="glass-panel p-4 text-center text-slate-500 text-xs">뉴스 데이터 없음</div>';
         return;
     }
-    if (countEl) countEl.innerText = news.length + '건';
+    if (countEl) countEl.innerText = news.length + '건' + (MACRO_DATA._cachedAt ? ' · ' + newsAbsStamp(Math.round(MACRO_DATA._cachedAt / 1000)) + ' 분석' : '');
 
     var levelStyles = {
         red:   {border:'border-l-red-500',    bg:'bg-red-900/10',    badge:'bg-red-900/60 text-red-300',    icon:'긴급'},
@@ -3607,7 +3647,7 @@ function renderMarketSummary() {
     if (mk || overview) html += '<div class="mt-2 text-right"><button type="button" onclick="goToBriefing()" class="text-[11px] font-bold text-cyan-300 hover:text-cyan-200">자세히 (시장 브리핑) <i class="fa-solid fa-arrow-right text-[9px]"></i></button></div>';
     txt.innerHTML = html;
     var te = document.getElementById('marketSummaryTime');
-    if (te && hot && hot._cachedAt) { var m = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = '· ' + (m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전'); }
+    if (te && hot && hot._cachedAt) { var m = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = '· ' + newsAbsStamp(Math.round(hot._cachedAt / 1000)) + ' (' + (m < 60 ? m + '분 전' : Math.round(m / 60) + '시간 전') + ')'; }
 }
 
 // ==========================================
