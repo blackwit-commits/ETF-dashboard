@@ -892,24 +892,84 @@ async function yahooResolveKr(code) {
   } catch (e) { return null; }
 }
 
-// 직전 종가 선택 — 지수(^KS11 등) 일봉 배열이 하루 지연될 때 대응
-// regularMarketPrice(최신)가 배열 마지막 종가와 유의미하게 다르면 = 최신 봉이 배열에 아직 없음 → 직전=배열 마지막
-function _pickPrevClose(closes, price) {
-  const lastArr = closes.length ? closes[closes.length - 1] : null;
-  if (lastArr != null && price != null && Math.abs(price - lastArr) > lastArr * 0.0005) return lastArr;
-  return closes.length >= 2 ? closes[closes.length - 2] : null;
+// ── 일봉 차트 공용 파서 — 봉 타임스탬프로 배열 지연을 직접 판정 ──
+// Yahoo 노드에 따라 지수(^KS11 등) 일봉 배열이 최신 봉 없이 오는데, 가격차 휴리스틱으로 "하루 지연"을
+// 가정하면 2일+ 낡은 노드에서 며칠 전 종가를 전일로 잡아 등락률이 크게 틀어짐 (코스피 -4.8% 사고).
+function _quoteDayKey(ts, gmtoff) { return Math.floor((ts + (gmtoff || 0)) / 86400); }
+
+async function _fetchDailyChart(symbol, host) {
+  const r = await fetch(`https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=7d&includePrePost=true&_cb=${Date.now()}`, { headers: { "User-Agent": "Mozilla/5.0" } });
+  const d = await r.json();
+  const res = d.chart.result[0];
+  const meta = res.meta;
+  const ts = res.timestamp || [];
+  const cl = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []);
+  const bars = [];
+  for (let i = 0; i < cl.length; i++) if (cl[i] != null && ts[i] != null) bars.push({ ts: ts[i], close: cl[i] });
+  // 마지막 봉이 최신 거래일(regularMarketTime 기준)보다 며칠 뒤처졌는지 (0 = 최신 봉 포함)
+  let staleDays = 0;
+  if (bars.length && meta.regularMarketTime) {
+    staleDays = _quoteDayKey(meta.regularMarketTime, meta.gmtoffset) - _quoteDayKey(bars[bars.length - 1].ts, meta.gmtoffset);
+  }
+  return { meta, bars, staleDays };
+}
+
+// 2일+ 지연 배열(낡은 노드)이면 다른 호스트로 1회 재시도 — 주말 갭(금→월 3일)도 걸리지만
+// 재시도 결과가 더 신선하면 그걸 쓰고, 같으면 원래 응답 유지라 부작용 없음
+async function _fetchDailyChartFresh(symbol) {
+  let c = await _fetchDailyChart(symbol, "query2");
+  if (c.staleDays >= 2) {
+    try {
+      const retry = await _fetchDailyChart(symbol, "query1");
+      if (retry.bars.length && retry.staleDays < c.staleDays) c = retry;
+    } catch (e) { /* 재시도 실패 시 원래 응답 사용 */ }
+  }
+  return c;
+}
+
+// 직전 종가: 최신 봉이 배열에 있으면 그 앞 봉, 배열이 지연됐으면 마지막 봉이 곧 직전 종가
+function _prevCloseFromBars(bars, staleDays) {
+  if (!bars.length) return null;
+  if (staleDays <= 0) return bars.length >= 2 ? bars[bars.length - 2].close : null;
+  return bars[bars.length - 1].close;
+}
+
+// 한국 지수는 네이버 실시간 API를 1차 소스로 사용 — Yahoo는 CF 콜로에 중간 봉이 빠진 배열을
+// 주는 경우가 있어(7/24 봉 누락 → 전일을 7/23로 오인 → 코스피 -4.8% 오표시 사고) 신뢰 불가
+const KR_INDEX_NAVER = { "^KS11": "KOSPI", "^KQ11": "KOSDAQ" };
+async function _fetchKrIndexNaver(symbol) {
+  const code = KR_INDEX_NAVER[symbol];
+  if (!code) return null;
+  try {
+    const r = await fetch(`https://polling.finance.naver.com/api/realtime/domestic/index/${code}`, {
+      headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com" }
+    });
+    const d = await r.json();
+    const it = d && d.datas && d.datas[0];
+    if (!it || it.closePrice == null) return null;
+    const num = (v) => v == null ? null : parseFloat(String(v).replace(/,/g, ""));
+    const price = num(it.closePrice);
+    let chg = num(it.fluctuationsRatio);
+    // 하락인데 비율이 양수로 오는 형식 대비 부호 보정 (code 5 = FALLING)
+    const dirCode = it.compareToPreviousPrice && it.compareToPreviousPrice.code;
+    if (chg != null && dirCode === "5" && chg > 0) chg = -chg;
+    if (!isFinite(price) || price <= 0 || chg == null || !isFinite(chg)) return null;
+    const volume = num(String(it.accumulatedTradingVolume || "").replace(/[^0-9.,]/g, ""));
+    return { price, chg, volume: (volume != null && isFinite(volume)) ? volume : null };
+  } catch (e) { return null; }
 }
 
 async function fetchQuoteBrief(symbol) {
   try {
-    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=7d`, { headers: { "User-Agent": "Mozilla/5.0" } });
-    const d = await r.json();
-    const res = d.chart.result[0];
-    const meta = res.meta;
+    // 한국 지수 → 네이버 1차 (Yahoo 봉 누락 대응)
+    if (KR_INDEX_NAVER[symbol]) {
+      const nv = await _fetchKrIndexNaver(symbol);
+      if (nv) return { price: nv.price, chg: nv.chg };
+    }
     // chartPreviousClose가 엉터리 값일 때가 있어 종가 배열 기준으로 등락 계산 (전광판과 동일 방식)
-    const closes = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []).filter(v => v != null);
-    const price = meta.regularMarketPrice != null ? meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
-    let prev = _pickPrevClose(closes, price);
+    const { meta, bars, staleDays } = await _fetchDailyChartFresh(symbol);
+    const price = meta.regularMarketPrice != null ? meta.regularMarketPrice : (bars.length ? bars[bars.length - 1].close : null);
+    let prev = _prevCloseFromBars(bars, staleDays);
     if (prev == null) prev = meta.previousClose != null ? meta.previousClose : meta.chartPreviousClose;
     const chg = (prev && price) ? ((price - prev) / prev) * 100 : 0;
     return { price, chg };
@@ -919,13 +979,14 @@ async function fetchQuoteBrief(symbol) {
 // 전광판/지수 모달용 시세 — 종가 배열 기반 등락률(선물 연속계약 chartPreviousClose 오류 방지)
 async function fetchQuoteSimple(symbol) {
   try {
-    const r = await fetch(`https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=7d&includePrePost=true`, { headers: { "User-Agent": "Mozilla/5.0" } });
-    const d = await r.json();
-    const res = d.chart.result[0];
-    const meta = res.meta;
-    const closes = ((res.indicators && res.indicators.quote && res.indicators.quote[0] && res.indicators.quote[0].close) || []).filter(v => v != null);
-    const price = meta.regularMarketPrice != null ? meta.regularMarketPrice : (closes.length ? closes[closes.length - 1] : null);
-    let prev = _pickPrevClose(closes, price);
+    // 한국 지수 → 네이버 1차 (Yahoo 봉 누락 대응). 실패 시 아래 Yahoo 경로 폴백
+    if (KR_INDEX_NAVER[symbol]) {
+      const nv = await _fetchKrIndexNaver(symbol);
+      if (nv) return { price: nv.price, chg: nv.chg, marketState: "REGULAR", extPrice: null, extChg: null, live: nv.price, volume: nv.volume };
+    }
+    const { meta, bars, staleDays } = await _fetchDailyChartFresh(symbol);
+    const price = meta.regularMarketPrice != null ? meta.regularMarketPrice : (bars.length ? bars[bars.length - 1].close : null);
+    let prev = _prevCloseFromBars(bars, staleDays);
     if (prev == null) prev = meta.previousClose != null ? meta.previousClose : meta.chartPreviousClose;
     const chg = (prev && price) ? ((price - prev) / prev) * 100 : 0;
     // 프리/애프터장 (정규장 종가 대비 등락)
