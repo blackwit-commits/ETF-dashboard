@@ -34,6 +34,15 @@ UMT_V2_PRD.md     — V2 기획서
 - `umt_macro_cache` — /macro 응답 캐시 (12시간 TTL)
 - `umt_weekly_cache` — /weekly 응답 캐시 (24시간 TTL)
 - `umt_sync_url` — Google Sheets 동기화 URL
+- `umt_sync_state` — 동기화 상태 (저장/불러오기 시각·성공여부, 저장 대기 `dirtyTs`, 클라우드 저장본 메타)
+- `umt_watchlist` / `umt_watch_groups` / `umt_watch_ts` — 관심목록·관심그룹·마지막 변경 시각
+
+## 클라우드 동기화 규칙
+- 저장 형식은 자동/수동 모두 `{settings, portfolio, trades, deposits}` 하나 (`buildCloudPayload`)
+- 관심목록(`settings.watch`)과 저장 메타(`settings.syncMeta`)는 settings 안에 실어 보내고, 불러올 때 globalData에서 분리
+- 관심목록은 `ts` 기준 최신본 채택. 단 ts 없는 기존 기기 목록은 클라우드 것과 합집합 (`applyCloudWatch`)
+- 앱 시작 시 자동 불러오기는 `dirtyTs`(못 올린 변경)가 클라우드 저장본보다 최신이면 덮어쓰지 않고 로컬을 올림
+- 새 동기화 대상 키를 추가할 때는 파일 백업(`exportData`/`importData`)에도 같이 넣을 것
 
 ## V2 업그레이드 완료 현황
 

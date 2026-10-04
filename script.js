@@ -1771,6 +1771,10 @@ function initApp() {
         
         if (Object.keys(portfolios).length > 0) renderTickerBar();
 
+        // 관심목록 로드 (홈 탭 첫 렌더·클라우드 동기화보다 먼저)
+        loadWatchlist();
+        loadWatchGroups();
+
         if (lastTab === 'strategy' && lastTicker && portfolios[lastTicker]) {
             activeTicker = lastTicker; 
             switchTab('strategy'); 
@@ -1783,8 +1787,12 @@ function initApp() {
 
         // 4. 비동기 작업 시작
         if(SYNC_URL) {
-            loadFromCloud(false).catch(e => console.log("Silent cloud fail"));
+            // 파일 복구 직후에는 복구한 데이터를 클라우드로 올림 (클라우드 옛 데이터로 되덮이지 않게)
+            var _pushAfterRestore = localStorage.getItem('umt_push_after_restore') === '1';
+            if (_pushAfterRestore) { localStorage.removeItem('umt_push_after_restore'); syncToCloud(); }
+            else loadFromCloud(false).catch(e => console.log("Silent cloud fail"));
         }
+        try { renderSyncBadge(); } catch (e) {}
 
         fetchNews();
         startPriceTicker();
@@ -1798,14 +1806,12 @@ function initApp() {
         if (window._mktLoopTimer) clearInterval(window._mktLoopTimer);
         window._mktLoopTimer = setInterval(function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); } catch (e) {} } }, 90000);
         // 앱 복귀 시 즉시 시세 갱신 (주요지수·관심목록 포함) + 브리핑류 최신본 동기화
-        if (!window._mktVisHooked) { window._mktVisHooked = true; document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); refreshIndexQuotes(); refreshWatchQuotes(); syncBriefingsIfStale(); } catch (e) {} } }); }
+        if (!window._mktVisHooked) { window._mktVisHooked = true; document.addEventListener('visibilitychange', function () { if (document.hidden) { try { flushCloudBackup(); } catch (e) {} } if (!document.hidden) { try { fetchMarketDataInBackground(); fetchMacroIndicatorsLive(); refreshIndexQuotes(); refreshWatchQuotes(); syncBriefingsIfStale(); } catch (e) {} } }); }
         // 브리핑류(시장브리핑/뉴스브리핑) 10분 주기 재동기화 — 앱을 켜둔 채로도 최신 브리핑 자동 반영
         if (!window._briefLoopTimer) window._briefLoopTimer = setInterval(function () { if (!document.hidden) { try { syncBriefingsIfStale(); renderMarketSummary(); } catch (e) {} } }, 10 * 60000);
         fetchMacroIndicatorsLive();
         fetchLiveFxRate();
-        // 관심목록 로드 + 초기 시세/추세선
-        loadWatchlist();
-        loadWatchGroups();
+        // 관심목록 초기 시세/추세선
         try { renderWatchTabs(); } catch (e) {}
         refreshWatchlist();
         // 갱신 시각 라벨 카운트업 (30초마다 — 데이터 갱신과 무관하게 'N분 전' 증가)
@@ -2073,54 +2079,179 @@ function fetchMarketDataInBackground() {
 // ==========================================
 // ☁️ 구글 클라우드 동기화
 // ==========================================
-function saveSyncUrl() {
-    const url = document.getElementById('globalSyncUrl').value.trim();
-    localStorage.setItem('umt_sync_url', url);
-    SYNC_URL = url;
-    if(url) {
-        alert("구글 시트 URL이 저장되었습니다. 데이터를 클라우드로 백업합니다.");
-        syncToCloud();
+// 동기화 상태 기록 — 설정 탭 상태 패널/헤더 구름 배지가 이 값을 그대로 보여줌
+// {pushTs,pushOk,pushErr, pullTs,pullOk,pullErr, dirtyTs(아직 못 올린 변경 시각), cloud:{ts,device,ports,trades,watch}}
+var SYNC_STATE_KEY = 'umt_sync_state';
+function getSyncState() {
+    try { return JSON.parse(localStorage.getItem(SYNC_STATE_KEY) || '{}') || {}; } catch (e) { return {}; }
+}
+function setSyncState(patch) {
+    var s = getSyncState();
+    Object.keys(patch).forEach(function (k) { s[k] = patch[k]; });
+    try { localStorage.setItem(SYNC_STATE_KEY, JSON.stringify(s)); } catch (e) {}
+    try { renderBackupStatus(); } catch (e) {}
+    try { renderSyncBadge(); } catch (e) {}
+    return s;
+}
+function _deviceLabel() {
+    var ua = navigator.userAgent || '';
+    if (/iPhone/i.test(ua)) return 'iPhone';
+    if (/iPad/i.test(ua)) return 'iPad';
+    if (/Android/i.test(ua)) return 'Android 폰';
+    if (/Windows/i.test(ua)) return 'Windows PC';
+    if (/Macintosh/i.test(ua)) return 'Mac';
+    return '기타 기기';
+}
+function _syncProxyUrl() { return API_BASE_URL + '/sync?url=' + encodeURIComponent(SYNC_URL); }
+
+// 클라우드 저장본 — 자동/수동 저장 모두 같은 형식 (관심목록·저장 메타는 settings 안에 실어 보냄)
+function buildCloudPayload() {
+    var trades = getAggregatedTrades();
+    var meta = { ts: Date.now(), device: _deviceLabel(), ports: Object.keys(portfolios || {}).length, trades: trades.length, watch: watchlist.length };
+    var settings = Object.assign({}, globalData, { watch: getWatchSyncPayload(), syncMeta: meta });
+    return {
+        settings: settings,
+        portfolio: portfolios,
+        trades: trades,
+        deposits: (globalData && globalData.deposits) ? globalData.deposits : []
+    };
+}
+
+// 응답이 실제 성공인지 판정 (Apps Script는 오류여도 200 + HTML을 돌려주는 경우가 있음)
+function _syncResponseError(res, text) {
+    if (!res.ok) return '서버 응답 오류 (HTTP ' + res.status + ')';
+    var t = String(text || '').trim();
+    if (t.charAt(0) === '<') return '구글 시트 응답 오류 — URL/배포 권한을 확인하세요';
+    try {
+        var j = JSON.parse(t);
+        if (j && (j.error || j.ok === false || j.success === false || j.status === 'error')) return String(j.error || j.message || '시트 저장 오류');
+    } catch (e) {}
+    return '';
+}
+
+function _syncBusy(on) {
+    var syncBadge = document.getElementById('syncBadge');
+    if (!syncBadge) return;
+    if (on) syncBadge.classList.add('status-sync');
+    else setTimeout(function () { syncBadge.classList.remove('status-sync'); renderSyncBadge(); }, 1000);
+    if (on) { var ic = document.getElementById('syncIcon'); if (ic) ic.className = 'fa-solid fa-cloud text-[10px] text-white'; }
+}
+// 헤더 구름 배지: 초록=동기화됨 / 노랑=저장 대기 / 빨강=저장 실패 / 회색=미연결
+function renderSyncBadge() {
+    var ic = document.getElementById('syncIcon'); if (!ic) return;
+    var badge = document.getElementById('syncBadge');
+    if (badge && badge.classList.contains('status-sync')) return;
+    var s = getSyncState();
+    var color = 'text-slate-500', title = '클라우드 미연결 — 이 기기에만 저장 중';
+    if (SYNC_URL) {
+        if (s.pushOk === false) { color = 'text-red-400'; title = '클라우드 저장 실패'; }
+        else if (s.dirtyTs) { color = 'text-amber-400'; title = '클라우드 저장 대기 중'; }
+        else if (s.pushTs || s.pullOk) { color = 'text-emerald-400'; title = '클라우드와 동기화됨'; }
+        else { color = 'text-slate-400'; title = '클라우드 연결됨'; }
+    }
+    ic.className = 'fa-solid fa-cloud text-[10px] ' + color;
+    if (badge) badge.title = title;
+}
+
+// 실제 업로드 — 결과를 상태에 기록하고 {ok, error, meta} 반환
+async function pushToCloud() {
+    if (!SYNC_URL) return { ok: false, error: '구글 시트 URL 미설정' };
+    var dirtyAtStart = getSyncState().dirtyTs || 0;
+    var payload = buildCloudPayload();
+    try {
+        var res = await fetch(_syncProxyUrl(), {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            headers: { 'Content-Type': 'application/json' }
+        });
+        var text = ''; try { text = await res.text(); } catch (e) {}
+        var err = _syncResponseError(res, text);
+        if (err) throw new Error(err);
+        var patch = { pushTs: Date.now(), pushOk: true, pushErr: '', cloud: payload.settings.syncMeta };
+        if ((getSyncState().dirtyTs || 0) === dirtyAtStart) patch.dirtyTs = 0;   // 업로드 도중 새 변경이 없을 때만 대기 해제
+        setSyncState(patch);
+        try { localStorage.setItem('umt_last_cloud_sync', Date.now().toString()); } catch (e) {}
+        return { ok: true, meta: payload.settings.syncMeta };
+    } catch (e) {
+        console.error('[Sync] 동기화 실패:', e);
+        var msg = (e && e.message === 'Failed to fetch') ? '네트워크 연결 실패' : ((e && e.message) || '알 수 없는 오류');
+        setSyncState({ pushTs: Date.now(), pushOk: false, pushErr: msg });
+        return { ok: false, error: msg };
     }
 }
 
-async function syncToCloud() {
-    if(!SYNC_URL) return;
-
-    const syncBadge = document.getElementById('syncBadge');
-    const syncIcon = document.getElementById('syncIcon');
-    if(syncBadge) syncBadge.classList.add('status-sync');
-    if(syncIcon) syncIcon.classList.replace('text-slate-500', 'text-white');
-
-    const dataStr = JSON.stringify({ global: globalData, ports: portfolios });
-    try {
-        var proxyUrl = API_BASE_URL + '/sync?url=' + encodeURIComponent(SYNC_URL);
-        await fetch(proxyUrl, {
-            method: 'POST',
-            body: dataStr,
-            headers: { 'Content-Type': 'application/json' }
-        });
-        const sText = document.getElementById('syncStatusText');
-        if(sText) sText.innerText = "최근 동기화: " + new Date().toLocaleTimeString();
-        try { localStorage.setItem('umt_last_cloud_sync', Date.now().toString()); } catch(e){}
-        try { renderBackupStatus(); } catch(e){}
-    } catch(e) {
-        console.error('[Sync] 동기화 실패:', e);
-        const sText = document.getElementById('syncStatusText');
-        if(sText) sText.innerText = "동기화 실패";
-    } finally {
-        setTimeout(() => {
-            if(syncBadge) syncBadge.classList.remove('status-sync');
-            if(syncIcon) syncIcon.classList.replace('text-white', 'text-slate-500');
-        }, 1000);
+// 시트 URL 입력 시: 클라우드에 저장본이 있으면 먼저 불러오기 (새 기기의 빈 데이터로 덮어쓰지 않도록)
+async function saveSyncUrl() {
+    const url = document.getElementById('globalSyncUrl').value.trim();
+    localStorage.setItem('umt_sync_url', url);
+    SYNC_URL = url;
+    if (!url) { setSyncState({}); return; }
+    showToast('구글 시트 연결 확인 중...');
+    var cloud = await peekCloud();
+    if (!cloud.ok) { alert('구글 시트에 접속하지 못했습니다.\n' + cloud.error + '\n\nURL이 정확한지 확인해주세요.'); setSyncState({ pullTs: Date.now(), pullOk: false, pullErr: cloud.error }); return; }
+    if (!cloud.hasData) {
+        var r = await syncToCloud();
+        alert(r ? '구글 시트에 연결했습니다. 이 기기의 데이터를 클라우드에 저장했습니다.' : '구글 시트에 연결했지만 저장에 실패했습니다. 상태 패널을 확인해주세요.');
+        return;
     }
+    var localEmpty = Object.keys(portfolios || {}).length === 0;
+    var desc = '종목 ' + cloud.ports + '개 · 매매 ' + cloud.trades + '건' + (cloud.meta ? ' · ' + _fmtStamp(cloud.meta.ts) + ' ' + (cloud.meta.device || '') + ' 저장' : '');
+    if (localEmpty || confirm('클라우드에 저장된 데이터가 있습니다.\n(' + desc + ')\n\n[확인] 클라우드 데이터를 이 기기로 불러오기\n[취소] 불러오지 않음 (이 기기 데이터 유지)')) {
+        var ok = await loadFromCloud(true);
+        if (ok) alert('클라우드 데이터를 불러왔습니다.\n' + desc);
+    } else {
+        showToast("연결됨 — 이 기기 데이터를 올리려면 '지금 저장'을 누르세요");
+        setSyncState({ cloud: cloud.meta || null });
+    }
+}
+
+// 클라우드 저장본 요약만 확인 (적용하지 않음)
+async function peekCloud() {
+    try {
+        var res = await fetch(_syncProxyUrl());
+        var text = await res.text();
+        var err = _syncResponseError(res, text);
+        if (err) return { ok: false, error: err };
+        var data = _unwrapCloud(JSON.parse(text));
+        var settings = data && (data.settings || data.global);
+        var ports = data && (data.portfolio || data.ports);
+        if (!settings || !ports) return { ok: true, hasData: false };
+        var nTrades = Array.isArray(data.trades) ? data.trades.length
+            : Object.keys(ports).reduce(function (n, s) { return n + ((ports[s] && Array.isArray(ports[s].history)) ? ports[s].history.length : 0); }, 0);
+        return { ok: true, hasData: true, ports: Object.keys(ports).length, trades: nTrades, meta: settings.syncMeta || null };
+    } catch (e) {
+        return { ok: false, error: (e && e.message === 'Failed to fetch') ? '네트워크 연결 실패' : '응답을 해석하지 못했습니다' };
+    }
+}
+// { ok: true, data: { ... } } 형태 대응
+function _unwrapCloud(raw) {
+    if (raw && raw.data && !raw.settings && !raw.portfolio && !raw.global && !raw.ports) return raw.data;
+    return raw;
+}
+
+async function syncToCloud() {
+    if (!SYNC_URL) return false;
+    _syncBusy(true);
+    var r = await pushToCloud();
+    _syncBusy(false);
+    const sText = document.getElementById('syncStatusText');
+    if (sText) sText.innerText = r.ok ? ('최근 동기화: ' + new Date().toLocaleTimeString()) : '동기화 실패';
+    return r.ok;
 }
 
 // 자동 클라우드 백업 (변경 시 디바운스 3초 후 구글 시트로 저장)
 var _cloudSyncTimer = null;
 function autoCloudBackup() {
     if (!SYNC_URL) return;            // 시트 미연결 시 자동 저장 불가 → 백업 배지로 안내
+    setSyncState({ dirtyTs: Date.now() });   // 업로드 성공 전까지 '저장 대기' — 앱을 바로 닫아도 다음 실행 때 이어서 올림
     if (_cloudSyncTimer) clearTimeout(_cloudSyncTimer);
-    _cloudSyncTimer = setTimeout(function(){ syncToCloud(); }, 3000);
+    _cloudSyncTimer = setTimeout(function(){ _cloudSyncTimer = null; syncToCloud(); }, 3000);
+}
+// 앱이 백그라운드로 갈 때 대기 중인 저장을 즉시 실행
+function flushCloudBackup() {
+    if (!_cloudSyncTimer) return;
+    clearTimeout(_cloudSyncTimer); _cloudSyncTimer = null;
+    syncToCloud();
 }
 
 function showToast(message) {
@@ -2141,40 +2272,19 @@ async function saveFullToCloud() {
         alert('설정 탭에서 구글 시트 URL을 먼저 입력해주세요.');
         return;
     }
-    var syncBadge = document.getElementById('syncBadge');
-    var syncIcon = document.getElementById('syncIcon');
-    if (syncBadge) syncBadge.classList.add('status-sync');
-    if (syncIcon) syncIcon.classList.replace('text-slate-500', 'text-white');
-    var proxyUrl = API_BASE_URL + '/sync?url=' + encodeURIComponent(SYNC_URL);
-
-    const aggregatedTrades = getAggregatedTrades();
-    var payload = {
-        settings: globalData,
-        portfolio: portfolios,
-        trades: aggregatedTrades,
-        deposits: (globalData && globalData.deposits) ? globalData.deposits : []
-    };
-    try {
-        var res = await fetch(proxyUrl, {
-            method: 'POST',
-            body: JSON.stringify(payload),
-            headers: { 'Content-Type': 'application/json' }
-        });
-        if (res.ok) {
-            showToast('전체 데이터가 저장되었습니다.');
-            alert('전체 저장 요청 완료\ntrades: ' + aggregatedTrades.length + '\n종목 수: ' + Object.keys(portfolios || {}).length);
-            var sText = document.getElementById('syncStatusText');
-            if (sText) sText.innerText = '저장 완료 ' + new Date().toLocaleTimeString();
-        } else {
-            showToast('저장 실패');
-        }
-    } catch (e) {
+    if (_cloudSyncTimer) { clearTimeout(_cloudSyncTimer); _cloudSyncTimer = null; }
+    _syncBusy(true);
+    var r = await pushToCloud();
+    _syncBusy(false);
+    var sText = document.getElementById('syncStatusText');
+    if (r.ok) {
+        showToast('클라우드에 저장했습니다.');
+        if (sText) sText.innerText = '저장 완료 ' + new Date().toLocaleTimeString();
+        alert('클라우드 저장 완료\n종목 ' + r.meta.ports + '개 · 매매 ' + r.meta.trades + '건 · 관심목록 ' + r.meta.watch + '개');
+    } else {
         showToast('저장 실패');
-    } finally {
-        setTimeout(function() {
-            if (syncBadge) syncBadge.classList.remove('status-sync');
-            if (syncIcon) syncIcon.classList.replace('text-white', 'text-slate-500');
-        }, 1000);
+        if (sText) sText.innerText = '저장 실패';
+        alert('클라우드 저장에 실패했습니다.\n' + r.error);
     }
 }
 
@@ -2183,66 +2293,75 @@ async function loadFromCloud(isManual = false) {
         if(isManual) alert("설정 탭에서 구글 시트 URL을 먼저 입력해주세요.");
         return false;
     }
-    
+
     if(isManual) {
         var sText = document.getElementById('syncStatusText');
         if(sText) sText.innerText = "불러오는 중...";
     }
 
-    var proxyUrl = API_BASE_URL + '/sync?url=' + encodeURIComponent(SYNC_URL);
     try {
-        var res = await fetch(proxyUrl);
-        var raw = await res.json();
+        var res = await fetch(_syncProxyUrl());
+        var text = await res.text();
+        var respErr = _syncResponseError(res, text);
+        if (respErr) throw new Error(respErr);
+        var data = _unwrapCloud(JSON.parse(text));
 
-        // { ok: true, data: { ... } } 형태 대응
-        var data = raw;
-        if (data && data.data && !data.settings && !data.portfolio && !data.global && !data.ports) {
-            data = data.data;
-        } else if (data && (data.settings || data.portfolio || data.global || data.ports)) {
-        } else {
-        }
-        
-        if (data && data.settings != null && data.portfolio != null) {
-            globalData = data.settings;
-            if (Array.isArray(data.deposits)) globalData.deposits = data.deposits;
-            portfolios = data.portfolio;
-            if (Array.isArray(data.trades) && data.trades.length > 0) {
-                Object.keys(portfolios).forEach(function(sym) { portfolios[sym].history = []; });
-                data.trades.forEach(function(t) {
-                    var sym = t.sym;
-                    if (!portfolios[sym]) portfolios[sym] = { qty: 0, avgPrice: 0, history: [], config: {} };
-                    if (!Array.isArray(portfolios[sym].history)) portfolios[sym].history = [];
-                    var h = {
-                        id: t.id,
-                        date: t.date,
-                        type: t.type,
-                        price: t.price,
-                        qty: t.qty,
-                        fee: t.fee,
-                        total: t.total,
-                        memo: t.memo,
-                        tag: t.tag,
-                        stage: t.stage,
-                        cycleId: t.cycleId != null ? t.cycleId : null,
-                        plannedPrice: t.plannedPrice != null ? t.plannedPrice : null,
-                        plannedQty: t.plannedQty != null ? t.plannedQty : null,
-                        plannedStage: t.plannedStage != null ? t.plannedStage : null
-                    };
-                    portfolios[sym].history.push(h);
-                });
-                Object.keys(portfolios).forEach(function(sym) { recalcPortfolio(portfolios[sym]); });
-            }
-        } else if (data && data.global && data.ports) {
-            globalData = data.global;
-            portfolios = data.ports;
-        } else {
+        var hasFull = !!(data && data.settings != null && data.portfolio != null);
+        var hasLegacy = !!(data && data.global && data.ports);
+        if (!hasFull && !hasLegacy) {
+            setSyncState({ pullTs: Date.now(), pullOk: false, pullErr: '클라우드에 저장된 데이터 없음' });
             if(isManual) {
                 showToast('불러오기 실패');
                 alert("클라우드에 저장된 데이터가 없습니다. (비어있음)");
             }
             return false;
         }
-        
+        var cloudSettings = hasFull ? data.settings : data.global;
+        var cloudMeta = (cloudSettings && cloudSettings.syncMeta) || null;
+        var cloudWatch = (cloudSettings && cloudSettings.watch) || null;
+
+        // 자동 불러오기: 이 기기에 아직 못 올린 변경이 클라우드 저장본보다 최신이면 덮어쓰지 않고 이 기기 것을 올림
+        var dirtyTs = getSyncState().dirtyTs || 0;
+        if (!isManual && dirtyTs && dirtyTs > ((cloudMeta && cloudMeta.ts) || 0)) {
+            applyCloudWatch(cloudWatch, false);
+            syncToCloud();
+            return false;
+        }
+
+        if (hasFull) {
+            globalData = Object.assign({}, data.settings);
+            if (Array.isArray(data.deposits)) globalData.deposits = data.deposits;
+            portfolios = data.portfolio;
+            if (Array.isArray(data.trades) && data.trades.length > 0) {
+                Object.keys(portfolios).forEach(function(sym) { portfolios[sym].history = []; });
+                var archived = {};
+                data.trades.forEach(function(t) {
+                    // 저장된 필드를 그대로 복원 (fxRate 등 — 환차손익·양도세 계산에 필요)
+                    var h = Object.assign({}, t);
+                    delete h.sym;
+                    if (h.cycleId == null) h.cycleId = null;
+                    if (h.plannedPrice == null) h.plannedPrice = null;
+                    if (h.plannedQty == null) h.plannedQty = null;
+                    if (h.plannedStage == null) h.plannedStage = null;
+                    if (portfolios[t.sym]) {
+                        if (!Array.isArray(portfolios[t.sym].history)) portfolios[t.sym].history = [];
+                        portfolios[t.sym].history.push(h);
+                    } else {
+                        // 삭제한 종목의 매매 기록 → 종목을 되살리지 않고 보관함으로
+                        (archived[t.sym] = archived[t.sym] || []).push(h);
+                    }
+                });
+                try { localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } catch (e) {}
+                Object.keys(portfolios).forEach(function(sym) { recalcPortfolio(portfolios[sym]); });
+            }
+        } else {
+            globalData = Object.assign({}, data.global);
+            portfolios = data.ports;
+        }
+        // 관심목록·저장 메타는 설정값이 아니므로 분리
+        delete globalData.watch;
+        delete globalData.syncMeta;
+
         sanitizeData();
         // cycleId 호환: 보유중인데 currentCycleId가 없으면 history에서 최대 cycleId로 보정
         Object.keys(portfolios || {}).forEach(function(sym) {
@@ -2260,12 +2379,16 @@ async function loadFromCloud(isManual = false) {
         });
         localStorage.setItem('umt_v172_global', JSON.stringify(globalData));
         localStorage.setItem('umt_v172_ports', JSON.stringify(portfolios));
-        
+
+        var needUpload = applyCloudWatch(cloudWatch, isManual);
+        setSyncState({ pullTs: Date.now(), pullOk: true, pullErr: '', dirtyTs: 0, cloud: cloudMeta });
+        if (needUpload) autoCloudBackup();   // 이 기기 관심목록이 더 최신(또는 클라우드에 없음) → 올림
+
         initInputs();
         updateGlobalCalc();
         renderTickerBar();
         if(activeTicker && portfolios[activeTicker]) loadTickerData(activeTicker);
-        
+
         if(isManual) {
             showToast('전체 데이터를 불러왔습니다.');
             sText = document.getElementById('syncStatusText');
@@ -2275,21 +2398,23 @@ async function loadFromCloud(isManual = false) {
         }
         return true;
     } catch(e) {
+        var msg = (e && e.message === 'Failed to fetch') ? '네트워크 연결 실패' : ((e && e.message) || '알 수 없는 오류');
+        setSyncState({ pullTs: Date.now(), pullOk: false, pullErr: msg });
         if(isManual) {
             showToast('불러오기 실패');
-            alert("클라우드 접속 실패. URL이 정확한지 확인해주세요.");
+            alert("클라우드 접속 실패. URL이 정확한지 확인해주세요.\n" + msg);
         }
         return false;
     }
 }
-    
+
 function manualLoadFromCloud() {
-    if(confirm("구글 시트의 전체 데이터(초기 시드·포트폴리오·전략·매매일지·입출금)로 복원합니다.\n현재 화면의 저장되지 않은 데이터는 사라집니다. 계속하시겠습니까?")) {
+    if(confirm("구글 시트의 전체 데이터(초기 시드·포트폴리오·전략·매매일지·입출금·관심목록)로 복원합니다.\n현재 화면의 저장되지 않은 데이터는 사라집니다. 계속하시겠습니까?")) {
         loadFromCloud(true).then(ok => {
             if (ok) {
                 const allTrades = getAggregatedTrades();
                 const portCount = Object.keys(portfolios || {}).length;
-                alert('전체 불러오기 완료\n종목 수: ' + portCount + '\ntrades: ' + allTrades.length);
+                alert('전체 불러오기 완료\n종목 ' + portCount + '개 · 매매 ' + allTrades.length + '건 · 관심목록 ' + watchlist.length + '개');
             }
         });
     }
@@ -3666,14 +3791,55 @@ var _watchSearchSeq = 0, _watchSearchTimer = null;
 function loadWatchlist() {
     try { var a = JSON.parse(localStorage.getItem(WATCHLIST_KEY) || '[]'); if (Array.isArray(a)) watchlist = a; } catch (e) { watchlist = []; }
 }
-function saveWatchlist() { try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist)); } catch (e) {} }
+function _persistWatchlist() { try { localStorage.setItem(WATCHLIST_KEY, JSON.stringify(watchlist)); } catch (e) {} }
+function saveWatchlist() { _persistWatchlist(); _touchWatch(); }
+
+// ===== 관심목록 클라우드 동기화 (구글 시트 settings.watch) =====
+var WATCH_TS_KEY = 'umt_watch_ts';   // 이 기기에서 관심목록을 마지막으로 바꾼 시각 — 기기 간 최신본 판정
+function _watchTs() { return parseInt(localStorage.getItem(WATCH_TS_KEY) || '0', 10) || 0; }
+function _setWatchTs(ts) { try { localStorage.setItem(WATCH_TS_KEY, String(ts)); } catch (e) {} }
+function _touchWatch() { _setWatchTs(Date.now()); try { autoCloudBackup(); } catch (e) {} }
+function getWatchSyncPayload() { return { list: watchlist, groups: watchGroups, ts: _watchTs() }; }
+// 클라우드 관심목록 반영. 반환값 true = 이 기기 것을 클라우드로 올려야 함
+// force: 수동 '불러오기' — 시각과 무관하게 클라우드 것으로 교체
+function applyCloudWatch(cw, force) {
+    var localTs = _watchTs();
+    if (!cw || !Array.isArray(cw.list)) {            // 클라우드에 관심목록 없음 → 이 기기에 있으면 올림
+        if (watchlist.length && !localTs) _setWatchTs(Date.now());
+        return watchlist.length > 0;
+    }
+    var cloudGroups = (Array.isArray(cw.groups) && cw.groups.length) ? cw.groups : null;
+    if (!localTs && watchlist.length) {
+        // 동기화 도입 전부터 이 기기에 있던 목록 → 버리지 않고 클라우드 것과 합침
+        if (cloudGroups) cloudGroups.forEach(function (g) { if (!watchGroups.some(function (x) { return x.id === g.id; })) watchGroups.push(g); });
+        cw.list.forEach(function (w) { if (w && w.sym && !watchlist.some(function (x) { return x.sym === w.sym; })) watchlist.push(w); });
+        _persistWatchlist(); _persistWatchGroups(); _setWatchTs(Date.now());
+        _afterWatchReplaced();
+        return true;
+    }
+    var cloudTs = cw.ts || 0;
+    if (force || cloudTs > localTs) {
+        watchlist = cw.list.filter(function (w) { return w && w.sym; });
+        if (cloudGroups) watchGroups = cloudGroups;
+        _persistWatchlist(); _persistWatchGroups(); _setWatchTs(cloudTs || Date.now());
+        _afterWatchReplaced();
+        return false;
+    }
+    return localTs > cloudTs;
+}
+function _afterWatchReplaced() {
+    loadWatchGroups();                                // 그룹 미지정/없는 그룹 아이템 보정
+    if (_watchFilter !== 'all' && !watchGroups.some(function (g) { return g.id === _watchFilter; })) _watchFilter = 'all';
+    try { renderWatchTabs(); renderWatchlist(); refreshWatchlist(); } catch (e) {}
+}
 
 // ===== 관심그룹 (사용자 지정 폴더) =====
 var WATCH_GROUPS_KEY = 'umt_watch_groups';
 var watchGroups = [];            // [{id,name}]
 var _watchAddGroup = null;       // 추가 모달에서 선택된 대상 그룹
 function _genGroupId() { return 'g' + Date.now().toString(36) + Math.floor(Math.random() * 1000); }
-function saveWatchGroups() { try { localStorage.setItem(WATCH_GROUPS_KEY, JSON.stringify(watchGroups)); } catch (e) {} }
+function _persistWatchGroups() { try { localStorage.setItem(WATCH_GROUPS_KEY, JSON.stringify(watchGroups)); } catch (e) {} }
+function saveWatchGroups() { _persistWatchGroups(); _touchWatch(); }
 function loadWatchGroups() {
     try { var a = JSON.parse(localStorage.getItem(WATCH_GROUPS_KEY) || 'null'); if (Array.isArray(a) && a.length) watchGroups = a; } catch (e) {}
     if (!watchGroups.length) watchGroups = [{ id: 'kr', name: '한국' }, { id: 'us', name: '미국' }];
@@ -3687,7 +3853,7 @@ function loadWatchGroups() {
             changed = true;
         }
     });
-    if (changed) saveWatchlist();
+    if (changed) _persistWatchlist();   // 자동 보정은 '사용자 변경'이 아니므로 변경 시각을 건드리지 않음
 }
 function _defaultGroupForMarket(mkt) {
     var ids = watchGroups.map(function (g) { return g.id; });
@@ -6644,24 +6810,74 @@ function switchStratView(view) {
     }
 }
 function deleteActiveTicker() { if(!activeTicker) return; if(confirm(`'${activeTicker}' 종목을 삭제하시겠습니까?\n전략 설정은 삭제되지만 매매 기록은 보존됩니다.`)) { const d = portfolios[activeTicker]; if (d && Array.isArray(d.history) && d.history.length > 0) { try { const archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); archived[activeTicker] = (archived[activeTicker] || []).concat(d.history); localStorage.setItem('umt_archived_history', JSON.stringify(archived)); } catch(e) { console.error('History archive failed:', e); } } delete portfolios[activeTicker]; saveAll(); activeTicker = null; localStorage.removeItem('umt_last_ticker'); const keys = Object.keys(portfolios); if (keys.length > 0) { selectTicker(keys[0]); } else { switchTab('home'); renderTickerBar(); } } }
-function exportData(){ const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({global:globalData, ports:portfolios})); const node = document.createElement('a'); node.setAttribute("href", dataStr); node.setAttribute("download", "UMT_Backup.json"); document.body.appendChild(node); node.click(); node.remove(); try { localStorage.setItem('umt_last_backup', Date.now().toString()); } catch(e){} renderBackupStatus(); }
+function exportData(){
+    const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    let archived = {}; try { archived = JSON.parse(localStorage.getItem('umt_archived_history') || '{}'); } catch(e){}
+    const backup = { version: 2, exportedAt: Date.now(), device: _deviceLabel(), global: globalData, ports: portfolios, archived: archived, watch: getWatchSyncPayload() };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup));
+    const node = document.createElement('a'); node.setAttribute("href", dataStr); node.setAttribute("download", "UMT_Backup_" + stamp + ".json");
+    document.body.appendChild(node); node.click(); node.remove();
+    try { localStorage.setItem('umt_last_backup', Date.now().toString()); } catch(e){}
+    renderBackupStatus();
+    showToast('백업 파일을 내보냈습니다 (UMT_Backup_' + stamp + '.json)');
+}
 
-// 백업 상태 표시 — 시트 연결 시 '자동 저장 켜짐', 미연결 시 안내+수동 백업 경과
+// 'M/D HH:mm' + 'N분 전' — 동기화·백업 시각 표기
+function _fmtAgo(ts){ const m = Math.floor((Date.now()-ts)/60000); if(m<1)return'방금'; if(m<60)return m+'분 전'; const h=Math.floor(m/60); if(h<24)return h+'시간 전'; return Math.floor(h/24)+'일 전'; }
+function _fmtStamp(ts){
+    if(!ts) return '';
+    const d = new Date(ts), p = (n) => (n<10?'0':'')+n;
+    return (d.getMonth()+1) + '/' + d.getDate() + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+// 동기화·백업 상태 패널 — 지금 안전한지(헤드라인) + 언제·어느 기기가·무엇을 저장했는지(상세)
 function renderBackupStatus(){
     const el = document.getElementById('backupStatus'); if(!el) return;
-    const ago = (ts) => { const m = Math.floor((Date.now()-ts)/60000); if(m<1)return'방금'; if(m<60)return m+'분 전'; const h=Math.floor(m/60); if(h<24)return h+'시간 전'; return Math.floor(h/24)+'일 전'; };
-    // 1) 구글 시트 연결됨 → 변경 시 자동 저장
-    if(SYNC_URL){
-        const cloudTs = parseInt(localStorage.getItem('umt_last_cloud_sync') || '0', 10);
-        if(cloudTs) el.innerHTML = '<span class="text-emerald-400"><i class="fa-solid fa-cloud-arrow-up mr-1"></i>자동 저장 켜짐 · 최근 ' + ago(cloudTs) + '</span>';
-        else el.innerHTML = '<span class="text-emerald-400"><i class="fa-solid fa-cloud mr-1"></i>자동 저장 켜짐 — 변경 시 구글 시트에 자동 백업됩니다</span>';
-        return;
+    const s = getSyncState();
+    const nTrades = (() => { try { return getAggregatedTrades().length; } catch(e){ return 0; } })();
+    const localDesc = '종목 ' + Object.keys(portfolios||{}).length + ' · 매매 ' + nTrades + ' · 관심 ' + watchlist.length;
+    const fileTs = parseInt(localStorage.getItem('umt_last_backup') || '0', 10);
+    const when = (ts) => ts ? (_fmtStamp(ts) + ' <span class="text-slate-500">(' + _fmtAgo(ts) + ')</span>') : '<span class="text-slate-600">기록 없음</span>';
+    const row = (label, val) => '<div class="flex justify-between gap-3 py-1"><span class="text-slate-500 shrink-0">' + label + '</span><span class="text-slate-300 text-right">' + val + '</span></div>';
+
+    let tone, icon, head, sub;
+    if(!SYNC_URL){
+        tone = 'amber'; icon = 'fa-triangle-exclamation'; head = '자동 저장 꺼짐 — 이 기기에만 저장 중';
+        sub = '기기를 바꾸거나 브라우저 데이터를 지우면 사라집니다. 아래에 구글 시트를 연결하세요.';
+    } else if(s.pushOk === false){
+        tone = 'red'; icon = 'fa-circle-xmark'; head = '클라우드 저장 실패';
+        sub = escapeHtml(s.pushErr || '') + ' · 변경분은 이 기기에 남아 있고, 다음 저장 때 다시 올립니다.';
+    } else if(s.dirtyTs){
+        tone = 'amber'; icon = 'fa-cloud-arrow-up'; head = '저장 대기 중';
+        sub = '이 기기의 변경분을 클라우드에 올리는 중입니다.';
+    } else if(s.pullOk === false && !s.pushTs){
+        tone = 'red'; icon = 'fa-circle-xmark'; head = '클라우드 불러오기 실패';
+        sub = escapeHtml(s.pullErr || '');
+    } else {
+        tone = 'emerald'; icon = 'fa-circle-check'; head = '클라우드와 동기화됨';
+        sub = '변경하면 구글 시트에 자동 저장되고, 앱을 열 때 최신본을 불러옵니다.';
     }
-    // 2) 미연결 → 자동 저장 불가 안내 + 수동 백업 경과
-    const ts = parseInt(localStorage.getItem('umt_last_backup') || '0', 10);
-    let manual = '';
-    if(ts){ const days = Math.floor((Date.now()-ts)/86400000); manual = ' · 마지막 수동 백업 ' + (days===0?'오늘':days+'일 전'); }
-    el.innerHTML = '<span class="text-amber-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>자동 저장 꺼짐 — 위 구글 시트 연결 시 변경분이 자동 백업됩니다' + manual + '</span>';
+    const toneCls = { emerald: 'border-emerald-700/50 bg-emerald-900/20 text-emerald-300', amber: 'border-amber-700/50 bg-amber-900/20 text-amber-300', red: 'border-red-700/50 bg-red-900/20 text-red-300' }[tone];
+
+    let html = '<div class="rounded-xl border p-3 ' + toneCls + '">'
+        + '<div class="text-[13px] font-black"><i class="fa-solid ' + icon + ' mr-1.5"></i>' + head + '</div>'
+        + '<div class="text-[10px] font-normal text-slate-400 mt-1 leading-relaxed">' + sub + '</div></div>';
+
+    html += '<div class="mt-2 rounded-xl border border-slate-700 bg-slate-900/40 px-3 py-2 text-[11px] font-normal divide-y divide-slate-700/50">';
+    const okTag = (ts, ok) => ts ? (ok === false ? ' <span class="text-red-400">실패</span>' : ' <span class="text-emerald-400">성공</span>') : '';
+    if(SYNC_URL){
+        const c = s.cloud;
+        const cloudDesc = (c && c.ts)
+            ? when(c.ts) + '<br><span class="text-slate-400">' + escapeHtml(c.device || '') + ' · 종목 ' + c.ports + ' · 매매 ' + c.trades + ' · 관심 ' + c.watch + '</span>'
+            : '<span class="text-slate-500">저장 시각 정보 없음 (이전 버전에서 저장됨)</span>';
+        html += row('클라우드 저장본', cloudDesc);
+        html += row('이 기기 → 클라우드', when(s.pushTs) + okTag(s.pushTs, s.pushOk));
+        html += row('클라우드 → 이 기기', when(s.pullTs) + okTag(s.pullTs, s.pullOk));
+    }
+    html += row('이 기기 데이터', localDesc);
+    html += row('파일 백업', when(fileTs));
+    html += '</div>';
+    el.innerHTML = html;
 }
 
 // 세금 · 실수령 추정 (해외주식 양도세 + 배당 원천징수 안내)
@@ -6720,7 +6936,33 @@ function renderTaxSummary(){
 
     el.innerHTML = html;
 }
-function importData(input){ const file = input.files[0]; if(!file)return; const reader = new FileReader(); reader.onload = function(e){ try { const json = JSON.parse(e.target.result); if(json.global && json.ports) { localStorage.setItem('umt_v172_global', JSON.stringify(json.global)); localStorage.setItem('umt_v172_ports', JSON.stringify(json.ports)); alert("복구 완료!"); location.reload(); } } catch(err) { alert("파일 오류"); } }; reader.readAsText(file); }
+function importData(input){
+    const file = input.files[0]; if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e){
+        let json = null;
+        try { json = JSON.parse(e.target.result); } catch(err) { alert("파일 오류 — JSON 형식이 아닙니다."); input.value = ''; return; }
+        if(!json || !json.global || !json.ports) { alert("UMT 백업 파일이 아닙니다. (설정·포트폴리오 정보 없음)"); input.value = ''; return; }
+        const nTrades = Object.keys(json.ports).reduce((n, s) => n + ((json.ports[s] && Array.isArray(json.ports[s].history)) ? json.ports[s].history.length : 0), 0);
+        const hasWatch = json.watch && Array.isArray(json.watch.list);
+        const desc = (json.exportedAt ? _fmtStamp(json.exportedAt) + ' 백업 · ' : '') + '종목 ' + Object.keys(json.ports).length + '개 · 매매 ' + nTrades + '건' + (hasWatch ? ' · 관심목록 ' + json.watch.list.length + '개' : ' · 관심목록 없음(이전 형식)');
+        if(!confirm('이 백업 파일로 복구합니다.\n(' + desc + ')\n\n현재 이 기기의 데이터' + (SYNC_URL ? '와 클라우드 저장본' : '') + '이 백업 파일 내용으로 바뀝니다. 계속하시겠습니까?')) { input.value = ''; return; }
+        const g = Object.assign({}, json.global); delete g.watch; delete g.syncMeta;
+        localStorage.setItem('umt_v172_global', JSON.stringify(g));
+        localStorage.setItem('umt_v172_ports', JSON.stringify(json.ports));
+        if(json.archived && typeof json.archived === 'object') localStorage.setItem('umt_archived_history', JSON.stringify(json.archived));
+        if(hasWatch){
+            localStorage.setItem(WATCHLIST_KEY, JSON.stringify(json.watch.list));
+            if(Array.isArray(json.watch.groups) && json.watch.groups.length) localStorage.setItem(WATCH_GROUPS_KEY, JSON.stringify(json.watch.groups));
+            _setWatchTs(Date.now());
+        }
+        // 시트 연결 상태면 재시작 직후 클라우드 옛 데이터를 불러오는 대신 복구본을 올린다
+        if(SYNC_URL) localStorage.setItem('umt_push_after_restore', '1');
+        alert("복구 완료!\n" + desc);
+        location.reload();
+    };
+    reader.readAsText(file);
+}
 function applyFeePreset(){ const v=document.getElementById('feePreset').value; if(v!=='custom') document.getElementById('globalFeeRate').value=v; }
     
 function renderRescuePlan() { const d = portfolios[activeTicker]; const panel = document.getElementById('rescuePlanPanel'); const tbody = document.getElementById('rescueTableBody'); const badge = document.getElementById('rescueBadge'); const lastDropIdx = d.config.drops.length - 1; const basePrice = parseFloat(document.getElementById('planBasePrice').value) || d.config.basePrice; const lastPlanPrice = basePrice * (1 + d.config.drops[lastDropIdx]/100); const currentPrice = d.marketData && d.marketData.price > 0 ? d.marketData.price : 0; if (d.qty > 0 && currentPrice < lastPlanPrice && currentPrice > 0) { panel.classList.remove('hidden'); tbody.innerHTML = ''; const rescueScenario = [5, 10, 15]; rescueScenario.forEach(pct => { const rescuePrice = currentPrice * (1 - pct/100); const rescueQty = Math.floor(d.qty * 0.5); const cost = rescueQty * rescuePrice; tbody.innerHTML += `<tr class="border-b border-red-800/30"><td class="py-2 font-bold text-red-300">현가 -${pct}%</td><td class="py-2 text-right">$${rescuePrice.toFixed(2)}</td><td class="py-2 text-right text-white">${rescueQty}주</td><td class="py-2 text-right text-yellow-400">$${Math.round(cost).toLocaleString()}</td></tr>`; }); const mddBreach = ((currentPrice - lastPlanPrice) / lastPlanPrice) * 100; badge.innerText = `계획이탈 ${mddBreach.toFixed(1)}%`; } else { panel.classList.add('hidden'); } }

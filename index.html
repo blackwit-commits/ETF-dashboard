@@ -30,7 +30,7 @@
                     <span class="status-dot status-error" id="statusDot"></span>
                     <span class="text-[9px] font-black text-slate-400 tracking-wider" id="statusText">WAIT</span>
                 </div>
-                <div class="bg-slate-900 border border-slate-700 rounded-full px-2 py-0.5 flex items-center shrink-0" id="syncBadge" title="클라우드 동기화 상태">
+                <div class="bg-slate-900 border border-slate-700 rounded-full px-2 py-0.5 flex items-center shrink-0 cursor-pointer" id="syncBadge" title="클라우드 동기화 상태" onclick="switchTab('settings')">
                     <i class="fa-solid fa-cloud text-[10px] text-slate-500" id="syncIcon"></i>
                 </div>
                 <div class="flex-1 overflow-hidden h-6 flex items-center cursor-pointer" onclick="goToNewsTab()">
@@ -784,19 +784,23 @@
             <!-- ☁️ 동기화 & 백업 -->
             <div class="glass-panel rounded-2xl p-5 border-t-4 border-cyan-500">
                 <h2 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-cloud text-cyan-400"></i> 동기화 & 백업</h2>
+                <!-- 상태 패널: 지금 안전한지 + 언제·어느 기기가·무엇을 저장했는지 -->
+                <div id="backupStatus" class="mb-4"></div>
                 <div class="mb-4 border-b border-slate-700 pb-4">
+                    <div class="text-[11px] font-bold text-slate-300 mb-2"><i class="fa-solid fa-cloud text-cyan-400 mr-1"></i>구글 시트 <span class="text-slate-500 font-normal">— 변경 시 자동 저장 · 기기 간 공유</span></div>
                     <label class="block text-[10px] text-slate-500 font-bold mb-1 ml-1 flex justify-between">
                         <span>구글 시트 연동 URL (Cloud DB)</span>
                         <span class="text-emerald-400" id="syncStatusText"></span>
                     </label>
-                    <div class="flex flex-wrap gap-2 items-center">
-                        <input type="text" id="globalSyncUrl" class="min-w-0 flex-1 p-2.5 rounded-lg bg-slate-900 text-white text-xs border border-slate-700" placeholder="https://script.google.com/macros/s/..." onchange="saveSyncUrl()" style="min-width:120px">
-                        <button onclick="saveFullToCloud()" class="shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg font-bold text-xs shadow-lg transition whitespace-nowrap"><i class="fa-solid fa-cloud-arrow-up mr-1"></i>전체 저장</button>
-                        <button onclick="manualLoadFromCloud()" class="shrink-0 bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg font-bold text-xs shadow-lg transition whitespace-nowrap"><i class="fa-solid fa-cloud-arrow-down mr-1"></i>전체 불러오기</button>
+                    <input type="text" id="globalSyncUrl" class="w-full p-2.5 rounded-lg bg-slate-900 text-white text-xs border border-slate-700" placeholder="https://script.google.com/macros/s/..." onchange="saveSyncUrl()">
+                    <div class="grid grid-cols-2 gap-2 mt-2">
+                        <button onclick="saveFullToCloud()" class="py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-xs shadow-lg transition"><i class="fa-solid fa-cloud-arrow-up mr-1"></i>지금 저장<span class="block text-[9px] font-normal opacity-80">이 기기 → 클라우드</span></button>
+                        <button onclick="manualLoadFromCloud()" class="py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-xs shadow-lg transition"><i class="fa-solid fa-cloud-arrow-down mr-1"></i>불러오기<span class="block text-[9px] font-normal opacity-80">클라우드 → 이 기기</span></button>
                     </div>
                 </div>
-                <div id="backupStatus" class="text-[11px] font-bold mb-2 text-center"></div>
-                <div class="grid grid-cols-2 gap-3"><button onclick="exportData()" class="py-3 bg-slate-800 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 hover:text-white transition"><i class="fa-solid fa-download mr-1"></i> 백업 저장</button><label class="py-3 bg-slate-800 rounded-xl text-slate-400 text-xs font-bold border border-slate-700 text-center cursor-pointer hover:text-white transition"><i class="fa-solid fa-upload mr-1"></i> 데이터 복구<input type="file" class="hidden" onchange="importData(this)"></label></div>
+                <div class="text-[11px] font-bold text-slate-300 mb-2"><i class="fa-solid fa-file-arrow-down text-slate-400 mr-1"></i>파일 백업 <span class="text-slate-500 font-normal">— 수동 · 만일을 위한 보관용</span></div>
+                <div class="grid grid-cols-2 gap-2"><button onclick="exportData()" class="py-2.5 bg-slate-800 rounded-lg text-slate-300 text-xs font-bold border border-slate-700 hover:text-white transition"><i class="fa-solid fa-download mr-1"></i>파일로 내보내기</button><label class="py-2.5 bg-slate-800 rounded-lg text-slate-300 text-xs font-bold border border-slate-700 text-center cursor-pointer hover:text-white transition"><i class="fa-solid fa-upload mr-1"></i>파일에서 복구<input type="file" accept=".json,application/json" class="hidden" onchange="importData(this)"></label></div>
+                <div class="text-[10px] text-slate-500 mt-3 leading-relaxed"><i class="fa-solid fa-circle-info mr-1"></i>저장 항목: 설정(시드·환율·수수료) · 포트폴리오/전략 · 매매일지 · 입출금 · 관심목록</div>
             </div>
 
             <!-- 📊 자산·손익 요약 (정보 — 접기) -->
@@ -1071,7 +1075,7 @@
             <button onclick="closeIosInstallGuide()" class="w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20260715a"></script>
+    <script src="script.js?v=20261001a"></script>
     <script>
     if('serviceWorker' in navigator){
         window.addEventListener('load',function(){
