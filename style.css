@@ -469,3 +469,19 @@ html.light #marketList [id^="card-"] .w-10.h-10 {
 html.light #marketList [id^="card-"] [class*="badge-"] { background: #f4f6f9; color: #3b4250; border-color: transparent; }
 html.light #marketList [id^="card-"] .text-sm { font-size: 15px; }
 html.light #marketList [id^="card-"] .text-\[10px\] { font-size: 12px; }
+
+/* 매수/매도: 한국식 색을 연하게 (매수 빨강 · 매도 파랑) */
+html.light .btn-buy.btn-buy {
+    background: #fdeeee !important;
+    color: #d92d3a !important;
+    border: 1px solid #f6d3d6 !important;
+    box-shadow: none !important;
+}
+html.light .btn-sell.btn-sell {
+    background: #ebf1fc !important;
+    color: #1f5fd6 !important;
+    border: 1px solid #d3e0f8 !important;
+    box-shadow: none !important;
+}
+html.light .btn-buy.btn-buy:active { background: #fadcdf !important; }
+html.light .btn-sell.btn-sell:active { background: #dbe6fa !important; }
