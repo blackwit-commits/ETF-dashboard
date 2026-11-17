@@ -393,3 +393,79 @@ html.light .seg-ctl > button[class*=" bg-"] {
 html.light .sub-label { display: block; }
 /* Quad 카드 제목: 국면 색은 유지하고 크기만 섹션 제목급으로 */
 html.light .quad-title { font-size: 18px !important; letter-spacing: -0.3px; }
+
+/* ── 버튼 체계 (화이트) ──
+   기본: 화려한 단색 버튼은 회색 보조 버튼으로 (theme-light.css §6)
+   .btn-primary: 검정 주요 버튼(화면당 하나) · .btn-outline: 흰 바탕 + 테두리 */
+html.light .btn-primary.btn-primary {
+    background: #111418 !important;
+    color: #ffffff !important;
+    border-color: #111418 !important;
+    box-shadow: none !important;
+}
+html.light .btn-primary.btn-primary:hover { background: #2a303b !important; }
+html.light .btn-primary.btn-primary :is(i, span) { color: inherit !important; }
+html.light .btn-outline.btn-outline {
+    background: #ffffff !important;
+    color: #111418 !important;
+    border: 1px solid #dfe2e7 !important;
+    box-shadow: none !important;
+}
+html.light .btn-outline.btn-outline:hover { background: #f7f8fa !important; }
+html.light .btn-outline.btn-outline :is(i, span) { color: inherit !important; }
+
+/* 토글 묶음(회색 트랙 안 버튼): seg-ctl 과 같은 흰 선택 칩 */
+html.light .rounded-lg.p-0\.5:has(> button + button) { background: #f4f6f9 !important; }
+html.light .rounded-lg.p-0\.5:has(> button + button) > button { color: #5d6470 !important; background: transparent !important; box-shadow: none !important; }
+html.light .rounded-lg.p-0\.5:has(> button + button) > button[class*=" bg-"]:not([class*=" bg-slate"]):not([class*=" bg-transparent"]) {
+    background: #ffffff !important;
+    color: #111418 !important;
+    box-shadow: 0 1px 2px rgba(17, 20, 24, 0.08) !important;
+}
+/* 칩 행(매매일지 기간 등): 선택 = 검정 칩 */
+html.light [id$="Chips"] > button { border-color: transparent !important; }
+html.light [id$="Chips"] > button[class*=" bg-"]:not([class*=" bg-slate"]) {
+    background: #111418 !important;
+    color: #ffffff !important;
+}
+
+/* 설정 카드의 색 상단띠 제거 (카드 위계는 흰 카드로 충분) */
+html.light .glass-panel.border-t-4 { border-top-width: 0; }
+
+/* 하단 매수/매도/배당 바 */
+html.light #strategyActionBar { border-color: #eef0f3; }
+
+/* ── 홈: ETF Quad별 리스트 — 박스 중첩 제거, 구분선 리스트 ──
+   그룹 헤더 = 행(구분선) · 현재 Quad = 검정 칩 · 종목 = 들여쓰기 없는 리스트 행 */
+html.light #marketList { margin-top: 4px; }
+html.light #marketList > div { margin-top: 0 !important; }
+html.light #marketList > div > button {
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 1px solid #eef0f3 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000;
+    padding: 14px 2px !important;
+}
+html.light #marketList > div > button > .absolute { display: none; }
+html.light #marketList > div > button .text-xs.font-black { font-size: 15px; font-weight: 700; color: #111418; }
+html.light #marketList > div > button .text-xs.font-black > span {
+    background: #111418 !important; color: #ffffff !important; font-size: 10px; padding: 2px 7px; border-radius: 6px;
+}
+html.light #marketList > div > button .text-\[9px\] { font-size: 12px; color: #6b7280; }
+html.light #marketList > div > button .flex.items-center.gap-2 > span { color: #6b7280 !important; font-size: 12px; }
+html.light #marketList [id^="etfSector"].grid { margin: 0 !important; gap: 0 !important; }
+html.light #marketList [id^="card-"].glass-panel {
+    background: transparent;
+    border-radius: 0;
+    padding: 12px 2px;
+    border-bottom: 1px solid #eef0f3;
+}
+html.light #marketList [id^="card-"].glass-panel:hover { background: #f7f8fa; }
+html.light #marketList [id^="card-"] .w-10.h-10 {
+    border-radius: 9999px; background: #f4f6f9; border-color: transparent; box-shadow: none; font-size: 10px;
+}
+html.light #marketList [id^="card-"] [class*="badge-"] { background: #f4f6f9; color: #3b4250; border-color: transparent; }
+html.light #marketList [id^="card-"] .text-sm { font-size: 15px; }
+html.light #marketList [id^="card-"] .text-\[10px\] { font-size: 12px; }

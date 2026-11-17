@@ -2,7 +2,7 @@
 const fs = require('fs');
 const out = [];
 const esc = (c) => c.replace(/([:\/\[\]#.%])/g, '\\$1');
-const OPAC = ['', '10', '20', '25', '30', '40', '50', '60', '70', '80', '90', '92', '95'];
+const OPAC = ['', '5', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55', '60', '65', '70', '75', '80', '85', '90', '92', '95'];
 const withOp = (base) => OPAC.map((o) => (o ? base + '/' + o : base));
 // :is() 로 묶어 크기 절감 — 명시도는 html.light .x 와 동일 (0,2,1)
 const sel = (classes, suffix = '') => 'html.light :is(' + classes.map((c) => '.' + esc(c)).join(',') + ')' + suffix;
@@ -98,6 +98,14 @@ out.push(`html.light :is(${solidSel}):not(.text-black):not(.text-slate-900):not(
 out.push(`html.light :is(${solidSel}) :is(.text-white,.text-slate-100,.text-slate-200) {color:#ffffff}`);
 const gradFrom = Object.keys(PAL).flatMap((c) => [5, 6, 7].map((d) => `[class*="from-${c}-${d}00"]`)).join(',');
 out.push(`html.light [class*="bg-gradient-to"]:is(${gradFrom}).text-white {color:#ffffff}`);
+
+// ── 6. 버튼 체계: 화려한 단색 버튼 → 회색 보조 버튼 (주요 버튼은 style.css 의 .btn-primary 로 검정) ──
+const satBtn = Object.keys(PAL).flatMap((c) => [500, 600, 700].map((s) => '.' + esc(`bg-${c}-${s}`))).join(',');
+const redBtn = [500, 600, 700].map((s) => '.' + esc(`bg-red-${s}`) + ',.' + esc(`bg-rose-${s}`)).join(',');
+out.push(`html.light :is(button,label,a):is(${satBtn},.bg-gradient-to-r,.bg-gradient-to-br) {background:#f4f6f9 !important;color:#111418 !important;box-shadow:none !important;border-color:transparent !important}`);
+out.push(`html.light :is(button,label,a):is(${satBtn},.bg-gradient-to-r,.bg-gradient-to-br):hover {background:#eef0f3 !important}`);
+out.push(`html.light :is(button,label,a):is(${satBtn}) :is(i,span) {color:inherit !important}`);
+out.push(`html.light :is(button,label,a):is(${redBtn}) {color:${UP} !important}`);
 
 fs.writeFileSync(process.argv[2], out.join('\n') + '\n');
 console.log('rules:', out.length, 'bytes:', fs.statSync(process.argv[2]).size);
