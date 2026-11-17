@@ -1437,7 +1437,8 @@ async function checkTargetsAndAlert(env) {
     // 매수 단계 도달 (가격 하락 → 계획 매수가 이하)
     (pos.buyStages || []).forEach((b) => {
       if (b && b.price > 0 && cur <= b.price) {
-        const key = pos.sym + ":B" + b.n + ":" + Number(b.price).toFixed(2);
+        // gen = 앱이 보내는 '단계 재개방 세대'(사이클+매도 횟수) — 익절로 다시 열린 단계는 새 키로 재알림
+        const key = pos.sym + ":B" + b.n + ":" + Number(b.price).toFixed(2) + (b.gen ? ":" + b.gen : "");
         if (!alerted[key]) {
           msgs.push(`🔵 <b>${pos.sym}</b> ${b.n}차 매수가 도달!${sess}\n계획가 $${Number(b.price).toFixed(2)} · 현재 $${cur.toFixed(2)}\n→ ${b.n}차 분할매수 검토`);
           next[key] = Date.now();

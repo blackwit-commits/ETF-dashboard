@@ -1703,9 +1703,15 @@ function sanitizeData() {
         p.config.basePrice = parseFloat(p.config.basePrice) || 0;
         // 사이클별 가용자금(USD 절대값) — 사이클 리셋 시 설정됨. null이면 기존 allocPct 비례 로직 사용
         if (p.config.cycleAvailableUSD !== null && p.config.cycleAvailableUSD !== undefined) {
-            p.config.cycleAvailableUSD = parseFloat(p.config.cycleAvailableUSD) || null;
+            var _cav = parseFloat(p.config.cycleAvailableUSD);
+            p.config.cycleAvailableUSD = isNaN(_cav) ? null : _cav;   // 0(가용자금 없음)도 유지 — 0을 null로 바꾸면 전체 할당으로 되돌아감
         } else {
             p.config.cycleAvailableUSD = null;
+        }
+        // 사이클 번호 정합: 기록의 최대 cycleId 이상으로 (삭제 후 재추가 · 파일 복원 시 옛 사이클과 섞임 방지)
+        if (Array.isArray(p.history)) {
+            var _maxCid = p.history.reduce(function (m, h) { return (h && Number(h.cycleId) > m) ? Number(h.cycleId) : m; }, 0);
+            if (!(Number(p.cycleSeq) >= _maxCid)) p.cycleSeq = _maxCid;
         }
 
         // 배열 구조가 깨졌거나, 단계 수와 배열 길이가 다르면 강제 초기화
@@ -2394,13 +2400,17 @@ async function loadFromCloud(isManual = false) {
         updateGlobalCalc();
         renderTickerBar();
         if(activeTicker && portfolios[activeTicker]) loadTickerData(activeTicker);
+        // 자동 불러오기(앱 시작)도 수동과 똑같이 모든 화면 갱신 + 알림용 포지션 동기화
+        try { if (typeof renderTradeLog === 'function') renderTradeLog(); } catch (e) {}
+        try { if (activeTicker && portfolios[activeTicker]) renderStrategyProgressCard(activeTicker); } catch (e) {}
+        try { renderPositionOverview(); } catch (e) {}
+        try { renderHoldingStatus(); } catch (e) {}
+        try { syncPositionsToWorker(); } catch (e) {}
 
         if(isManual) {
             showToast('전체 데이터를 불러왔습니다.');
             sText = document.getElementById('syncStatusText');
             if(sText) sText.innerText = "전체 불러오기 완료";
-            if (typeof renderTradeLog === 'function') renderTradeLog();
-            if (activeTicker && portfolios[activeTicker] && typeof renderStrategyProgressCard === 'function') renderStrategyProgressCard(activeTicker);
         }
         return true;
     } catch(e) {
@@ -3452,7 +3462,8 @@ function getHoldingStatus(sym, meta, md, quadNow) {
     }
 
     if (exitRec) return {status:'EXIT', reason:'매크로 분석 매도 시그널'};
-    if (!isQuadFavorable && !isAllQuad && quadNow) return {status:'EXIT', reason:'Quad '+quadNow+' 역풍 — 수혜 Quad: '+(meta.quad||[]).join(',')};
+    // Quad 정보가 없는 종목(ETF_DB 외 개별주 등)은 Quad 역풍 판정을 건너뜀 — 무조건 EXIT 뜨던 문제
+    if (meta.quad && meta.quad.length && !isQuadFavorable && !isAllQuad && quadNow) return {status:'EXIT', reason:'Quad '+quadNow+' 역풍 — 수혜 Quad: '+(meta.quad||[]).join(',')};
     if (!trendUp && md.ma200 > 0) return {status:'WATCH', reason:'MA200 하향 — 추가매수 중단 권장'};
 
     // 전환 리스크 체크
@@ -5222,7 +5233,8 @@ function updateStrategyDataUI(sym) {
 
 function getCurrentStage(sym) {
     const d = portfolios[sym]; if (!d || !d.config) return { current: 1, total: 4 };
-    const stages = parseInt(document.getElementById('configStages').value) || (d.config.stages || 4);
+    // 저장된 단계 수 기준 — 이지스 모드에선 같은 입력칸에 '탕 수'가 들어 있어 케이던스 단계와 섞였음
+    const stages = parseInt(d.config.stages) || 4;
     const boosterOn = d.config.boosterOn === true;
     const boosterStages = Math.max(0, parseInt(d.config.boosterStages) || 0);
     const totalStages = stages + (boosterOn ? boosterStages : 0);
@@ -5243,7 +5255,7 @@ function getCurrentStage(sym) {
     })();
     const allocPct = d.config.alloc || 30;
     // 계획표(calculatePlan)와 같은 금액 기준 — 사이클 리셋 후엔 가용자금(할당 − 보유분)
-    const investMoney = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD > 0)
+    const investMoney = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD >= 0)
         ? d.config.cycleAvailableUSD
         : getTotalEquityUSD() * (allocPct / 100);
 
@@ -5980,9 +5992,7 @@ function applyCycleReset() {
     d.config.weights = weights;
     d.config.cycleAvailableUSD = available;
 
-    if (typeof d.cycleSeq !== 'number') d.cycleSeq = 0;
-    d.cycleSeq = (d.cycleSeq || 0) + 1;
-    d.currentCycleId = d.cycleSeq;
+    d.currentCycleId = _nextCycleId(d);
 
     saveAll();
     closeCycleResetModal();
@@ -6104,9 +6114,7 @@ function updateBasePriceAndSave() {
             + '· 1차부터 새 기준가로 다시 시작\n\n'
             + '[취소]를 누르면 기준가만 바꿉니다.');
         if (ok) {
-            const maxCid = (d.history || []).reduce((m, h) => (h && h.cycleId > m ? h.cycleId : m), 0);
-            d.cycleSeq = Math.max(Number(d.cycleSeq) || 0, maxCid) + 1;   // 기존 사이클 id 와 겹치지 않게
-            d.currentCycleId = d.cycleSeq;
+            d.currentCycleId = _nextCycleId(d);
             d.config.cycleAvailableUSD = available;
         }
     }
@@ -6160,7 +6168,7 @@ function calculatePlan() {
     const basePrice = parseFloat(document.getElementById('planBasePrice').value) || 0;
     const totalEquityUSD = getTotalEquityUSD();
     // 사이클 리셋 후에는 cycleAvailableUSD 사용 (보유분 제외한 가용자금)
-    const investMoney = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD > 0)
+    const investMoney = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD >= 0)
         ? d.config.cycleAvailableUSD
         : totalEquityUSD * (allocPct/100);
     const boosterOn = d.config.boosterOn === true;
@@ -6668,7 +6676,9 @@ function buyStageProgress(p) {
     if ((p.qty || 0) <= 0) return { done: 0, total: total }; // 미보유 = 0단계 (과거 매도완료 사이클 제외)
     // 현재 보유 중인 가장 깊은 단계 (익절로 회수된 단계는 제외 → 재매수 알림 대상에 다시 포함)
     var done = Math.min(getStageHoldings(p).maxHeldStage, total);
-    if (done === 0 && (p.qty || 0) > 0) done = 1; // 단계 미기록이나 보유 중이면 최소 1
+    // 단계 미기록 매수로 보유 중이면 최소 1 — 단, 사이클 리셋/기준가 변경으로 새로 시작한 사이클(이월 보유만)은 0 → 1차 알림 유지
+    var freshCycle = p.config && p.config.cycleAvailableUSD != null;
+    if (done === 0 && (p.qty || 0) > 0 && !freshCycle) done = 1;
     return { done: Math.min(done, total), total: total };
 }
 
@@ -6767,6 +6777,9 @@ function deletePosition(sym, ev) {
         renderTickerBar();
         renderPositionOverview();
     }
+    // 계좌 요약·할당·보유 상태 즉시 반영
+    try { updateGlobalCalc(); } catch (e) {}
+    try { renderHoldingStatus(); } catch (e) {}
 }
 
 function selectPosition(sym) {
@@ -6932,7 +6945,8 @@ function importData(input){
         const g = Object.assign({}, json.global); delete g.watch; delete g.syncMeta;
         localStorage.setItem('umt_v172_global', JSON.stringify(g));
         localStorage.setItem('umt_v172_ports', JSON.stringify(json.ports));
-        if(json.archived && typeof json.archived === 'object') localStorage.setItem('umt_archived_history', JSON.stringify(json.archived));
+        // 백업에 보관 기록이 없으면 비움 — 기기에 남은 옛 보관 기록이 복원 데이터와 섞여 클라우드로 올라가지 않게
+        localStorage.setItem('umt_archived_history', JSON.stringify((json.archived && typeof json.archived === 'object') ? json.archived : {}));
         if(hasWatch){
             localStorage.setItem(WATCHLIST_KEY, JSON.stringify(json.watch.list));
             if(Array.isArray(json.watch.groups) && json.watch.groups.length) localStorage.setItem(WATCH_GROUPS_KEY, JSON.stringify(json.watch.groups));
@@ -6988,6 +7002,34 @@ function setTradeStage(value, label, doFill) {
     if (doFill !== false) autoFillTrade();
 }
 
+// N차 매도 권장 수량 — 'N-1차까지 매도 후 남은 보유 × 비중'
+// 이미 매도 기록된 단계는 현재 보유(d.qty)에 반영돼 있으므로 다시 빼지 않음 (예전: 1차 매도 후 2차가 절반으로 과소 계산)
+function _sellStageQty(d, idx) {
+    var plans = (d.config && d.config.sellPlans) || [];
+    var cid = _activeCycleIdOf(d);
+    var sold = {};
+    (d.history || []).forEach(function (h) {
+        if (!h || h.type !== 'SELL') return;
+        if (cid != null && h.cycleId !== cid) return;
+        var s = parseInt(h.stage, 10); if (s >= 1 && s <= 3) sold[s] = true;
+    });
+    var rem = d.qty || 0, qty = 0;
+    for (var k = 0; k <= idx; k++) {
+        if (sold[k + 1] && k < idx) continue;   // 끝난 단계는 이미 보유에서 빠짐
+        var pk = plans[k] || {};
+        var rk = parseFloat(pk.sellRatio) || (k === 2 ? 100 : 50);
+        qty = Math.floor(rem * rk / 100);
+        if (k < idx) rem -= qty;
+    }
+    return Math.max(0, Math.min(qty, d.qty || 0));
+}
+
+// N차 매수 권장 수량 — 계획 수량에서 이 단계에 이미 보유한 만큼 제외 (과매수 방지)
+function _buyStageRemainQty(d, stageNum, plannedQty) {
+    var held = getStageHoldings(d).byStage[stageNum] || 0;
+    return Math.max(0, Math.floor(plannedQty - held));
+}
+
 function openTradeModal(type) {
     if (!activeTicker || !portfolios[activeTicker]) { return alert("먼저 종목을 선택해주세요."); }
     document.getElementById('tradeModal').classList.remove('hidden');
@@ -7002,15 +7044,16 @@ function openTradeModal(type) {
         const stages = parseInt(d.config.stages) || 4;
         const base = parseFloat(document.getElementById('planBasePrice').value) || d.config.basePrice || 0;
         const totalUSD = getTotalEquityUSD();
-        const investable = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD > 0)
+        const investable = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD >= 0)
             ? d.config.cycleAvailableUSD
             : totalUSD * ((d.config.alloc || 30) / 100);
         if (d.config.drops) {
             d.config.drops.forEach((drop, idx) => {
                 const weight = (d.config.weights && d.config.weights[idx] != null) ? d.config.weights[idx] : (100 / stages);
                 const price = base > 0 ? base * (1 + drop / 100) : 0;
-                const qty = price > 0 ? Math.floor((investable * weight / 100) / price) : 0;
-                const extra = price > 0 ? ` · ${qty}주 · $${Math.round(qty * price).toLocaleString()}` : '';
+                const planQty = price > 0 ? Math.floor((investable * weight / 100) / price) : 0;
+                const qty = _buyStageRemainQty(d, idx + 1, planQty);   // 이 단계 보유분 제외한 남은 수량
+                const extra = price > 0 ? ` · ${qty}주 · $${Math.round(qty * price).toLocaleString()}` + (qty < planQty ? ` (계획 ${planQty}주 중 남은 수량)` : '') : '';
                 _tradeStageOpts.push({ value: String(idx + 1), label: `${idx + 1}차 (${drop}%)${extra}` });
             });
         }
@@ -7034,14 +7077,12 @@ function openTradeModal(type) {
         const ds = portfolios[activeTicker];
         const plans = (ds.config && ds.config.sellPlans) || [];
         const avg = ds.avgPrice || 0;
-        let remaining = ds.qty || 0; // 순차(보유 차감) 계산
         for (let i = 0; i < 3; i++) {
             const p = plans[i] || {};
             const ratio = parseFloat(p.sellRatio) || (i === 2 ? 100 : 50);
             const tpct = parseFloat(p.targetPct) || (i === 0 ? 5 : (i === 1 ? 10 : 15));
             const sPrice = calcSellTargetPrice(avg, tpct);
-            const sQty = Math.floor(remaining * ratio / 100);
-            remaining -= sQty;
+            const sQty = _sellStageQty(ds, i);   // 이미 매도한 단계는 다시 빼지 않음
             const sAmt = sQty * sPrice;
             _tradeStageOpts.push({ value: String(i + 1), label: `${i + 1}차 매도 · ${ratio}% · ${sQty}주 · $${Math.round(sAmt).toLocaleString()}` });
         }
@@ -7107,14 +7148,8 @@ function autoFillTrade() {
         const targetPct = parseFloat(p.targetPct) || 5;
         const avg = d.avgPrice || 0;
         const price = calcSellTargetPrice(avg, targetPct);
-        // 순차(보유 차감) 수량 — N차는 (N-1차까지 매도 후 남은 보유) × 비중
-        let rem = d.qty || 0, qty = 0;
-        for (let k = 0; k <= idx; k++) {
-            const pk = plans[k] || {};
-            const rk = parseFloat(pk.sellRatio) || (k === 2 ? 100 : 50);
-            qty = Math.floor(rem * rk / 100);
-            rem -= qty;
-        }
+        // 순차(보유 차감) 수량 — N차는 (N-1차까지 매도 후 남은 보유) × 비중, 이미 매도한 단계는 재차감 안 함
+        const qty = _sellStageQty(d, idx);
         document.getElementById('tradePrice').value = price.toFixed(2);
         document.getElementById('tradeQty').value = qty;
         if (pp) pp.value = price.toFixed(2);
@@ -7132,7 +7167,7 @@ function autoFillTrade() {
             const idx = stageNum - 1;
             if (idx >= d.config.drops.length || !d.config.weights) return;
             const totalUSD = getTotalEquityUSD();
-            const investable = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD > 0)
+            const investable = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD >= 0)
                 ? d.config.cycleAvailableUSD
                 : totalUSD * ((d.config.alloc || 30) / 100);
             const drop = d.config.drops[idx];
@@ -7156,7 +7191,8 @@ function autoFillTrade() {
             qty = (price > 0) ? Math.floor(amount / price) : 0;
         } else return;
         document.getElementById('tradePrice').value = price.toFixed(2);
-        document.getElementById('tradeQty').value = qty;
+        // 실제 매수 수량 기본값 = 계획 수량 − 이 단계 이미 보유분 (진행 중·부분 회수 단계 과매수 방지). 계획 수량은 그대로 기록
+        document.getElementById('tradeQty').value = _buyStageRemainQty(d, stageNum, qty);
         if (pp) pp.value = price.toFixed(2);
         if (pq) pq.value = qty;
         calcTradeTotal();
@@ -7175,6 +7211,11 @@ function submitTrade() {
     const stageVal = document.getElementById('tradeStageSelect').value;
     const stage = stageVal ? parseInt(stageVal, 10) : 0;
     if (!price || !qty) return;
+    // 보유보다 많이 매도하면 평단·실현손익 계산이 화면마다 달라짐 → 차단
+    if (type === 'SELL' && d && qty > (d.qty || 0) + 1e-9) {
+        showToast('보유 ' + (d.qty || 0) + '주보다 많이 매도할 수 없습니다');
+        return;
+    }
 
     const plannedPrice = parseFloat(document.getElementById('tradePlannedPrice').value) || null;
     const plannedQty = parseFloat(document.getElementById('tradePlannedQty').value) || null;
@@ -7218,17 +7259,16 @@ function submitTrade() {
     // cycleId: 보유수량 0인 상태에서 BUY가 들어오면 새 사이클 시작
     if (d && typeof d.cycleSeq !== 'number') d.cycleSeq = 0;
     if (type === 'BUY' && (d.qty || 0) <= 0) {
-        d.cycleSeq = (d.cycleSeq || 0) + 1;
-        d.currentCycleId = d.cycleSeq;
+        d.currentCycleId = _nextCycleId(d);
     } else if (d.currentCycleId == null && (d.qty || 0) > 0) {
         // 과거 데이터/복원 데이터 호환: 보유중인데 currentCycleId가 없으면 history에서 추정
         const maxCycle = Array.isArray(d.history) ? d.history.reduce((m, h) => (h && h.cycleId != null && h.cycleId > m ? h.cycleId : m), 0) : 0;
         if (maxCycle > 0) d.currentCycleId = maxCycle;
     }
 
-    let rate = globalData.feeRate / 100;
+    let rate = (globalData.feeRate || 0) / 100;
     if (type === 'SELL' && globalData.useSec) rate += 0.0000229;
-    const fee = price * qty * rate;
+    const fee = type === 'DIV' ? 0 : price * qty * rate;   // 배당은 매매 수수료 없음 (미리보기와 동일)
     const total = type === 'BUY' ? (price * qty) + fee : (price * qty) - fee;
 
     const saved = {
@@ -7250,18 +7290,7 @@ function submitTrade() {
     };
     d.history.push(saved);
 
-    recalcPortfolio(d);
-    // 전량 매도 등으로 보유수량 0이 되면 사이클 종료 처리
-    if ((d.qty || 0) <= 0) {
-        d.currentCycleId = null;
-        d.config.cycleAvailableUSD = null;
-    }
-    saveAll();
-    loadTickerData(activeTicker);
-    // 매수/매도 즉시 계좌 요약·포지션·보유상태 갱신
-    try { updateGlobalCalc(); } catch (e) {}
-    try { renderPositionOverview(); } catch (e) {}
-    try { renderHoldingStatus(); } catch (e) {}
+    _afterTradeChange(d);
     // 계획가보다 싸게 체결한 경우: 단계 계획가 자동 조정 토스트 표시
     if (autoAdjustedFromStage != null && autoAdjustedCount > 0) {
         showToast(autoAdjustedFromStage + '차 실체결가 반영: 이후 ' + autoAdjustedCount + '개 단계 계획가 자동 조정');
@@ -7350,6 +7379,28 @@ function sellCostBasisMap(history) {
     return out;
 }
 
+// 매매 기록 추가·수정·삭제 후 공통 처리 — 재계산 · 사이클 종료 정리 · 저장 · 모든 연관 화면 갱신
+function _afterTradeChange(d) {
+    recalcPortfolio(d);
+    // 전량 매도(또는 매수 기록 삭제)로 보유 0 → 사이클 종료
+    if ((d.qty || 0) <= 0) {
+        d.currentCycleId = null;
+        if (d.config) d.config.cycleAvailableUSD = null;
+    }
+    saveAll();
+    loadTickerData(activeTicker);
+    try { updateGlobalCalc(); } catch (e) {}
+    try { renderPositionOverview(); } catch (e) {}
+    try { renderHoldingStatus(); } catch (e) {}
+}
+
+// 새 사이클 번호 — 기존 기록의 cycleId 와 겹치지 않게 (삭제 후 재추가·옛 데이터 대비)
+function _nextCycleId(d) {
+    var maxCid = (d.history || []).reduce(function (m, h) { return (h && Number(h.cycleId) > m) ? Number(h.cycleId) : m; }, 0);
+    d.cycleSeq = Math.max(Number(d.cycleSeq) || 0, maxCid) + 1;
+    return d.cycleSeq;
+}
+
 function recalcPortfolio(d) {
     const sorted = _sortTradesAsc(d.history);
     const fallbackFx = getUsdToKrwRate();
@@ -7388,9 +7439,15 @@ function recalcPortfolio(d) {
 // 연도별 실현손익 집계 (해외주식 양도세 추정용) — 전 종목 SELL 거래를 매도일 기준으로 재집계
 function getRealizedByYear() {
     const byYear = {}; // { '2026': { usd, krw, count } }
-    Object.values(portfolios || {}).forEach(d => {
+    // 삭제(보관)된 종목의 매매도 포함 — 매매일지·기간 실현손익과 같은 범위
+    const sources = Object.values(portfolios || {}).slice();
+    try {
+        const arch = JSON.parse(localStorage.getItem('umt_archived_history') || '{}');
+        Object.keys(arch).forEach(sym => { if (!(portfolios && portfolios[sym]) && Array.isArray(arch[sym])) sources.push({ history: arch[sym] }); });
+    } catch (e) {}
+    sources.forEach(d => {
         if (!d || !Array.isArray(d.history)) return;
-        const sorted = [...d.history].sort((a,b)=>new Date(a.date)-new Date(b.date));
+        const sorted = _sortTradesAsc(d.history);   // 같은 날 매수→매도 순서 보장 (클라우드 복원 시 역순 저장됨)
         const fallbackFx = getUsdToKrwRate();
         const fxOf = (h) => (h && h.fxRate > 0) ? h.fxRate : fallbackFx;
         let q = 0, totalCost = 0, totalCostKRW = 0;
@@ -7542,12 +7599,13 @@ function saveTradeEdit() {
     // 수수료/총액 재계산 (생성 시와 동일 공식)
     var rate = (globalData.feeRate || 0) / 100;
     if (h.type === 'SELL' && globalData.useSec) rate += 0.0000229;
-    h.fee = price * qty * rate;
-    h.total = (h.type === 'BUY') ? (price * qty + h.fee) : (price * qty - h.fee);
-    recalcPortfolio(d);
-    saveAll();
+    if (h.type === 'DIV') { h.fee = 0; h.total = price * qty; }   // 배당은 매매 수수료 없음
+    else {
+        h.fee = price * qty * rate;
+        h.total = (h.type === 'BUY') ? (price * qty + h.fee) : (price * qty - h.fee);
+    }
     closeTradeEditModal();
-    loadTickerData(activeTicker);
+    _afterTradeChange(d);
     showToast('매매 기록 수정 완료');
 }
 
@@ -7555,7 +7613,7 @@ function deleteTrade(id) {
     if(confirm("이 매매 기록을 삭제하시겠습니까?")) {
         const d = portfolios[activeTicker];
         d.history = d.history.filter(h => String(h.id) !== String(id));
-        recalcPortfolio(d); saveAll(); loadTickerData(activeTicker);
+        _afterTradeChange(d);
     }
 }
 
@@ -8009,6 +8067,10 @@ function renderCycleSummary(trades) {
 
     // 종목별 최신 사이클 id (실제 보유 수량과 대조해 '보유중' 판정)
     var latestCidBySym = {};
+    // 기간 필터와 무관하게 '전체 기록' 기준 최신 사이클 — 지난달 필터에서 끝난 사이클이 '보유중'으로 보이던 문제
+    try {
+        getAggregatedTrades().forEach(function(t) { if (t.type !== 'BUY' && t.type !== 'SELL') return; var n = Number(t.cycleId) || 0; if (latestCidBySym[t.sym] == null || n > latestCidBySym[t.sym]) latestCidBySym[t.sym] = n; });
+    } catch (e) {}
     keys.forEach(function(k) { var g = groups[k]; var n = Number(g.cycleId) || 0; if (latestCidBySym[g.sym] == null || n > latestCidBySym[g.sym]) latestCidBySym[g.sym] = n; });
 
     var sumQC = function(arr) {
@@ -8123,7 +8185,7 @@ function showTradeDetail(idx) {
         + '<span class="text-white font-bold">' + escapeHtml(r.sym || '종목') + '</span>'
         + '<span class="text-cyan-400">━ EMA8</span>'
         + '<span class="text-violet-400">━ MA200</span>'
-        + '<span class="text-amber-400" id="tradeChartAvgLabel">┈ 평단</span>'
+        + '<span class="text-amber-400" id="tradeChartAvgLabel">┈ 사이클 매수평균</span>'
         + '<span class="ml-auto text-slate-500">🔵매수 🔴매도</span></div>'
         + '<div id="tradeChartContainer" style="width:100%;height:200px;" class="rounded-lg overflow-hidden bg-slate-900/50"></div>'
         + '<div id="tradeChartPeriodRet" class="text-[10px] text-slate-400 mt-1.5 px-0.5"></div>'
@@ -8284,7 +8346,7 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
                 stock.createPriceLine({ price: Math.round(avgBuy * 100) / 100, color: '#fbbf24', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '' });
             } catch (e) {}
             var avgEl = document.getElementById('tradeChartAvgLabel');
-            if (avgEl) avgEl.innerHTML = '┈ 평단 $' + avgBuy.toFixed(2);
+            if (avgEl) avgEl.innerHTML = '┈ 사이클 매수평균 $' + avgBuy.toFixed(2);   // 보유 평단(이동평균)과 구분
         }
         chart.timeScale().fitContent();
 
@@ -8472,7 +8534,8 @@ function updateGlobalCalc() {
         const listEl = document.getElementById('dashTickerAllocList'); if(listEl) listEl.innerHTML = sum.byTicker.length ? sum.byTicker.map(t => `<div class="flex justify-between items-center bg-slate-800/50 px-2.5 py-1.5 rounded text-xs"><span class="font-bold text-white">${t.sym}</span><span class="text-slate-400">$${Math.round(t.allocUsd)} / $${Math.round(t.investedUsd)}</span><span class="text-yellow-400 font-bold">${t.execRate.toFixed(0)}%</span></div>`).join('') : '<div class="text-slate-500 py-1 text-xs">종목 없음</div>'; 
         let totalCurrentVal = 0; let totalRealizedPnL = 0; 
         Object.keys(portfolios).forEach(s => { const p = portfolios[s]; if(p.qty > 0) { const currPrice = curPriceOf(s, p.avgPrice); totalCurrentVal += (p.qty * currPrice); } if(p.realizedPnL) totalRealizedPnL += p.realizedPnL; if(p.totalDiv) totalRealizedPnL += p.totalDiv; });
-        let totalUnrealizedPnL = 0; 
+        { const _arch = getArchivedTotals(); totalRealizedPnL += _arch.realizedPnL + _arch.totalDiv; }   // 삭제된 종목의 실현손익·배당 포함
+        let totalUnrealizedPnL = 0;
         Object.keys(portfolios).forEach(s => { const p = portfolios[s]; if(p.qty > 0) { const currPrice = curPriceOf(s, p.avgPrice); totalUnrealizedPnL += (p.qty * currPrice) - (p.qty * p.avgPrice); } });
         const totalPnL = totalRealizedPnL + totalUnrealizedPnL; const pnlEl = document.getElementById('totalProfitDisplay'); if(pnlEl) { pnlEl.innerText = (totalPnL>=0?'+':'') + '$' + totalPnL.toLocaleString(undefined,{maximumFractionDigits:0}); pnlEl.className = `text-lg font-black ${totalPnL>=0?'text-red-400':'text-blue-400'}`; }
         // 계좌 요약 히어로: 총 손익 + 수익률(투입원금 대비)
@@ -8585,11 +8648,35 @@ function renderCapitalAnalysis(principalKRW, injectedUSD, avgRate, curRate, pnlU
     }
 }
 
+// 삭제(보관)된 종목의 실현손익·배당 — 종목을 지워도 번 돈은 자산에서 빠지지 않도록
+var _archTotalsCache = { raw: null, val: null };
+function getArchivedTotals() {
+    var raw = '';
+    try { raw = localStorage.getItem('umt_archived_history') || ''; } catch (e) {}
+    if (_archTotalsCache.raw === raw && _archTotalsCache.val) return _archTotalsCache.val;
+    var val = { realizedPnL: 0, realizedPnLKRW: 0, totalDiv: 0, totalDivKRW: 0 };
+    try {
+        var arch = raw ? JSON.parse(raw) : {};
+        Object.keys(arch).forEach(function (sym) {
+            if (portfolios && portfolios[sym]) return;   // 같은 종목을 다시 추가했으면 getAggregatedTrades 와 동일하게 제외
+            if (!Array.isArray(arch[sym])) return;
+            var tmp = { history: arch[sym] };
+            recalcPortfolio(tmp);
+            val.realizedPnL += tmp.realizedPnL || 0; val.realizedPnLKRW += tmp.realizedPnLKRW || 0;
+            val.totalDiv += tmp.totalDiv || 0; val.totalDivKRW += tmp.totalDivKRW || 0;
+        });
+    } catch (e) {}
+    _archTotalsCache = { raw: raw, val: val };
+    return val;
+}
+
 function getTotalEquityUSD() {
     const defaultRate = globalData.rate || 1300;
     let equity = (globalData.seedKRW || 0) / defaultRate;
     (globalData.deposits || []).forEach(d => { equity += (d.amount || 0) / (d.rate || defaultRate); });
     Object.values(portfolios || {}).forEach(p => { if(p.realizedPnL) equity += p.realizedPnL; if(p.totalDiv) equity += p.totalDiv; });
+    const arch = getArchivedTotals();
+    equity += arch.realizedPnL + arch.totalDiv;
     return equity;
 }
 
@@ -8768,7 +8855,9 @@ function calcSellTargetPrice(avgPrice, targetNetPct) {
     const sellFee = baseRate + (useSec ? 0.0000229 : 0);
     const denom = 1 - sellFee;
     if (denom <= 0) return avgPrice * (1 + (targetNetPct || 0) / 100);
-    return avgPrice * (1 + (targetNetPct || 0) / 100) * (1 + buyFee) / denom;
+    // avgPrice 는 이미 매수 수수료가 포함된 평단(BUY total = 체결액+수수료) → 매수 수수료를 또 곱하지 않음
+    void buyFee;
+    return avgPrice * (1 + (targetNetPct || 0) / 100) / denom;
 }
 
 function renderSellPlan() {
@@ -8959,12 +9048,15 @@ function saveSettings() {
     globalData.seedKRW = parseFloat(document.getElementById('globalSeedKRW').value) || 0;
     globalData.rate = parseFloat(document.getElementById('globalRate').value) || 1300;
     var _sip = document.getElementById('globalSipKRW'); if (_sip) globalData.sipKRW = parseFloat(_sip.value) || 0;
-    globalData.feeRate = parseFloat(document.getElementById('globalFeeRate').value) || 0.07;
+    var _fr = parseFloat(document.getElementById('globalFeeRate').value);
+    globalData.feeRate = isNaN(_fr) ? 0.07 : _fr;   // 0%(무료 수수료)도 그대로 저장
     globalData.useSec = document.getElementById('useSecFee').checked;
     globalData.mddLimit = parseFloat(document.getElementById('globalMDD').value) || 25;
     var url = document.getElementById('globalSyncUrl').value;
     if (url != null) { SYNC_URL = url.trim(); localStorage.setItem('umt_sync_url', SYNC_URL); }
     localStorage.setItem('umt_v172_global', JSON.stringify(globalData));
+    // 클라우드 저장 대기 표시 + 업로드 — 없으면 다음 앱 시작 때 옛 클라우드 설정이 덮어씀
+    try { saveAll(); } catch (e) {}
     updateGlobalCalc();
     if (activeTicker && portfolios[activeTicker]) { renderStrategyProgressCard(activeTicker); }
     alert('설정이 저장되었습니다.');
@@ -9010,14 +9102,19 @@ async function doSyncPositions() {
             var base = parseFloat(d.config.basePrice) || 0;
             var drops = d.config.drops;
             var stages = parseInt(d.config.stages) || (Array.isArray(drops) ? drops.length : 0);
-            if (base > 0 && Array.isArray(drops) && stages > 0) {
+            // 이지스(주 1회 균등)는 하락폭 기반 단계가 없으므로 케이던스 매수 알림 제외
+            if (d.config.mode !== 'AEGIS' && base > 0 && Array.isArray(drops) && stages > 0) {
                 var prog = buyStageProgress(d);            // {done, total}
                 var done = (prog && prog.done) || 0;
+                // 재개방 세대: 사이클 번호 + 이 사이클 매도 횟수 → 익절로 다시 열린 단계는 워커가 다시 알림
+                var _cid = _activeCycleIdOf(d);
+                var _sells = (d.history || []).filter(function (h) { return h && h.type === 'SELL' && (_cid == null || h.cycleId === _cid); }).length;
+                var gen = (_cid != null ? _cid : 0) + '.' + _sells;
                 for (var s = done + 1; s <= stages; s++) {
                     var dr = parseFloat(drops[s - 1]);
                     if (isNaN(dr)) continue;
                     var bp = base * (1 + dr / 100);
-                    if (bp > 0) buyStages.push({ n: s, price: bp });
+                    if (bp > 0) buyStages.push({ n: s, price: bp, gen: gen });
                 }
             }
 
@@ -9036,7 +9133,7 @@ async function doSyncPositions() {
 function saveAll() {
     globalData.seedKRW = parseFloat(document.getElementById('globalSeedKRW').value)||0;
     globalData.rate = parseFloat(document.getElementById('globalRate').value)||1300; 
-    globalData.feeRate = parseFloat(document.getElementById('globalFeeRate').value)||0; 
+    { var _fr2 = parseFloat(document.getElementById('globalFeeRate').value); globalData.feeRate = isNaN(_fr2) ? 0.07 : _fr2; }   // saveSettings 와 동일 규칙
     var _sipEl2 = document.getElementById('globalSipKRW'); if (_sipEl2) globalData.sipKRW = parseFloat(_sipEl2.value)||0; 
     globalData.useSec = document.getElementById('useSecFee').checked; 
     globalData.mddLimit = parseFloat(document.getElementById('globalMDD').value)||25; 
