@@ -1,5 +1,11 @@
 const API_BASE_URL = "https://fragrant-sunset-6230.hansung-aee.workers.dev";
 
+// 화면 테마 (index.html <html class="light"> 이면 화이트) — 차트/위젯 색은 여기서만 고른다
+const UI_LIGHT = document.documentElement.classList.contains('light');
+const UI = UI_LIGHT
+    ? { tvTheme: 'light', surface: '#ffffff', track: '#e9ecf0', chartText: '#5d6470', chartGrid: 'rgba(17,20,24,0.06)', chartBorder: '#e6e9ee', up: '#d92d3a', down: '#1f5fd6' }
+    : { tvTheme: 'dark', surface: '#1e293b', track: '#1e293b', chartText: '#94a3b8', chartGrid: UI.chartGrid, chartBorder: '#334155', up: '#f87171', down: '#60a5fa' };
+
 const ETF_DB = [
     // ── Quad 1 수혜 (성장↑ 인플레↓) ──
     {sym:'TQQQ', lev:'3x', tier:2, quad:[1],     name:'UltraPro QQQ',  desc:'나스닥 100',    holdings:'AAPL • MSFT • NVDA'},
@@ -2028,8 +2034,8 @@ function openMacroChart(key) {
     if (typeof TradingView !== 'undefined') {
         try {
             _macroChartWidget = new TradingView.widget({
-                "autosize": true, "symbol": m.tv, "interval": "D", "timezone": "Etc/UTC", "theme": "dark",
-                "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false,
+                "autosize": true, "symbol": m.tv, "interval": "D", "timezone": "Etc/UTC", "theme": UI.tvTheme,
+                "style": "1", "locale": "kr", "toolbar_bg": UI.surface, "enable_publishing": false,
                 "hide_top_toolbar": false, "hide_side_toolbar": true, "allow_symbol_change": false,
                 "container_id": "macroChartContainer", "studies": ["MASimple@tv-basicstudies"]
             });
@@ -2820,7 +2826,7 @@ function renderQuadMatrix(quad) {
     var cmp = document.getElementById('quadCompact');
     if (cmp) {
         cmp.innerHTML = '<i class="fa-solid ' + (mc.icon || '') + ' ' + (mc.txt || '') + ' mr-1"></i>Q' + cur + ' ' + (quad.name || mc.name || '') + ' <span class="text-slate-500 text-[11px] font-bold">· 확신 ' + conf + '%</span>';
-        cmp.className = 'text-[13px] font-black truncate ' + (mc.txt || 'text-white');
+        cmp.className = 'quad-title text-[13px] font-black truncate ' + (mc.txt || 'text-white');
     }
     var sub = document.getElementById('quadCompactSub');
     if (sub) sub.innerText = g + ' · ' + i;
@@ -2914,7 +2920,7 @@ function _sparklineSvg(arr) {
         return x.toFixed(1) + ',' + y.toFixed(1);
     }).join(' ');
     var up = v[n - 1] >= v[0];
-    var col = up ? '#f87171' : '#60a5fa';
+    var col = up ? UI.up : UI.down;
     var area = '0,38 ' + pts + ' 100,38';
     return '<svg viewBox="0 0 100 38" preserveAspectRatio="none" class="w-full h-9">'
         + '<polygon points="' + area + '" fill="' + col + '" opacity="0.08"/>'
@@ -3600,7 +3606,7 @@ function sparkSvg(closes, w, h, base) {
     var pts = closes.map(function (c, i) { return ((i / (n - 1)) * w).toFixed(1) + ',' + yOf(c).toFixed(1); }).join(' ');
     var ref = hasBase ? base : closes[0];
     var up = closes[n - 1] >= ref;
-    var col = up ? '#f87171' : '#60a5fa';
+    var col = up ? UI.up : UI.down;
     var svg = '<svg width="100%" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" class="block">';
     if (hasBase) {   // 전일 종가/기간 시작 기준선 (점선) — 미래에셋식 상승/하락 구분
         var by = yOf(base).toFixed(1);
@@ -4779,8 +4785,8 @@ function openSectorChart(sym, name) {
     setTimeout(function () {
         try {
             _macroChartWidget = new TradingView.widget({
-                "autosize": true, "symbol": "AMEX:" + sym, "interval": "D", "timezone": "Etc/UTC", "theme": "dark",
-                "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false,
+                "autosize": true, "symbol": "AMEX:" + sym, "interval": "D", "timezone": "Etc/UTC", "theme": UI.tvTheme,
+                "style": "1", "locale": "kr", "toolbar_bg": UI.surface, "enable_publishing": false,
                 "hide_top_toolbar": false, "hide_side_toolbar": true, "allow_symbol_change": false,
                 "container_id": "macroChartContainer", "studies": ["MASimple@tv-basicstudies"]
             });
@@ -4908,7 +4914,7 @@ async function _drawIndexChart() {
         var H = cont.clientHeight || Math.round(window.innerHeight * 0.45);
         var chart = LightweightCharts.createChart(cont, {
             width: W, height: H,
-            layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontSize: 11 },
+            layout: { background: { color: 'transparent' }, textColor: UI.chartText, fontSize: 11 },
             grid: { vertLines: { color: 'rgba(148,163,184,0.06)' }, horzLines: { color: 'rgba(148,163,184,0.06)' } },
             rightPriceScale: { borderColor: 'rgba(148,163,184,0.15)' },
             timeScale: { borderColor: 'rgba(148,163,184,0.15)', timeVisible: intraday, secondsVisible: false },
@@ -5092,8 +5098,8 @@ function loadTradingViewChart(sym) {
     if (typeof TradingView !== 'undefined') {
         try { 
             tvWidget = new TradingView.widget({ 
-                "autosize": true, "symbol": sym, "interval": "D", "timezone": "Etc/UTC", "theme": "dark", 
-                "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false, 
+                "autosize": true, "symbol": sym, "interval": "D", "timezone": "Etc/UTC", "theme": UI.tvTheme, 
+                "style": "1", "locale": "kr", "toolbar_bg": UI.surface, "enable_publishing": false, 
                 "hide_top_toolbar": true, "container_id": "tv_chart_container", 
                 "studies": ["RSI@tv-basicstudies", "MASimple@tv-basicstudies"] 
             }); 
@@ -5341,7 +5347,7 @@ function renderExecChart(invested, remain, execRate, alloc) {
         if (_stratExecChart && typeof _stratExecChart.destroy === 'function') _stratExecChart.destroy();
         _stratExecChart = new Chart(canvas.getContext('2d'), {
             type: 'doughnut',
-            data: { labels: ['투자완료', '남은할당'], datasets: [{ data: [inv, rem], backgroundColor: ['#3b82f6', '#1e293b'], borderWidth: 0 }] },
+            data: { labels: ['투자완료', '남은할당'], datasets: [{ data: [inv, rem], backgroundColor: ['#3b82f6', UI.track], borderWidth: 0 }] },
             options: { responsive: true, maintainAspectRatio: false, cutout: '72%', plugins: { legend: { display: false }, tooltip: { enabled: false } } }
         });
     } catch (e) {}
@@ -5599,7 +5605,7 @@ function openAnalysisModal(sym) {
     if(modalWidget) modalWidget = null; 
     if (typeof TradingView !== 'undefined') {
         try { 
-            modalWidget = new TradingView.widget({ "autosize": true, "symbol": sym, "interval": "D", "timezone": "Etc/UTC", "theme": "dark", "style": "1", "locale": "kr", "toolbar_bg": "#1e293b", "enable_publishing": false, "hide_top_toolbar": true, "container_id": "modalChartContainer", "studies": ["MASimple@tv-basicstudies"] }); 
+            modalWidget = new TradingView.widget({ "autosize": true, "symbol": sym, "interval": "D", "timezone": "Etc/UTC", "theme": UI.tvTheme, "style": "1", "locale": "kr", "toolbar_bg": UI.surface, "enable_publishing": false, "hide_top_toolbar": true, "container_id": "modalChartContainer", "studies": ["MASimple@tv-basicstudies"] }); 
         } catch(e){} 
     }
     // ETF 상세 정보 렌더링
@@ -7644,7 +7650,7 @@ function renderTradelogDailyPnl(trades) {
     _tlDailyChart = new Chart(canvas.getContext('2d'), {
         type:'bar',
         data:{ labels: dates.map(function(d){ return d.slice(5); }), datasets:[{ data:data, backgroundColor:colors, borderWidth:0, borderRadius:2 }] },
-        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:function(c){ var v=c.parsed.y; return (v>=0?'+$':'-$')+Math.abs(v).toLocaleString(); } } } }, scales:{ x:{ ticks:{color:'#94a3b8',font:{size:9},maxRotation:0}, grid:{display:false} }, y:{ ticks:{color:'#94a3b8',font:{size:9}}, grid:{color:'rgba(51,65,85,0.3)'} } } }
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:function(c){ var v=c.parsed.y; return (v>=0?'+$':'-$')+Math.abs(v).toLocaleString(); } } } }, scales:{ x:{ ticks:{color:'#94a3b8',font:{size:9},maxRotation:0}, grid:{display:false} }, y:{ ticks:{color:'#94a3b8',font:{size:9}}, grid:{color:UI.chartGrid} } } }
     });
 }
 function renderTradelogReasonDonut(trades) {
@@ -7700,7 +7706,7 @@ function renderTradeLog() {
             var sbox = function(label, val, cls) { return '<div class="bg-slate-800/50 rounded-lg px-2.5 py-1.5"><div class="text-slate-500 text-[9px]">' + label + '</div><div class="font-bold text-sm ' + (cls || 'text-white') + '">' + val + '</div></div>'; };
             var wr = stats.winRate;
             // 승률 도넛 (한국식: 빨강=승)
-            var donut = '<div class="shrink-0 w-[78px] h-[78px] rounded-full flex items-center justify-center" style="background:conic-gradient(#ef4444 0% ' + wr + '%, #1e293b ' + wr + '% 100%)">'
+            var donut = '<div class="shrink-0 w-[78px] h-[78px] rounded-full flex items-center justify-center" style="background:conic-gradient(#ef4444 0% ' + wr + '%, ' + UI.track + ' ' + wr + '% 100%)">'
                 + '<div class="w-[58px] h-[58px] rounded-full bg-slate-900 flex flex-col items-center justify-center">'
                 + '<div class="text-base font-black text-white leading-none">' + wr.toFixed(0) + '%</div>'
                 + '<div class="text-[8px] text-slate-500 mt-0.5">승률</div></div></div>';
@@ -8187,9 +8193,9 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
         cont.innerHTML = '';
         var chart = LightweightCharts.createChart(cont, {
             width: cont.clientWidth, height: 200,
-            layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontSize: 9 },
-            grid: { vertLines: { color: 'rgba(51,65,85,0.3)' }, horzLines: { color: 'rgba(51,65,85,0.3)' } },
-            rightPriceScale: { borderColor: '#334155' }, timeScale: { borderColor: '#334155' },
+            layout: { background: { color: 'transparent' }, textColor: UI.chartText, fontSize: 9 },
+            grid: { vertLines: { color: UI.chartGrid }, horzLines: { color: UI.chartGrid } },
+            rightPriceScale: { borderColor: UI.chartBorder }, timeScale: { borderColor: UI.chartBorder },
             crosshair: { mode: 0 }, handleScroll: false, handleScale: false
         });
         _tradeChartObj = chart;
@@ -8426,7 +8432,7 @@ function updateGlobalCalc() {
         let invested = 0; const labels = [], data = [], colors = [];
         Object.keys(portfolios).forEach(s => { const p = portfolios[s]; const price = curPriceOf(s, p.avgPrice); const val = p.qty * price; if(val > 0) { invested += val; labels.push(s); data.push(val); colors.push(s==='GLD'?'#facc15':'#3b82f6'); } });
         const totalEquity = totalInjectedUSD + totalPnL; const cashProxy = totalEquity - invested;
-        if(cashProxy > 0) { labels.push('현금(Est)'); data.push(cashProxy); colors.push('#1e293b'); }
+        if(cashProxy > 0) { labels.push('현금(Est)'); data.push(cashProxy); colors.push(UI.track); }
         if (portfolioChart && typeof portfolioChart.destroy === "function") {
             portfolioChart.destroy();
         }
@@ -8657,7 +8663,7 @@ function injectHeatmapWidget() {
             blockColor: 'change',
             blockSize: 'market_cap_basic',
             grouping: 'sector',
-            colorTheme: 'dark',
+            colorTheme: UI.tvTheme,
             locale: 'kr',
             width: '100%',
             height: '100%',

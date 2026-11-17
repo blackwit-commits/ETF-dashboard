@@ -297,3 +297,99 @@ select:focus {
     background: rgba(30, 41, 59, 0.8);
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   화이트 테마 (B안 · 카드 그룹형) — <html class="light"> 일 때만 적용
+   색 매핑(Tailwind 클래스)은 theme-light.css (tools/gen-light-theme.js 로 생성)
+   여기는 컴포넌트 단위 손 조정. 3단계 위계:
+   ① 회색 페이지(#f2f4f6) ② 흰 카드(섹션, 제목 18px) ③ 카드 안 연회색 타일·구분선
+   ═══════════════════════════════════════════════════════════════ */
+html.light { color-scheme: light; }
+html.light body { background-color: #f2f4f6 !important; color: #111418; }
+
+/* ② 섹션 카드 */
+html.light .glass-panel,
+html.light .ui-card {
+    background: #ffffff;
+    border-color: transparent;
+    backdrop-filter: none;
+    box-shadow: none;
+}
+html.light .ui-card { border-radius: 20px; padding: 16px; }
+/* ③ 카드 안의 카드 → 연회색 타일 */
+html.light :is(.glass-panel, .ui-card) .glass-panel { background: #f4f6f9; }
+html.light :is(.glass-panel, .ui-card) .glass-panel:hover { background: #eef0f3; }
+
+/* 섹션 제목 (홈) */
+html.light .sec-title {
+    font-size: 18px !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.3px;
+    text-transform: none !important;
+    color: #111418 !important;
+}
+html.light .sec-title > i { display: none; }
+
+/* 너무 작은 글씨 최소 크기 보정 */
+html.light .text-\[7px\] { font-size: 9px; }
+html.light .text-\[8px\] { font-size: 10px; }
+html.light .text-\[9px\] { font-size: 10.5px; }
+html.light .text-\[10px\] { font-size: 11px; }
+
+/* 상단 고정바 · 시세 흐름바 · 하단 탭바 */
+html.light .shadow-xl.fixed,
+html.light .shadow-2xl.fixed { box-shadow: none; }
+html.light #priceTickerBar { background: #f7f8fa; border-color: #eef0f3; }
+html.light .nav-btn { color: #7a818c; }
+html.light .nav-btn.active {
+    color: #111418;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    transform: none;
+}
+html.light .nav-btn.active i { font-weight: 900; }
+
+/* 입력창 (기존 다크 !important 덮어쓰기) */
+html.light input,
+html.light select,
+html.light textarea {
+    background-color: #ffffff !important;
+    border-color: #dfe2e7 !important;
+    color: #111418 !important;
+}
+html.light input:focus,
+html.light select:focus { border-color: #111418 !important; }
+html.light .matrix-input { border-color: #dfe2e7; }
+html.light #planBasePrice { color: #047857 !important; }
+
+/* 탭·배지 */
+html.light .ticker-tab { background: #f4f6f9; color: #5d6470; border-color: transparent; }
+html.light .ticker-tab.active { background: #111418; color: #ffffff; border-color: #111418; box-shadow: none; }
+html.light .badge-3x { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+html.light .badge-2x { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+html.light .badge-inv { background: #faf5ff; color: #7e22ce; border-color: #e9d5ff; }
+html.light .status-live,
+html.light .status-error,
+html.light .status-sync { box-shadow: none; }
+
+/* 게이지 · 전략 계획표 */
+html.light .gauge-needle { background: #111418; }
+html.light .gauge-cover { background: #ffffff; }
+html.light .plan-slash { color: #9aa1ab; }
+html.light #planTableBody .plan-price { color: #1f5fd6 !important; }
+html.light #planTableBody .actual-price { color: #b45309 !important; }
+html.light #planTableBody .actual-price.empty { color: #9aa1ab !important; }
+html.light #holdingStatusList > div:active { background: #eef0f3; }
+
+/* 세그먼트 컨트롤(일/주/1개월 등): 회색 트랙 + 흰 선택 칩 */
+html.light .seg-ctl { background: #f4f6f9 !important; }
+html.light .seg-ctl > button { color: #5d6470 !important; background: transparent !important; }
+html.light .seg-ctl > button[class*=" bg-"] {
+    background: #ffffff !important;
+    color: #111418 !important;
+    box-shadow: 0 1px 2px rgba(17, 20, 24, 0.08);
+}
+html.light .sub-label { display: block; }
+/* Quad 카드 제목: 국면 색은 유지하고 크기만 섹션 제목급으로 */
+html.light .quad-title { font-size: 18px !important; letter-spacing: -0.3px; }

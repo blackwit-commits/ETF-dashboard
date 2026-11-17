@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ko" class="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>UMT V25.1 Rock Solid</title>
     <!-- PWA -->
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#ffffff">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="UMT">
     <link rel="manifest" href="manifest.webmanifest?v=3">
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
@@ -19,7 +19,8 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
-    <link rel="stylesheet" href="style.css?v=20260710e">
+    <link rel="stylesheet" href="theme-light.css?v=20261118a">
+    <link rel="stylesheet" href="style.css?v=20261118a">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -63,10 +64,12 @@
                 </div>
             </div>
             <!-- ■ 1.5 주요 지수 (국내+해외 — 일반 주식앱식 한눈에) -->
+            <!-- 화이트 테마: 주요 지수 + 핵심 지표 + 시장 요약을 한 카드(ui-card)로 묶음 -->
+            <div class="ui-card space-y-2.5">
             <div>
                 <div class="flex justify-between items-center px-1 mb-1.5">
-                    <span class="text-[11px] font-bold text-slate-400"><i class="fa-solid fa-chart-simple mr-1 text-blue-400"></i>주요 지수 <span id="indexUpdateTime" class="text-[9px] text-slate-600 font-normal"></span></span>
-                    <div class="flex gap-1 bg-slate-800/70 rounded-lg p-0.5">
+                    <span class="sec-title text-[11px] font-bold text-slate-400"><i class="fa-solid fa-chart-simple mr-1 text-blue-400"></i>주요 지수 <span id="indexUpdateTime" class="text-[9px] text-slate-600 font-normal"></span></span>
+                    <div class="seg-ctl flex gap-1 bg-slate-800/70 rounded-lg p-0.5">
                         <button id="idxP_1d" type="button" onclick="setIndexPeriod('1d')" class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-cyan-600 text-white">일</button>
                         <button id="idxP_5d" type="button" onclick="setIndexPeriod('5d')" class="px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-400">주</button>
                         <button id="idxP_1mo" type="button" onclick="setIndexPeriod('1mo')" class="px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-400">1개월</button>
@@ -76,6 +79,7 @@
             </div>
 
             <!-- ■ 2. 핵심 시장 지표 5개 -->
+            <div class="sub-label hidden text-[13px] font-bold text-slate-400 px-1 pt-1">핵심 지표</div>
             <div class="grid grid-cols-5 gap-1.5" id="marketIndicators">
                 <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('wti')" title="WTI 원유 선물 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">WTI</div><div class="text-[8px] text-slate-300 leading-none mt-0.5">원유</div><div class="text-xs font-black text-white mt-0.5" id="mkWti">--</div><div class="text-[9px] font-bold" id="mkWtiChg">--</div></div>
                 <div class="glass-panel rounded-xl p-2 text-center cursor-pointer hover:bg-slate-800/70 transition" onclick="openMacroChart('gold')" title="금 선물 차트"><div class="text-[8px] text-slate-400 font-bold leading-none">GOLD</div><div class="text-[8px] text-slate-300 leading-none mt-0.5">금</div><div class="text-xs font-black text-white mt-0.5" id="mkGold">--</div><div class="text-[9px] font-bold" id="mkGoldChg">--</div></div>
@@ -89,13 +93,14 @@
                 <div class="text-[11px] font-bold text-slate-400 mb-1"><i class="fa-solid fa-circle-info mr-1 text-cyan-400"></i>시장 요약 <span id="marketSummaryTime" class="text-[9px] text-slate-600 font-normal"></span></div>
                 <div id="marketSummaryText" class="text-[12px] text-slate-300 leading-relaxed"></div>
             </div>
+            </div><!-- /ui-card 주요 지수 묶음 -->
 
             <!-- ■ Quad 대시보드 (하루 1회 갱신 — 기본 접힘, 탭하여 펼침) -->
             <div class="glass-panel rounded-2xl p-4 relative overflow-hidden" id="quadDashboardCard">
                 <div class="flex items-center justify-between gap-2 cursor-pointer" onclick="toggleQuadDetail()">
                     <div class="flex items-center gap-2 min-w-0">
                         <h2 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Quad</h2>
-                        <span id="quadCompact" class="text-[13px] font-black text-white truncate">분석 대기</span>
+                        <span id="quadCompact" class="quad-title text-[13px] font-black text-white truncate">분석 대기</span>
                         <span class="text-[9px] text-slate-600 shrink-0" id="quadUpdateTime"></span>
                     </div>
                     <div class="flex items-center gap-1.5 shrink-0">
@@ -131,7 +136,7 @@
             <!-- ■ 2.5 S&P500 히트맵 (시장 분위기 — 접기/펼치기) -->
             <div class="glass-panel rounded-2xl p-4 border border-slate-700">
                 <button type="button" onclick="toggleHeatmap()" class="w-full flex justify-between items-center text-left py-1">
-                    <span class="text-sm font-bold text-white"><i class="fa-solid fa-grid-2 mr-2 text-amber-500"></i>S&P500 주식 히트맵</span>
+                    <span class="sec-title text-sm font-bold text-white"><i class="fa-solid fa-grid-2 mr-2 text-amber-500"></i>S&P500 주식 히트맵</span>
                     <span class="text-slate-500 text-sm" id="heatmapToggleIcon"><i class="fa-solid fa-chevron-down"></i></span>
                 </button>
                 <div id="heatmapContent" class="hidden mt-3 pt-3 border-t border-slate-700">
@@ -144,7 +149,7 @@
             <!-- ■ 3. 경제 이벤트 캘린더 (타임라인) -->
             <div id="upcomingEventsCard" class="glass-panel rounded-2xl p-3 hidden">
                 <button type="button" onclick="toggleGuide('eventCalendarBody')" class="w-full flex justify-between items-center mb-2">
-                    <h3 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider"><i class="fa-regular fa-calendar mr-1"></i>경제 이벤트 캘린더</h3>
+                    <h3 class="sec-title text-[10px] font-bold text-slate-400 uppercase tracking-wider"><i class="fa-regular fa-calendar mr-1"></i>경제 이벤트 캘린더</h3>
                     <i class="fa-solid fa-chevron-down text-[10px] text-slate-600 transition-transform" id="eventCalendarBodyChev"></i>
                 </button>
                 <div id="eventCalendarBody"><div id="upcomingEventsList" class="space-y-1"></div></div>
@@ -153,14 +158,14 @@
             <!-- ■ 관심목록 (사용자 종목 트래킹 — 미국/국내 · 정렬) -->
             <div class="glass-panel rounded-2xl p-4 border border-slate-700" id="watchlistCard">
                 <div class="flex justify-between items-center mb-2.5">
-                    <span class="text-sm font-bold text-white"><i class="fa-solid fa-star mr-2 text-amber-400"></i>관심목록 <span id="watchUpdateTime" class="text-[9px] text-slate-600 font-normal"></span></span>
+                    <span class="sec-title text-sm font-bold text-white"><i class="fa-solid fa-star mr-2 text-amber-400"></i>관심목록 <span id="watchUpdateTime" class="text-[9px] text-slate-600 font-normal"></span></span>
                     <div class="flex items-center gap-1.5">
                         <button onclick="openWatchAddModal()" class="w-7 h-7 flex items-center justify-center bg-blue-600 hover:bg-blue-500 rounded-full text-white text-[11px]" title="종목 추가"><i class="fa-solid fa-plus"></i></button>
                         <button id="watchEditBtn" onclick="toggleWatchEdit()" class="w-7 h-7 flex items-center justify-center bg-slate-800 rounded-full text-slate-400 hover:text-white text-[11px]" title="편집"><i class="fa-solid fa-pen"></i></button>
                     </div>
                 </div>
                 <div class="flex justify-between items-center mb-2 gap-2">
-                    <div id="watchTabs" class="flex gap-1 bg-slate-800/70 rounded-lg p-0.5 overflow-x-auto min-w-0"></div>
+                    <div id="watchTabs" class="seg-ctl flex gap-1 bg-slate-800/70 rounded-lg p-0.5 overflow-x-auto min-w-0"></div>
                     <select id="watchSort" onchange="setWatchSort(this.value)" class="shrink-0 bg-slate-800 text-slate-300 text-[10px] font-bold rounded-lg px-2 py-1 border border-slate-700 focus:outline-none">
                         <option value="chg">등락률순</option>
                         <option value="volume">거래량순</option>
@@ -174,8 +179,8 @@
             <!-- ■ 2.3 섹터 로테이션 (어느 섹터가 강한지 · 1일/1주/1개월) -->
             <div class="glass-panel rounded-2xl p-4 border border-slate-700">
                 <div class="flex justify-between items-center mb-2.5">
-                    <span class="text-sm font-bold text-white"><i class="fa-solid fa-arrow-trend-up mr-2 text-cyan-400"></i>자금 흐름 <span id="sectorUpdateTime" class="text-[9px] text-slate-600 font-normal"></span></span>
-                    <div class="flex gap-1 bg-slate-800/70 rounded-lg p-0.5">
+                    <span class="sec-title text-sm font-bold text-white"><i class="fa-solid fa-arrow-trend-up mr-2 text-cyan-400"></i>자금 흐름 <span id="sectorUpdateTime" class="text-[9px] text-slate-600 font-normal"></span></span>
+                    <div class="seg-ctl flex gap-1 bg-slate-800/70 rounded-lg p-0.5">
                         <button id="secP_1d" type="button" onclick="setSectorPeriod('chg1d')" class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-cyan-600 text-white">1일</button>
                         <button id="secP_1w" type="button" onclick="setSectorPeriod('chg1w')" class="px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-400">1주</button>
                         <button id="secP_1m" type="button" onclick="setSectorPeriod('chg1m')" class="px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-400">1개월</button>
@@ -195,10 +200,10 @@
             </div>
 
             <!-- ■ 지금 뜨는 ETF (경제캘린더 아래 · 테마 ETF 모멘텀 강세순) -->
-            <div id="hotEtfCard">
+            <div id="hotEtfCard" class="ui-card">
                 <div class="flex justify-between items-center px-1 mb-2">
-                    <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-fire text-orange-400"></i> 지금 뜨는 ETF <span id="hotEtfTime" class="text-[9px] text-slate-600 font-normal"></span></h3>
-                    <div class="flex gap-1 bg-slate-800/70 rounded-lg p-0.5">
+                    <h3 class="sec-title text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-fire text-orange-400"></i> 지금 뜨는 ETF <span id="hotEtfTime" class="text-[9px] text-slate-600 font-normal"></span></h3>
+                    <div class="seg-ctl flex gap-1 bg-slate-800/70 rounded-lg p-0.5">
                         <button id="hotM_strong" type="button" onclick="setHotMode('strong')" class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-600 text-white">강세순</button>
                         <button id="hotM_pull" type="button" onclick="setHotMode('pullback')" class="px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-400">눌림목</button>
                     </div>
@@ -210,17 +215,17 @@
             <!-- (계좌 현황은 '전략' 탭 상단으로 이동 — 홈은 시장 중심) -->
 
             <!-- ■ 7. AI 매수 포착 -->
-            <div>
-                <div class="flex justify-between items-center px-1 mb-2"><h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-microchip text-purple-500"></i> AI 매수 포착</h3></div>
+            <div class="ui-card">
+                <div class="flex justify-between items-center px-1 mb-2"><h3 class="sec-title text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-microchip text-purple-500"></i> AI 매수 포착</h3></div>
                 <div class="space-y-2" id="recommendationList">
                     <div class="glass-panel p-4 text-center text-slate-500 text-xs">종목 데이터 수신 중...</div>
                 </div>
             </div>
 
             <!-- ■ 9. ETF 섹터별 리스트 -->
-            <div class="space-y-3 pb-6">
+            <div class="ui-card space-y-3 mb-6">
                 <div class="flex justify-between items-center px-1">
-                    <h3 class="text-sm font-bold text-white">ETF Quad별 리스트</h3>
+                    <h3 class="sec-title text-sm font-bold text-white">ETF Quad별 리스트</h3>
                     <span class="text-[10px] text-slate-500">시장 참고용</span>
                 </div>
                 <div id="marketList" class="space-y-3"></div>

@@ -12,7 +12,9 @@
 ```
 index.html        — UI (4탭: 홈/전략/매매일지/설정)
 script.js         — 전체 앱 로직
-style.css         — 커스텀 스타일
+style.css         — 커스텀 스타일 (파일 끝에 html.light 화이트 테마 컴포넌트 레이어)
+theme-light.css   — 화이트 테마 색 매핑 (자동 생성 — 직접 수정 금지)
+tools/gen-light-theme.js — theme-light.css 생성기 (`node tools/gen-light-theme.js theme-light.css`)
 worker/index.js   — Cloudflare Worker (5개 엔드포인트)
 worker/wrangler.toml — Worker 배포 설정
 UMT_V2_PRD.md     — V2 기획서
@@ -80,6 +82,13 @@ UMT_V2_PRD.md     — V2 기획서
 - [x] 매수/매도 모달 메모/태그 초기화
 - [x] 코드 정리 (미사용 함수 + DEBUG 로그 제거)
 - [x] JS 구문 오류 수정 (DEBUG 로그 제거 시 잔여 객체 리터럴 3곳 삭제)
+
+## 화이트 테마 (B안 · 카드 그룹형)
+- `<html class="light">` 일 때 적용. 클래스를 빼면 기존 다크 그대로
+- 위계: 회색 페이지 `#f2f4f6` → 흰 섹션 카드(`glass-panel`/`ui-card`) → 카드 안 연회색 타일(중첩 `glass-panel`)
+- 홈 섹션 제목은 `sec-title`(18px, 아이콘 숨김), 일/주/1개월 같은 토글 묶음은 `seg-ctl`
+- 새 UI는 기존처럼 다크 Tailwind 클래스(slate 등)로 써도 자동 변환됨. 새 색 클래스가 안 바뀌면 생성기에 추가 후 재생성
+- 차트/위젯 색은 script.js 상단 `UI` 객체(tvTheme, chartText, up/down 등)에서만 고를 것
 
 ## 변경 시 주의사항
 - ETF_DB 필드: sym, lev, tier(1~4), quad(배열), name, desc, holdings
