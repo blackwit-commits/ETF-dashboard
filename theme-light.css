@@ -171,3 +171,28 @@ html.light :is(button,label,a):is(.bg-red-500,.bg-red-600,.bg-red-700,.bg-orange
 html.light :is(button,label,a):is(.bg-red-500,.bg-red-600,.bg-red-700,.bg-orange-500,.bg-orange-600,.bg-orange-700,.bg-amber-500,.bg-amber-600,.bg-amber-700,.bg-yellow-500,.bg-yellow-600,.bg-yellow-700,.bg-lime-500,.bg-lime-600,.bg-lime-700,.bg-green-500,.bg-green-600,.bg-green-700,.bg-emerald-500,.bg-emerald-600,.bg-emerald-700,.bg-teal-500,.bg-teal-600,.bg-teal-700,.bg-cyan-500,.bg-cyan-600,.bg-cyan-700,.bg-sky-500,.bg-sky-600,.bg-sky-700,.bg-blue-500,.bg-blue-600,.bg-blue-700,.bg-indigo-500,.bg-indigo-600,.bg-indigo-700,.bg-violet-500,.bg-violet-600,.bg-violet-700,.bg-purple-500,.bg-purple-600,.bg-purple-700,.bg-fuchsia-500,.bg-fuchsia-600,.bg-fuchsia-700,.bg-pink-500,.bg-pink-600,.bg-pink-700,.bg-rose-500,.bg-rose-600,.bg-rose-700,.bg-gradient-to-r,.bg-gradient-to-br):hover {background:#eef0f3 !important}
 html.light :is(button,label,a):is(.bg-red-500,.bg-red-600,.bg-red-700,.bg-orange-500,.bg-orange-600,.bg-orange-700,.bg-amber-500,.bg-amber-600,.bg-amber-700,.bg-yellow-500,.bg-yellow-600,.bg-yellow-700,.bg-lime-500,.bg-lime-600,.bg-lime-700,.bg-green-500,.bg-green-600,.bg-green-700,.bg-emerald-500,.bg-emerald-600,.bg-emerald-700,.bg-teal-500,.bg-teal-600,.bg-teal-700,.bg-cyan-500,.bg-cyan-600,.bg-cyan-700,.bg-sky-500,.bg-sky-600,.bg-sky-700,.bg-blue-500,.bg-blue-600,.bg-blue-700,.bg-indigo-500,.bg-indigo-600,.bg-indigo-700,.bg-violet-500,.bg-violet-600,.bg-violet-700,.bg-purple-500,.bg-purple-600,.bg-purple-700,.bg-fuchsia-500,.bg-fuchsia-600,.bg-fuchsia-700,.bg-pink-500,.bg-pink-600,.bg-pink-700,.bg-rose-500,.bg-rose-600,.bg-rose-700) :is(i,span) {color:inherit !important}
 html.light :is(button,label,a):is(.bg-red-500,.bg-rose-500,.bg-red-600,.bg-rose-600,.bg-red-700,.bg-rose-700) {color:#d92d3a !important}
+html.light .ink :is([class*="bg-slate-"],[class*="bg-gray-"]) {background-color:rgba(255,255,255,0.07)}
+html.light .ink :is([class*="bg-"][class*="0/"]):not(:is([class*="bg-slate-"],[class*="bg-gray-"])) {background-color:rgba(255,255,255,0.08)}
+html.light .ink :is([class*="border-"]) {border-color:rgba(255,255,255,0.1)}
+html.light .ink :is([class*="divide-"]) > :not([hidden]) ~ :not([hidden]) {border-color:rgba(255,255,255,0.08)}
+html.light .ink [class*="text-red-"] {color:#fecaca}
+html.light .ink [class*="text-orange-"] {color:#fed7aa}
+html.light .ink [class*="text-amber-"] {color:#fde68a}
+html.light .ink [class*="text-yellow-"] {color:#fef08a}
+html.light .ink [class*="text-lime-"] {color:#d9f99d}
+html.light .ink [class*="text-green-"] {color:#bbf7d0}
+html.light .ink [class*="text-emerald-"] {color:#a7f3d0}
+html.light .ink [class*="text-teal-"] {color:#99f6e4}
+html.light .ink [class*="text-cyan-"] {color:#a5f3fc}
+html.light .ink [class*="text-sky-"] {color:#bae6fd}
+html.light .ink [class*="text-blue-"] {color:#bfdbfe}
+html.light .ink [class*="text-indigo-"] {color:#c7d2fe}
+html.light .ink [class*="text-violet-"] {color:#ddd6fe}
+html.light .ink [class*="text-purple-"] {color:#e9d5ff}
+html.light .ink [class*="text-fuchsia-"] {color:#f5d0fe}
+html.light .ink [class*="text-pink-"] {color:#fbcfe8}
+html.light .ink [class*="text-rose-"] {color:#fecdd3}
+html.light .ink :is(.text-white,[class*="text-slate-50"],[class*="text-slate-100"],[class*="text-gray-50"],[class*="text-gray-100"]) {color:#ffffff}
+html.light .ink :is([class*="text-slate-200"],[class*="text-slate-300"],[class*="text-gray-200"],[class*="text-gray-300"]) {color:#d5d9df}
+html.light .ink :is([class*="text-slate-400"],[class*="text-gray-400"]) {color:#9aa1ab}
+html.light .ink :is([class*="text-slate-500"],[class*="text-slate-600"],[class*="text-slate-700"],[class*="text-gray-500"],[class*="text-gray-600"],[class*="text-gray-700"]) {color:#7a818c}

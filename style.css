@@ -485,3 +485,89 @@ html.light .btn-sell.btn-sell {
 }
 html.light .btn-buy.btn-buy:active { background: #fadcdf !important; }
 html.light .btn-sell.btn-sell:active { background: #dbe6fa !important; }
+
+/* ═══════════ C안 · 프리미엄 정돈 ═══════════
+   글자 5단계: 히어로 24~28 / 섹션 18 / 본문·숫자 15 / 보조 13 / 캡션 11
+   굵기 3종: 500 · 600 · 700 (900 제거) · 여백 넓게 · 카드 24px · 1px 그림자 */
+html.light body { background-color: #f2f3f5 !important; }
+html.light .font-black,
+html.light .font-extrabold { font-weight: 700; }
+
+/* 섹션 카드: 모서리 24 · 아주 옅은 그림자 · 카드 안 타일은 14 */
+html.light [id^="tab-"] > :is(.glass-panel, .ui-card) {
+    border-radius: 24px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+html.light .ui-card { padding: 20px; }
+html.light :is(.glass-panel, .ui-card) .glass-panel { border-radius: 14px; }
+
+/* 홈 글자 크기 스냅 (자잘한 크기 → 5단계) */
+html.light #tab-home :is(.text-\[7px\], .text-\[8px\], .text-\[9px\], .text-\[10px\]) { font-size: 11px; }
+html.light #tab-home :is(.text-\[11px\], .text-\[11\.5px\], .text-\[12px\], .text-\[12\.5px\], .text-xs) { font-size: 13px; }
+html.light #tab-home :is(.text-\[13px\], .text-sm) { font-size: 15px; }
+html.light #tab-home .sec-title { font-weight: 700 !important; letter-spacing: -0.4px; }
+html.light .rank-num { font-size: 13px; font-weight: 600; color: #8b929c; }
+
+/* 주요 지수: 회색 타일 → 얇은 세로 구분선 그리드 */
+html.light #indexGrid { row-gap: 18px; column-gap: 0; }
+html.light #indexGrid > .glass-panel {
+    background: transparent;
+    border-radius: 0;
+    padding: 0 10px;
+    border-left: 1px solid #eef0f3;
+}
+html.light #indexGrid > .glass-panel:nth-child(3n+1) { border-left: 0; padding-left: 2px; }
+html.light #indexGrid > .glass-panel:hover { background: transparent; }
+html.light #indexGrid > .glass-panel { display: flex; flex-direction: column; }
+html.light #indexGrid > .glass-panel > div:first-child { display: contents; }
+html.light #indexGrid > .glass-panel > div:first-child > span:first-child { order: 1; font-size: 12px; font-weight: 500; color: #6b7280; }
+html.light #indexGrid > .glass-panel > div:nth-child(2) { order: 2; font-size: 16px; font-weight: 600; letter-spacing: -0.4px; margin-top: 3px; }
+html.light #indexGrid > .glass-panel > div:first-child > span:last-child { order: 3; font-size: 12px; font-weight: 600; }
+html.light #indexGrid > .glass-panel > div:nth-child(3) { order: 4; margin-top: 6px; }
+
+/* 핵심 지표: 박스 제거 → 구분선 위 5칸 */
+html.light .sub-label { display: none; }
+html.light #marketIndicators { border-top: 1px solid #eef0f3; padding-top: 14px; margin-top: 18px; gap: 0; }
+html.light #marketIndicators > .glass-panel { background: transparent; padding: 0 2px; }
+html.light #marketIndicators > .glass-panel > div:nth-child(1) { font-size: 11px; font-weight: 600; color: #8b929c; letter-spacing: 0.3px; }
+html.light #marketIndicators > .glass-panel > div:nth-child(2) { display: none; }
+html.light #marketIndicators > .glass-panel > div:nth-child(3) { font-size: 14px; font-weight: 600; margin-top: 4px; }
+html.light #marketIndicators > .glass-panel > div:nth-child(4) { font-size: 11px; }
+html.light #marketSummaryCard.glass-panel { background: #f7f8fa; padding: 14px 16px; }
+
+/* 시그니처 카드 (Quad): 잉크 바탕. 내부 색은 theme-light.css §7 이 뒤집음 */
+html.light #quadDashboardCard.ink {
+    background: #15181d;
+    color: #ffffff;
+    padding: 22px;
+    border-radius: 24px;
+    box-shadow: 0 6px 20px rgba(16, 24, 40, 0.12);
+}
+html.light #quadDashboardCard.ink > div:first-child > div:first-child { flex-wrap: wrap; row-gap: 6px; }
+html.light #quadDashboardCard.ink h2 {
+    flex-basis: 100%;
+    font-size: 11px;
+    letter-spacing: 1.2px;
+    color: #9aa1ab;
+}
+html.light #quadDashboardCard.ink .quad-title { font-size: 24px !important; font-weight: 700; letter-spacing: -0.6px; }
+html.light #quadDashboardCard.ink #quadUpdateTime { font-size: 12px; color: #7a818c; }
+html.light #quadDashboardCard.ink #quadCompactSub { font-size: 14px; font-weight: 500; color: #c9ced6; margin-top: 8px; }
+html.light #quadDashboardCard.ink .glass-panel { background: rgba(255, 255, 255, 0.07); }
+html.light #quadDashboardCard.ink button:is([class*="bg-"]) { background: rgba(255, 255, 255, 0.08) !important; color: #c9ced6 !important; }
+html.light #tab-home > .glass-panel:not(.ink) { padding: 20px; }
+html.light #quadDashboardCard.ink .quad-title { color: #ffffff; }
+
+/* 지금 뜨는 ETF: 회색 타일 → 구분선 리스트 (Quad 리스트와 동일 문법) */
+html.light #hotEtfList { display: flex; flex-direction: column; gap: 0 !important; }
+html.light #hotEtfList > .glass-panel {
+    background: transparent;
+    border-radius: 0;
+    padding: 13px 2px;
+    border-bottom: 1px solid #eef0f3;
+}
+html.light #hotEtfList > .glass-panel:hover { background: #f7f8fa; }
+html.light #hotEtfList > .glass-panel .w-10.h-10 {
+    border-radius: 9999px; background: #f4f6f9; border-color: transparent; box-shadow: none;
+}
+html.light #hotEtfList > button { margin-top: 10px; }

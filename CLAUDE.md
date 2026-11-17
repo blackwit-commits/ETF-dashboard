@@ -89,6 +89,10 @@ UMT_V2_PRD.md     — V2 기획서
 - 홈 섹션 제목은 `sec-title`(18px, 아이콘 숨김), 일/주/1개월 같은 토글 묶음은 `seg-ctl`
 - 새 UI는 기존처럼 다크 Tailwind 클래스(slate 등)로 써도 자동 변환됨. 새 색 클래스가 안 바뀌면 생성기에 추가 후 재생성
 - 차트/위젯 색은 script.js 상단 `UI` 객체(tvTheme, chartText, up/down 등)에서만 고를 것
+- C안(프리미엄): 홈 맨 위 Quad 카드는 `.ink` 짙은 시그니처 카드 — 안쪽 색은 생성기 §7이 다크용으로 뒤집음
+- 글자 5단계(히어로 24~28 / 섹션 18 / 본문·숫자 15 / 보조 13 / 캡션 11), 굵기 500·600·700만 (font-black은 700으로)
+- 버튼: `btn-primary`(검정, 화면당 1개) · `btn-outline` · `btn-buy`(연빨강) · `btn-sell`(연파랑), 그 외 단색 버튼은 자동 회색
+- 화면 UI 텍스트에 이모지 쓰지 않음 (토스트 메시지는 예외)
 
 ## 변경 시 주의사항
 - ETF_DB 필드: sym, lev, tier(1~4), quad(배열), name, desc, holdings

@@ -491,7 +491,7 @@ function renderHotIssues(data) {
     // ===== 브리핑 상단: 헤드라인 · 시장상황 · 섹터이슈 =====
     var brief = '';
     var overview = data && (data.overview || (data.quad && data.quad.summary));
-    if (overview) brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1">📌 오늘의 핵심</div><div class="text-[12.5px] text-slate-200 leading-relaxed">' + escapeHtml(overview) + '</div></div>';
+    if (overview) brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1">오늘의 핵심</div><div class="text-[12.5px] text-slate-200 leading-relaxed">' + escapeHtml(overview) + '</div></div>';
     brief += '<div id="briefIndexSummary"></div>';   // 실측: 주요 지수 표
     var mk = data && data.markets;
     if (mk && (mk.us || mk.kr)) {
@@ -499,7 +499,7 @@ function renderHotIssues(data) {
         var mLines = (sess.market === 'KR')
             ? _briefMarketLine('🇰🇷', '한국', mk.kr) + _briefMarketLine('🇺🇸', '미국', mk.us)
             : _briefMarketLine('🇺🇸', '미국', mk.us) + _briefMarketLine('🇰🇷', '한국', mk.kr);
-        var mkLabel = (sess.market === 'KR') ? '📊 한국 시장 상황' : '📊 미국 시장 상황';
+        var mkLabel = (sess.market === 'KR') ? '한국 시장 상황' : '미국 시장 상황';
         brief += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">' + mkLabel + '</div>' + mLines + '</div>';
     }
     brief += '<div id="briefSectorFlow"></div>';   // 실측: 미국 섹터 자금흐름 + 주도 Top2
@@ -523,7 +523,7 @@ function renderHotIssues(data) {
     var dirMeta = {bullish:{t:'▲ 호재',c:'text-red-400'}, bearish:{t:'▼ 악재',c:'text-blue-400'}, neutral:{t:'중립',c:'text-slate-400'}};
 
     var html = brief;
-    if (items.length) html += '<div class="text-[10px] font-bold text-slate-500 mb-1 px-1 pt-1">🔥 핫이슈</div>';
+    if (items.length) html += '<div class="text-[10px] font-bold text-slate-500 mb-1 px-1 pt-1">핫이슈</div>';
     items.forEach(function(it) {
         var cm = catMeta[it.category] || {label:'뉴스', icon:'fa-newspaper', color:'text-slate-400'};
         var dm = dirMeta[it.direction] || dirMeta.neutral;
@@ -555,7 +555,7 @@ function renderHotIssues(data) {
     // 다음 카탈리스트 (경제지표·실적 일정)
     var up = (data && Array.isArray(data.upcoming)) ? data.upcoming.slice(0, 5) : [];
     if (up.length) {
-        html += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">📅 다음 카탈리스트</div><div class="space-y-1">';
+        html += '<div class="glass-panel rounded-xl p-3.5 border border-slate-700"><div class="text-[10px] font-bold text-slate-500 mb-1.5">다음 카탈리스트</div><div class="space-y-1">';
         var impIcon = { high: '🔴', medium: '🟡', low: '⚪' };
         up.forEach(function (ev) { html += '<div class="text-[11px] text-slate-300">' + (impIcon[ev.importance] || '⚪') + ' <span class="text-slate-500">' + escapeHtml(ev.date || '') + '</span> ' + escapeHtml(ev.name || '') + '</div>'; });
         html += '</div></div>';
@@ -681,7 +681,7 @@ function renderBriefingData() {
             + _briefQuoteRow('다우', Q['^DJI'])
             + _briefQuoteRow('코스피', Q['^KS11'])
             + _briefQuoteRow('VIX (변동성)', Q['^VIX']);
-        idxEl.innerHTML = rows ? _briefCard('📈 주요 지수', rows) : '';
+        idxEl.innerHTML = rows ? _briefCard('주요 지수', rows) : '';
     }
 
     // ② 미국 섹터 자금흐름 — 주도 섹터 심층(Top1) + 차선 + 빠지는 곳 (실측 + Gemini 서사 매칭)
@@ -719,7 +719,7 @@ function renderBriefingData() {
             var sInfo = SECTOR_INFO[second.sym] || {};
             var sWhy = _whyNow(second);
             var secondHtml = '<div class="mt-1.5 rounded-lg bg-slate-800/25 border border-slate-700/40 p-2.5">'
-                + '<div class="flex items-center gap-1.5"><span class="text-[11px]">🥈</span><span class="text-[9px] text-slate-500 font-bold">차선</span>'
+                + '<div class="flex items-center gap-1.5"><span class="text-[9px] text-slate-500 font-bold">2 · 차선</span>'
                 +   '<i class="fa-solid ' + second.icon + ' ' + second.color + ' text-[10px] ml-0.5"></i>'
                 +   '<span class="text-[12px] font-black text-white">' + second.name + '</span>'
                 +   '<span class="text-[12px] font-black ml-auto ' + chgClass(second.chg1d) + '">' + (second.chg1d > 0 ? '+' : '') + second.chg1d.toFixed(2) + '%</span></div>'
@@ -1246,7 +1246,7 @@ function renderMarketFlow() {
     // 국면은 홈 대시보드와 동일하게 /macro(MACRO_DATA)를 단일 출처로 사용 (불일치 방지). MACRO 미로딩 시 핫이슈 quad 폴백
     var cur = (MACRO_DATA && MACRO_DATA.quad && MACRO_DATA.quad.current) ? MACRO_DATA.quad.current : (hot.quad && hot.quad.current);
     var quadHtml = '';
-    if (cur) quadHtml = '<div class="text-[11px] font-bold text-cyan-300 mb-1.5">🧭 현재 국면: Q' + cur + ' ' + escapeHtml(quadNames[cur] || '') + '</div>';
+    if (cur) quadHtml = '<div class="text-[11px] font-bold text-cyan-300 mb-1.5">현재 국면: Q' + cur + ' ' + escapeHtml(quadNames[cur] || '') + '</div>';
     body.innerHTML = quadHtml + '<div class="text-[12px] text-slate-300 leading-relaxed">' + escapeHtml(hot.overview) + '</div>';
     var te = document.getElementById('marketFlowTime');
     if (te && hot._cachedAt) { var mins = Math.round((Date.now() - hot._cachedAt) / 60000); te.innerText = newsAbsStamp(Math.round(hot._cachedAt / 1000)) + ' 기준 (' + (mins < 60 ? mins + '분 전' : Math.round(mins / 60) + '시간 전') + ')'; }
@@ -1400,7 +1400,7 @@ function _econTodayResultsHtml() {
     var out = '';
     today.forEach(function (r) {
         var sp = _econSurprise(r.surprise);
-        out += '<div class="text-[12px] leading-relaxed mb-0.5">📊 <span class="font-bold text-slate-200">' + escapeHtml(r.name || '') + '</span> '
+        out += '<div class="text-[12px] leading-relaxed mb-0.5"><span class="font-bold text-slate-200">' + escapeHtml(r.name || '') + '</span> '
             + '<span class="font-black ' + (sp ? sp.c : 'text-white') + '">' + escapeHtml(r.actual || '') + '</span>'
             + (r.forecast ? ' <span class="text-slate-500">(예상 ' + escapeHtml(r.forecast) + ')</span>' : '')
             + (sp ? ' <span class="' + sp.c + ' text-[10px] font-bold">' + sp.t + '</span>' : '') + '</div>';
@@ -2980,7 +2980,7 @@ function renderNowcastAxis(axisKey, axisLabel, nc, q) {
 
     return '<div class="mb-2.5">'
         + '<div class="flex items-center gap-2 mb-1">'
-        +   '<span class="text-[11px] font-black text-white">' + (axisKey === 'growth' ? '📈' : '🔥') + ' ' + axisLabel + ' 축</span>'
+        +   '<span class="text-[11px] font-black text-white">' + axisLabel + ' 축</span>'
         +   '<span class="text-[11px] font-black ' + vCls + '">→ ' + (isAcc ? '가속 ↑' : '감속 ↓') + '</span>'
         +   '<span class="text-[9px] text-slate-500">' + (isAcc ? votes.accel : votes.decel) + '/' + total + '</span>'
         +   agreeTag
@@ -4442,8 +4442,8 @@ function _pullbackScore(d) {
     return { score: s, rsi: rsi, tags: tags, w: w, m: m };
 }
 function _hotCard(sym, theme, desc, lev, rank, subLine, rightBig, rightCls, rightSub) {
-    var medal = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : ''));
-    var rankBadge = '<span class="text-[9px] font-black shrink-0 ' + (rank <= 3 ? 'text-amber-300' : 'text-slate-500') + '">' + medal + rank + '위</span>';
+    var medal = '';   // 메달 이모지 제거 — 순위는 'N위' 텍스트로만
+    var rankBadge = '<span class="text-[9px] font-black shrink-0 ' + (rank <= 3 ? (UI_LIGHT ? 'text-slate-400' : 'text-amber-300') : 'text-slate-500') + '">' + medal + rank + '위</span>';
     var descHtml = desc ? '<div class="text-[9px] text-slate-500 truncate leading-tight">' + escapeHtml(desc) + '</div>' : '';
     var bridge = lev
         ? '<button type="button" onclick="event.stopPropagation();openAnalysisModal(\'' + lev + '\')" class="mt-1 text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 font-bold whitespace-nowrap">' + lev + ' ↗</button>'
@@ -4692,7 +4692,7 @@ function _flowCard(x, rank, curQuad) {
     var quadTag = curQuad ? (aligned
         ? '<span class="text-[9px] text-emerald-300 bg-emerald-500/10 px-1 py-0.5 rounded ml-1">Q' + curQuad + ' 정합 ✓</span>'
         : '<span class="text-[9px] text-slate-500 bg-slate-700/40 px-1 py-0.5 rounded ml-1">Q' + curQuad + ' 비정합</span>') : '';
-    var medal = rank === 1 ? '🥇' : '🥈';
+    var medal = '<span class="rank-num">' + rank + '</span>';
     var chg = _flowPeriodVal(x);
     var stocksHtml = (info.top || []).slice(0, 3).map(function (h) {
         return '<span class="inline-flex items-center gap-1 mr-2.5"><span class="text-[10px] font-bold text-slate-300">' + h.s + '</span><span class="text-[10px] font-bold text-slate-500" data-fh="' + h.s + '">…</span></span>';
@@ -7845,7 +7845,7 @@ function renderTradeLog() {
             var mWinRate = (mWins / mSells) * 100;
             var mAvg = mSum / mSells;
             var avgCol = mAvg >= 0 ? 'text-red-400' : 'text-blue-400';
-            monthReviewHtml = '<div class="text-[10px] text-slate-500 px-1 mt-1">📊 이 달 승률 <span class="text-slate-300 font-bold">' + mWinRate.toFixed(0) + '%</span> · 평균 <span class="' + avgCol + ' font-bold">' + (mAvg >= 0 ? '+' : '') + mAvg.toFixed(2) + '%</span> (매도 ' + mSells + '건)</div>';
+            monthReviewHtml = '<div class="text-[10px] text-slate-500 px-1 mt-1">이 달 승률 <span class="text-slate-300 font-bold">' + mWinRate.toFixed(0) + '%</span> · 평균 <span class="' + avgCol + ' font-bold">' + (mAvg >= 0 ? '+' : '') + mAvg.toFixed(2) + '%</span> (매도 ' + mSells + '건)</div>';
         }
 
         var monthId = 'tradeMonth' + mi;
@@ -8064,7 +8064,7 @@ function showTradeDetail(idx) {
     // 차트 (해당 종목 단독, 매수/매도 지점 표시) + 당일 시장 상황(수치)
     h += '<div class="mt-1 mb-2">'
         + '<div class="flex items-center gap-3 text-[9px] mb-1 px-0.5">'
-        + '<span class="text-white font-bold">📊 ' + escapeHtml(r.sym || '종목') + '</span>'
+        + '<span class="text-white font-bold">' + escapeHtml(r.sym || '종목') + '</span>'
         + '<span class="text-cyan-400">━ EMA8</span>'
         + '<span class="text-violet-400">━ MA200</span>'
         + '<span class="text-amber-400" id="tradeChartAvgLabel">┈ 평단</span>'
@@ -8262,7 +8262,7 @@ function renderTradeJournalChart(sym, cycleId, focusDate) {
         chips.push(chip('VIX', dayMetric(res[4], d), true));
         chips = chips.filter(Boolean);
         var pe = document.getElementById('tradeChartPeriodRet');
-        if (pe) pe.innerHTML = chips.length ? ('<div class="text-slate-500 text-[10px] mb-1.5">📅 ' + escapeHtml(d) + ' 시장 상황</div><div class="grid grid-cols-3 gap-1.5">' + chips.join('') + '</div>') : '';
+        if (pe) pe.innerHTML = chips.length ? ('<div class="text-slate-500 text-[10px] mb-1.5">' + escapeHtml(d) + ' 시장 상황</div><div class="grid grid-cols-3 gap-1.5">' + chips.join('') + '</div>') : '';
     });
 }
 

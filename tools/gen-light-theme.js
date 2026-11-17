@@ -107,5 +107,20 @@ out.push(`html.light :is(button,label,a):is(${satBtn},.bg-gradient-to-r,.bg-grad
 out.push(`html.light :is(button,label,a):is(${satBtn}) :is(i,span) {color:inherit !important}`);
 out.push(`html.light :is(button,label,a):is(${redBtn}) {color:${UP} !important}`);
 
+// ── 7. 잉크(짙은) 카드 내부: 화이트 매핑을 다시 어두운 바탕용으로 뒤집음 (홈 시그니처 카드) ──
+// 작은 범위라 속성 선택자로 간결하게 (명시도 0,3,1 > 위 매핑 0,2,1)
+const I = 'html.light .ink ';
+const nb = (pfx) => NEUTRALS.map((n) => `[class*="${pfx}-${n}-"]`).join(',');
+out.push(`${I}:is(${nb('bg')}) {background-color:rgba(255,255,255,0.07)}`);
+out.push(`${I}:is([class*="bg-"][class*="0/"]):not(:is(${nb('bg')})) {background-color:rgba(255,255,255,0.08)}`);
+out.push(`${I}:is([class*="border-"]) {border-color:rgba(255,255,255,0.1)}`);
+out.push(`${I}:is([class*="divide-"]) > :not([hidden]) ~ :not([hidden]) {border-color:rgba(255,255,255,0.08)}`);
+for (const [c, [, c200]] of Object.entries(PAL)) out.push(`${I}[class*="text-${c}-"] {color:${c200}}`);
+const tShade = (shades) => NEUTRALS.flatMap((n) => shades.map((s) => `[class*="text-${n}-${s}"]`)).join(',');
+out.push(`${I}:is(.text-white,${tShade([50, 100])}) {color:#ffffff}`);
+out.push(`${I}:is(${tShade([200, 300])}) {color:#d5d9df}`);
+out.push(`${I}:is(${tShade([400])}) {color:#9aa1ab}`);
+out.push(`${I}:is(${tShade([500, 600, 700])}) {color:#7a818c}`);
+
 fs.writeFileSync(process.argv[2], out.join('\n') + '\n');
 console.log('rules:', out.length, 'bytes:', fs.statSync(process.argv[2]).size);
