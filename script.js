@@ -2549,7 +2549,7 @@ function updateSingleCard(sym, md) {
         return;
     }
 
-    let stColor = md.price < md.ma200 ? 'text-red-400' : (md.rsi < 60 ? 'text-green-400' : 'text-blue-400'); 
+    let stColor = md.price < md.ma200 ? 'text-blue-400' : (md.rsi < 60 ? 'text-green-400' : 'text-red-400');   // 한국식: 하락 파랑 · 상승 빨강
     let stText = md.price < md.ma200 ? '하락추세' : (md.rsi < 60 ? '매수적기' : '상승추세'); 
 
     pEl.innerHTML = '$' + md.price.toFixed(2) + ' ' + chgWithExtHtml(md);
