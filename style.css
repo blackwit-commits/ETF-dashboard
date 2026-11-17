@@ -571,3 +571,7 @@ html.light #hotEtfList > .glass-panel .w-10.h-10 {
     border-radius: 9999px; background: #f4f6f9; border-color: transparent; box-shadow: none;
 }
 html.light #hotEtfList > button { margin-top: 10px; }
+
+/* Quad 카드 (흰 카드 · 잉크 카드 철회): 라벨은 캡션, 국면명은 섹션 제목급 */
+html.light #quadDashboardCard:not(.ink) h2 { font-size: 11px; letter-spacing: 1.2px; color: #8b929c; }
+html.light #quadDashboardCard:not(.ink) #quadCompactSub { font-size: 13px; font-weight: 500; color: #6b7280; }
