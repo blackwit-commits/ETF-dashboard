@@ -5242,16 +5242,18 @@ function getCurrentStage(sym) {
         return null;
     })();
     const allocPct = d.config.alloc || 30;
-    const investMoney = getTotalEquityUSD() * (allocPct / 100);
+    // 계획표(calculatePlan)와 같은 금액 기준 — 사이클 리셋 후엔 가용자금(할당 − 보유분)
+    const investMoney = (d.config.cycleAvailableUSD != null && d.config.cycleAvailableUSD > 0)
+        ? d.config.cycleAvailableUSD
+        : getTotalEquityUSD() * (allocPct / 100);
 
-    // 실제 체결된 단계(현재 사이클 기준) 추적
+    // 실제 보유 중인 단계(현재 사이클 · 매도분 차감) 추적
+    const _sh = getStageHoldings(d);
     let baseLastBought = 0;
     let boosterLastBought = 0;
-    (d.history || []).forEach(function(h) {
-        if (!h || h.type !== 'BUY') return;
-        const s = parseInt(h.stage, 10);
-        if (isNaN(s) || s <= 0) return;
-        if (activeCycleId != null && h.cycleId !== activeCycleId) return;
+    Object.keys(_sh.byStage).forEach(function(k) {
+        const s = Number(k);
+        if (!(_sh.byStage[k] > 0) || s <= 0) return;
         if (s <= stages) baseLastBought = Math.max(baseLastBought, s);
         else if (boosterOn && s <= (stages + boosterStages)) boosterLastBought = Math.max(boosterLastBought, s - stages);
     });
@@ -5264,13 +5266,8 @@ function getCurrentStage(sym) {
         const targetPrice = basePrice * (1 + drop / 100);
         const amount = investMoney * (weight / 100);
         const targetQty = targetPrice > 0 ? Math.floor(amount / targetPrice) : 0;
-        const boughtQty = (d.history || []).filter(h => {
-            if (!h || h.type !== 'BUY') return false;
-            if (parseInt(h.stage) !== (i + 1)) return false;
-            if (activeCycleId != null) return h.cycleId === activeCycleId;
-            return true;
-        }).reduce((sum, h) => sum + h.qty, 0);
-        if (targetQty > 0 && boughtQty >= targetQty) {
+        const boughtQty = _sh.byStage[i + 1] || 0;
+        if ((targetQty > 0 && boughtQty >= targetQty) || ((i + 1) < baseLastBought)) {   // 계획 수량 채움 또는 지나간 단계
             completed++;
         } else {
             if (boughtQty > 0) inProgressStage = i + 1;
@@ -5291,12 +5288,7 @@ function getCurrentStage(sym) {
             const amount = boosterInvest / boosterStages;
             const targetQty = targetPrice > 0 ? Math.floor(amount / targetPrice) : 0;
             const stageNum = stages + i + 1;
-            const boughtQty = (d.history || []).filter(h => {
-                if (!h || h.type !== 'BUY') return false;
-                if (parseInt(h.stage) !== stageNum) return false;
-                if (activeCycleId != null) return h.cycleId === activeCycleId;
-                return true;
-            }).reduce((sum, h) => sum + h.qty, 0);
+            const boughtQty = _sh.byStage[stageNum] || 0;
             if (targetQty > 0 && boughtQty >= targetQty) {
                 completed++;
             } else {
@@ -6097,7 +6089,28 @@ function showStrategyMessage(elementId, text) {
 
 function updateBasePriceAndSave() {
     if (!activeTicker || !portfolios[activeTicker]) return;
-    portfolios[activeTicker].config.basePrice = parseFloat(document.getElementById('planBasePrice').value) || 0;
+    const d = portfolios[activeTicker];
+    const oldBase = parseFloat(d.config.basePrice) || 0;
+    const newBase = parseFloat(document.getElementById('planBasePrice').value) || 0;
+    // 보유 중 기준가 변경: 예전 단계 체결이 새 계획표의 같은 단계에 섞여 수량·완료표시가 꼬임
+    // → 새 사이클로 시작(보유분·평단 유지, 매수 가능 금액 = 할당 − 보유 원가)
+    if (newBase > 0 && oldBase > 0 && Math.abs(newBase - oldBase) > 1e-9 && (d.qty || 0) > 0 && getStageHoldings(d).maxHeldStage > 0) {
+        const allocTotal = getTotalEquityUSD() * ((d.config.alloc || 30) / 100);
+        const available = Math.max(0, allocTotal - (d.qty || 0) * (d.avgPrice || 0));
+        const ok = confirm('보유 중에 기준가를 바꾸면 기존 단계 매수와 새 계획이 섞입니다.\n\n'
+            + '새 사이클로 시작할까요?\n'
+            + '· 보유 ' + (d.qty || 0) + '주와 평단 $' + (d.avgPrice || 0).toFixed(2) + '는 그대로 유지\n'
+            + '· 새 계획 매수 가능 금액: $' + available.toFixed(0) + ' (할당 − 보유 원가)\n'
+            + '· 1차부터 새 기준가로 다시 시작\n\n'
+            + '[취소]를 누르면 기준가만 바꿉니다.');
+        if (ok) {
+            const maxCid = (d.history || []).reduce((m, h) => (h && h.cycleId > m ? h.cycleId : m), 0);
+            d.cycleSeq = Math.max(Number(d.cycleSeq) || 0, maxCid) + 1;   // 기존 사이클 id 와 겹치지 않게
+            d.currentCycleId = d.cycleSeq;
+            d.config.cycleAvailableUSD = available;
+        }
+    }
+    d.config.basePrice = newBase;
     saveAll();
     calculatePlan();
     renderStrategyProgressCard(activeTicker);
@@ -6167,14 +6180,9 @@ function calculatePlan() {
 
     // 활성 사이클에서 매수된 가장 높은 단계 — 그보다 낮은 단계는 '완료'(지나간 단계)로 표시
     // (DCA: 2차를 매수했다면 1차는 이미 지나간 단계이므로 완료)
-    var maxBoughtStage = 0;
-    (d.history || []).forEach(function(h) {
-        if (!h || h.type !== 'BUY' || (h.qty || 0) <= 0) return;
-        var inCycle = (activeCycleId != null) ? (h.cycleId === activeCycleId) : ((d.qty || 0) > 0);
-        if (!inCycle) return;
-        var st = parseInt(h.stage, 10);
-        if (!isNaN(st) && st > maxBoughtStage) maxBoughtStage = st;
-    });
+    // 단계별 '현재 보유' (매도분은 깊은 단계부터 차감 → 익절로 회수된 단계는 다시 대기)
+    var _sh = getStageHoldings(d);
+    var maxBoughtStage = _sh.maxHeldStage;
 
     for(let i=0; i<stages; i++) {
         if(i >= drops.length) break;
@@ -6184,21 +6192,9 @@ function calculatePlan() {
         const amount = investMoney * (weight/100);
         const qty = targetPrice > 0 ? Math.floor(amount / targetPrice) : 0;
 
-        const buys = (d.history || []).filter(h => {
-            if (!h || h.type !== 'BUY') return false;
-            if (parseInt(h.stage) !== (i + 1)) return false;
-            if (activeCycleId != null) return h.cycleId === activeCycleId;
-            if ((d.qty || 0) <= 0) return false; // 전량매도 완료 시 이전 사이클 표시 안 함
-            return true; // 과거 데이터 호환(사이클 없음)
-        });
-        const boughtQty = buys.reduce((sum, h) => sum + (h.qty || 0), 0);
-        // "실제 매수가"는 해당 단계에서의 마지막 체결가(최근 BUY의 price)로 표시
-        const lastBuy = buys.reduce((acc, h) => {
-            if (!h) return acc;
-            if (!acc) return h;
-            return new Date(h.date) > new Date(acc.date) ? h : acc;
-        }, null);
-        const actualBuyPrice = (lastBuy && lastBuy.price != null) ? Number(lastBuy.price) : null;
+        // 수량 = 이 단계의 현재 보유분, 실제 매수가 = 이 단계 마지막 체결가 (회수된 단계면 비움)
+        const boughtQty = _sh.byStage[i + 1] || 0;
+        const actualBuyPrice = (boughtQty > 0 && _sh.lastPrice[i + 1] != null) ? _sh.lastPrice[i + 1] : null;
         let statusBadge = '<span class="text-slate-500 font-bold text-[10px]">대기</span>';
         if ((d.qty || 0) <= 0) {
             statusBadge = '<span class="text-slate-500 font-bold text-[10px]">대기</span>';
@@ -6226,21 +6222,8 @@ function calculatePlan() {
             const amount = boosterInvest / boosterStages;
             const qty = targetPrice > 0 ? Math.floor(amount / targetPrice) : 0;
             const stageNum = stages + i + 1;
-            const buys = (d.history || []).filter(h => {
-                if (!h || h.type !== 'BUY') return false;
-                if (parseInt(h.stage) !== stageNum) return false;
-                if (activeCycleId != null) return h.cycleId === activeCycleId;
-                if ((d.qty || 0) <= 0) return false; // 전량매도 완료 시 이전 사이클 표시 안 함
-                return true; // 과거 데이터 호환(사이클 없음)
-            });
-            const boughtQty = buys.reduce((sum, h) => sum + (h.qty || 0), 0);
-            // "실제 매수가"는 해당 부스터 단계에서의 마지막 체결가로 표시
-            const lastBuy = buys.reduce((acc, h) => {
-                if (!h) return acc;
-                if (!acc) return h;
-                return new Date(h.date) > new Date(acc.date) ? h : acc;
-            }, null);
-            const actualBuyPrice = (lastBuy && lastBuy.price != null) ? Number(lastBuy.price) : null;
+            const boughtQty = _sh.byStage[stageNum] || 0;
+            const actualBuyPrice = (boughtQty > 0 && _sh.lastPrice[stageNum] != null) ? _sh.lastPrice[stageNum] : null;
             let statusBadge = '<span class="text-slate-500 font-bold text-[10px]">대기</span>';
             if ((d.qty || 0) <= 0) {
                 statusBadge = '<span class="text-slate-500 font-bold text-[10px]">대기</span>';
@@ -6683,15 +6666,8 @@ function buyStageProgress(p) {
     var total = (p && p.config && p.config.stages) ? parseInt(p.config.stages, 10) : 0;
     if (!total) return { done: 0, total: 0 };
     if ((p.qty || 0) <= 0) return { done: 0, total: total }; // 미보유 = 0단계 (과거 매도완료 사이클 제외)
-    var cycleId = (p.currentCycleId != null) ? p.currentCycleId : 0;
-    var seen = {};
-    (p.history || []).forEach(function (h) {
-        if (!h || h.type !== 'BUY') return;
-        if (cycleId > 0 && h.cycleId != null && h.cycleId !== cycleId) return;
-        var s = parseInt(h.stage, 10);
-        if (!isNaN(s) && s > 0 && s <= total) seen[s] = true;
-    });
-    var done = Object.keys(seen).length;
+    // 현재 보유 중인 가장 깊은 단계 (익절로 회수된 단계는 제외 → 재매수 알림 대상에 다시 포함)
+    var done = Math.min(getStageHoldings(p).maxHeldStage, total);
     if (done === 0 && (p.qty || 0) > 0) done = 1; // 단계 미기록이나 보유 중이면 최소 1
     return { done: Math.min(done, total), total: total };
 }
@@ -7220,7 +7196,10 @@ function submitTrade() {
                 if (expectedPrice > 0 && price < expectedPrice) {
                     // 기존 단계 간 상대 간격(drop 차이)을 유지한 채,
                     // idx 이후 단계만 실제 체결가를 anchor로 다시 계산한다.
+                    // 단, 아직 보유 중인(체결된) 단계는 건드리지 않음 — 재진입 매수 시 이미 산 단계 계획가가 바뀌던 문제
+                    const _held = getStageHoldings(d).byStage;
                     for (let j = idx + 1; j < d.config.drops.length; j++) {
+                        if ((_held[j + 1] || 0) > 0) continue;
                         const oldDropJ = parseFloat(d.config.drops[j]) || 0;
                         const relFromAnchorPct = oldDropJ - drop; // anchor 단계 대비 추가 하락폭(%)
                         const newTargetPrice = price * (1 + relFromAnchorPct / 100);
@@ -7290,8 +7269,89 @@ function submitTrade() {
     closeTradeModal();
 }
     
+// 매매 기록 시간순 정렬 — 같은 날짜는 기록 순서(id=기록 시각)로. 모든 평단·단계 계산이 같은 순서를 쓰도록 통일
+function _sortTradesAsc(list) {
+    return (list || []).filter(Boolean).slice().sort(function (a, b) {
+        var dd = new Date(a.date) - new Date(b.date);
+        if (dd !== 0 && !isNaN(dd)) return dd;
+        return (Number(a.id) || 0) - (Number(b.id) || 0);
+    });
+}
+
+// 현재(활성) 사이클 id — calculatePlan/getCurrentStage 등에서 쓰던 추정 로직 공용화
+function _activeCycleIdOf(d) {
+    if (!d) return null;
+    if (d.currentCycleId != null) return d.currentCycleId;
+    if ((d.qty || 0) > 0 && Array.isArray(d.history)) {
+        var m = d.history.reduce(function (mm, h) { return (h && h.cycleId != null && h.cycleId > mm) ? h.cycleId : mm; }, 0);
+        return m > 0 ? m : null;
+    }
+    return null;
+}
+
+// 단계별 '현재 보유' 수량 (활성 사이클 기준)
+// - 매수: 해당 단계에 적립 (단계 미지정 매수 · 사이클 리셋 전 이월분은 carry)
+// - 매도: 깊은 단계부터 차감(LIFO) → 익절로 회수된 단계는 다시 '대기'로 열려 재매수 가능
+//   예) 1~3차 매수 후 70% 매도 → 3차·2차 회수, 1차 일부만 남음 → 2차가 다시 매수 대상
+function getStageHoldings(d) {
+    var res = { byStage: {}, lastPrice: {}, carry: 0, maxHeldStage: 0, cycleId: null };
+    if (!d || !Array.isArray(d.history)) return res;
+    var cid = _activeCycleIdOf(d);
+    res.cycleId = cid;
+    if ((d.qty || 0) <= 0) return res;
+    var pre = 0, started = false;
+    _sortTradesAsc(d.history).forEach(function (h) {
+        var q = Number(h.qty) || 0;
+        if (q <= 0 || (h.type !== 'BUY' && h.type !== 'SELL')) return;
+        var inCycle = (cid != null) ? (h.cycleId === cid) : true;
+        if (!inCycle) {   // 이전 사이클 거래 → 이월 보유량만 추적
+            if (h.type === 'BUY') pre += q; else pre = Math.max(0, pre - q);
+            return;
+        }
+        if (!started) { res.carry += pre; pre = 0; started = true; }
+        if (h.type === 'BUY') {
+            var s = parseInt(h.stage, 10);
+            if (s > 0) { res.byStage[s] = (res.byStage[s] || 0) + q; res.lastPrice[s] = Number(h.price); }
+            else res.carry += q;
+        } else {
+            var rem = q;
+            Object.keys(res.byStage).map(Number).sort(function (a, b) { return b - a; }).forEach(function (k) {
+                if (rem <= 0) return;
+                var take = Math.min(rem, res.byStage[k]);
+                res.byStage[k] -= take; rem -= take;
+            });
+            if (rem > 0) res.carry = Math.max(0, res.carry - rem);
+        }
+    });
+    if (!started) res.carry += pre;
+    Object.keys(res.byStage).forEach(function (k) {
+        var v = Math.round(res.byStage[k] * 1e6) / 1e6;
+        res.byStage[k] = v;
+        if (v > 0 && Number(k) > res.maxHeldStage) res.maxHeldStage = Number(k);
+    });
+    return res;
+}
+
+// 매도 건별 원가 (이동평균법 — recalcPortfolio 와 동일 공식) → { [id]: { avg, cost, realized } }
+// 매매일지 수익률·사이클 실현손익이 전략탭 평단/실현손익과 항상 일치하도록 공용 사용
+function sellCostBasisMap(history) {
+    var out = {}, q = 0, cost = 0;
+    _sortTradesAsc(history).forEach(function (h) {
+        var qty = Number(h.qty) || 0;
+        var tot = (h.total != null && !isNaN(h.total)) ? Number(h.total) : (Number(h.price) || 0) * qty;
+        if (h.type === 'BUY') { cost += tot; q += qty; }
+        else if (h.type === 'SELL' && q > 0) {
+            var avg = cost / q, c = avg * qty;
+            out[String(h.id)] = { avg: avg, cost: c, realized: tot - c };
+            cost -= c; q -= qty;
+            if (q <= 1e-9) { q = 0; cost = 0; }
+        }
+    });
+    return out;
+}
+
 function recalcPortfolio(d) {
-    const sorted = [...d.history].sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const sorted = _sortTradesAsc(d.history);
     const fallbackFx = getUsdToKrwRate();
     const fxOf = (h) => (h && h.fxRate > 0) ? h.fxRate : fallbackFx;
     let q = 0, totalCost = 0, totalCostKRW = 0;            // USD/원화 취득원가 (보유분)
@@ -7412,6 +7472,7 @@ function renderStratCycleSummary() {
     if (!keys.length) { box.innerHTML = '<div class="text-center text-slate-500 text-xs py-2">매수/매도 기록 없음</div>'; return; }
     var latestCid = keys.reduce(function(m,k){ var n=Number(k)||0; return n>m?n:m; }, 0);
     var realHeld = d.qty || 0;
+    var _basis = sellCostBasisMap(d.history);   // 매도 건별 매도 시점 평단 원가
     var sumQC = function(arr){ var q=0,c=0; arr.forEach(function(t){ var qty=Number(t.qty)||0; var tot=(t.total!=null&&!isNaN(t.total))?Math.abs(Number(t.total)):(Number(t.price)||0)*qty; q+=qty; c+=tot; }); return {qty:q,cost:c}; };
     var cards = keys.map(function(cid){
         var g = groups[cid];
@@ -7420,8 +7481,9 @@ function renderStratCycleSummary() {
         var isOpen = ((Number(cid)||0) === latestCid) && realHeld > 0.0001;
         var dates = g.dates.slice().sort();
         var firstDate = dates[0]||'', lastDate = dates[dates.length-1]||'';
-        var realized = (s.qty && avgBuy) ? (s.cost - avgBuy*s.qty) : null;
-        var realizedPct = (avgBuy && s.qty) ? ((avgSell-avgBuy)/avgBuy)*100 : null;
+        var _rs = g.sells.reduce(function(a, t){ var b = _basis[String(t.id)]; if (b) { a.r += b.realized; a.c += b.cost; } return a; }, { r: 0, c: 0 });
+        var realized = s.qty ? (_rs.c ? _rs.r : (avgBuy ? (s.cost - avgBuy*s.qty) : null)) : null;
+        var realizedPct = s.qty ? (_rs.c ? (_rs.r/_rs.c)*100 : (avgBuy ? ((avgSell-avgBuy)/avgBuy)*100 : null)) : null;
         return { cid:cid, b:b, s:s, avgBuy:avgBuy, avgSell:avgSell, openQty:isOpen?realHeld:0, closed:!isOpen, firstDate:firstDate, lastDate:lastDate, realized:realized, realizedPct:realizedPct };
     });
     cards.sort(function(a,b){ if(a.closed!==b.closed) return a.closed?1:-1; return (b.lastDate||'').localeCompare(a.lastDate||''); });
@@ -7513,29 +7575,21 @@ function calculatePlanVsResult(trade) {
 
 function enrichTradesWithReturn(trades) {
     if (!trades || !portfolios) return trades;
-    // 사이클(종목+cycleId)별 전체 평균 매수가 = '내 평단' 기준
-    var keyOf = function(t) { return t.sym + '#' + (t.cycleId != null ? t.cycleId : '0'); };
-    var cycleBuy = {};
-    trades.forEach(function(t) {
-        if (t.type === 'BUY') {
-            var k = keyOf(t);
-            if (!cycleBuy[k]) cycleBuy[k] = { cost: 0, qty: 0 };
-            cycleBuy[k].cost += (t.total != null ? t.total : t.price * t.qty);
-            cycleBuy[k].qty += (t.qty || 0);
-        }
-    });
-    trades.forEach(function(t) {
-        if (t.type !== 'SELL') return;
-        var cb = cycleBuy[keyOf(t)];
-        if (cb && cb.qty > 0) {
-            var cycleAvg = cb.cost / cb.qty;             // 사이클 전체 평단
-            var costOfSold = cycleAvg * (t.qty || 0);
-            var proceeds = (t.total != null ? t.total : t.price * t.qty);
-            var profit = proceeds - costOfSold;
-            t.returnPct = costOfSold ? (profit / costOfSold) * 100 : 0;
-            t.realizedUSD = profit;
-            t.cycleAvgBuy = cycleAvg;                    // 상세뷰 표시용
-        }
+    // 매도 시점의 보유 평단(이동평균법) 기준 — 전략탭 평단·실현손익과 동일 공식
+    // (예전: 사이클 전체 매수 평균 → 부분매도 후 재매수하면 전략탭과 수익률이 달라졌음)
+    var bySym = {};
+    trades.forEach(function(t) { (bySym[t.sym] = bySym[t.sym] || []).push(t); });
+    Object.keys(bySym).forEach(function(sym) {
+        var basis = sellCostBasisMap(bySym[sym]);
+        bySym[sym].forEach(function(t) {
+            if (t.type !== 'SELL') return;
+            var b = basis[String(t.id)];
+            if (!b) return;
+            t.returnPct = b.cost ? (b.realized / b.cost) * 100 : 0;
+            t.realizedUSD = b.realized;
+            t.costOfSold = b.cost;
+            t.cycleAvgBuy = b.avg;                       // 상세뷰 표시용 (매도 시점 평단)
+        });
     });
     return trades;
 }
@@ -7978,8 +8032,10 @@ function renderCycleSummary(trades) {
         var dates = g.dates.slice().sort();
         var firstDate = dates[0] || '';
         var lastDate = dates[dates.length - 1] || '';
-        var realized = (s.qty && avgBuy) ? (s.cost - avgBuy * s.qty) : null;
-        var realizedPct = (avgBuy && s.qty) ? ((avgSell - avgBuy) / avgBuy) * 100 : null;
+        // 실현손익 = 각 매도 건의 (매도대금 − 매도 시점 평단 원가) 합 — 부분매도 후 재매수해도 정확
+        var _rs = g.sells.reduce(function(a, t) { if (t.realizedUSD != null && t.costOfSold) { a.r += t.realizedUSD; a.c += t.costOfSold; } return a; }, { r: 0, c: 0 });
+        var realized = s.qty ? (_rs.c ? _rs.r : (avgBuy ? (s.cost - avgBuy * s.qty) : null)) : null;
+        var realizedPct = s.qty ? (_rs.c ? (_rs.r / _rs.c) * 100 : (avgBuy ? ((avgSell - avgBuy) / avgBuy) * 100 : null)) : null;
         var endDate = closed ? lastDate : todayStr;
         var days = '';
         if (firstDate) { var dd = Math.round((new Date(endDate) - new Date(firstDate)) / 86400000); if (!isNaN(dd) && dd >= 0) days = dd + '일'; }
@@ -8081,7 +8137,7 @@ function showTradeDetail(idx) {
     if (num(r.fee, 2)) h += row('수수료', '$' + num(r.fee, 2));
     h += row(isSell ? '정산 금액' : '매수 금액', num(r.total, 2) ? '$' + Number(r.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');
     if (isSell && r.cycleAvgBuy != null) {
-        h += row('평단 (사이클)', '$' + Number(r.cycleAvgBuy).toFixed(2));
+        h += row('평단 (매도 시점)', '$' + Number(r.cycleAvgBuy).toFixed(2));
     }
     if (isSell && r.returnPct != null && !isNaN(r.returnPct)) {
         h += row('실현 수익률', (r.returnPct >= 0 ? '+' : '') + r.returnPct.toFixed(2) + '% <span class="text-[9px] text-slate-500">(평단대비)</span>', r.returnPct >= 0 ? 'text-red-400' : 'text-blue-400');
