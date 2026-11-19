@@ -5820,6 +5820,7 @@ function runAiResultLogic() {
     if (!confirm(msg)) return;
 
     const d = portfolios[activeTicker];
+    if ((parseInt(d.config.stages) || 0) !== stages) _offerNewCycleOnPlanChange(d, '분할 단계 수');
     d.config.mode = mode; d.config.stages = stages; d.config.mdd = mddRecommend;
     d.config.drops = drops;
     d.config.weights = weights;
@@ -5859,7 +5860,8 @@ function applyManualConfig() {
     const mdd = parseFloat(document.getElementById('configMdd').value) || 20;
     const stages = parseInt(document.getElementById('configStages').value) || 4;
     const d = portfolios[activeTicker];
-    
+    if ((parseInt(d.config.stages) || 0) !== stages) _offerNewCycleOnPlanChange(d, '분할 단계 수');
+
     d.config.mode = mode;
     d.config.stages = stages;
     d.config.mdd = mdd;
@@ -6097,27 +6099,33 @@ function showStrategyMessage(elementId, text) {
     if (el) { el.textContent = text; setTimeout(function() { el.textContent = ''; }, 2000); }
 }
 
+// 보유 중 계획 변경(기준가·단계 수): 예전 단계 체결이 새 계획표의 같은 단계 번호에 섞여 수량·완료표시가 꼬임
+// → 새 사이클 제안(보유분·평단 유지, 매수 가능 금액 = 할당 − 보유 원가). 단계 체결이 없으면 묻지 않음
+function _offerNewCycleOnPlanChange(d, what) {
+    if (!d || !d.config || d.config.mode === 'AEGIS') return false;
+    if ((d.qty || 0) <= 0 || getStageHoldings(d).maxHeldStage <= 0) return false;
+    const allocTotal = getTotalEquityUSD() * ((d.config.alloc || 30) / 100);
+    const available = Math.max(0, allocTotal - (d.qty || 0) * (d.avgPrice || 0));
+    const ok = confirm('보유 중에 ' + what + '를 바꾸면 기존 단계 매수와 새 계획이 섞입니다.\n\n'
+        + '새 사이클로 시작할까요?\n'
+        + '· 보유 ' + (d.qty || 0) + '주와 평단 $' + (d.avgPrice || 0).toFixed(2) + '는 그대로 유지\n'
+        + '· 새 계획 매수 가능 금액: $' + available.toFixed(0) + ' (할당 − 보유 원가)\n'
+        + '· 1차부터 새 계획으로 다시 시작\n\n'
+        + '[취소]를 누르면 ' + what + '만 바꿉니다.');
+    if (!ok) return false;
+    d.currentCycleId = _nextCycleId(d);
+    d.config.cycleAvailableUSD = available;
+    // 호출부가 계획을 바꾼 뒤 진행 카드도 새 사이클 기준으로 갱신
+    setTimeout(function () { try { renderStrategyProgressCard(activeTicker); } catch (e) {} }, 0);
+    return true;
+}
+
 function updateBasePriceAndSave() {
     if (!activeTicker || !portfolios[activeTicker]) return;
     const d = portfolios[activeTicker];
     const oldBase = parseFloat(d.config.basePrice) || 0;
     const newBase = parseFloat(document.getElementById('planBasePrice').value) || 0;
-    // 보유 중 기준가 변경: 예전 단계 체결이 새 계획표의 같은 단계에 섞여 수량·완료표시가 꼬임
-    // → 새 사이클로 시작(보유분·평단 유지, 매수 가능 금액 = 할당 − 보유 원가)
-    if (newBase > 0 && oldBase > 0 && Math.abs(newBase - oldBase) > 1e-9 && (d.qty || 0) > 0 && getStageHoldings(d).maxHeldStage > 0) {
-        const allocTotal = getTotalEquityUSD() * ((d.config.alloc || 30) / 100);
-        const available = Math.max(0, allocTotal - (d.qty || 0) * (d.avgPrice || 0));
-        const ok = confirm('보유 중에 기준가를 바꾸면 기존 단계 매수와 새 계획이 섞입니다.\n\n'
-            + '새 사이클로 시작할까요?\n'
-            + '· 보유 ' + (d.qty || 0) + '주와 평단 $' + (d.avgPrice || 0).toFixed(2) + '는 그대로 유지\n'
-            + '· 새 계획 매수 가능 금액: $' + available.toFixed(0) + ' (할당 − 보유 원가)\n'
-            + '· 1차부터 새 기준가로 다시 시작\n\n'
-            + '[취소]를 누르면 기준가만 바꿉니다.');
-        if (ok) {
-            d.currentCycleId = _nextCycleId(d);
-            d.config.cycleAvailableUSD = available;
-        }
-    }
+    if (newBase > 0 && oldBase > 0 && Math.abs(newBase - oldBase) > 1e-9) _offerNewCycleOnPlanChange(d, '기준가');
     d.config.basePrice = newBase;
     saveAll();
     calculatePlan();
@@ -6269,6 +6277,7 @@ function updateConfig() {
     // 이전 값 보존: 하락폭 입력칸이 없을 때(이지스→케이던스 전환 직후 등) 기존 config 값 유지
     const prevDrops = Array.isArray(d.config.drops) ? d.config.drops.slice() : [];
     const prevWeights = Array.isArray(d.config.weights) ? d.config.weights.slice() : [];
+    if ((parseInt(d.config.stages) || 0) !== stages) _offerNewCycleOnPlanChange(d, '분할 단계 수');
     d.config.stages = stages;
     d.config.drops = [];
     d.config.weights = [];
