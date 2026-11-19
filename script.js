@@ -1401,7 +1401,8 @@ function _econTodayResultsHtml() {
     today.forEach(function (r) {
         var sp = _econSurprise(r.surprise);
         out += '<div class="text-[12px] leading-relaxed mb-0.5"><span class="font-bold text-slate-200">' + escapeHtml(r.name || '') + '</span> '
-            + '<span class="font-black ' + (sp ? sp.c : 'text-white') + '">' + escapeHtml(r.actual || '') + '</span>'
+            // 수치형 결과(짧음)만 굵게 — 문장형 결과(FOMC 의사록 등)까지 굵으면 요약 전체가 덩어리로 보임
+            + '<span class="' + ((r.actual || '').length > 14 ? 'font-normal text-slate-300' : 'font-black ' + (sp ? sp.c : 'text-white')) + '">' + escapeHtml(r.actual || '') + '</span>'
             + (r.forecast ? ' <span class="text-slate-500">(예상 ' + escapeHtml(r.forecast) + ')</span>' : '')
             + (sp ? ' <span class="' + sp.c + ' text-[10px] font-bold">' + sp.t + '</span>' : '') + '</div>';
     });
@@ -3137,7 +3138,7 @@ function renderMarketIndicators() {
             var chg = item.data.change;
             var sign = chg > 0 ? '+' : '';
             chgEl.innerText = sign + chg.toFixed(item.id==='Us10y'?0:1) + (item.id==='Us10y'?'bp':'%');
-            chgEl.className = 'text-[9px] font-bold ' + (chg>0?'text-green-400':(chg<0?'text-red-400':'text-slate-500'));
+            chgEl.className = 'text-[9px] font-bold ' + chgClass(chg);   // 한국식: 상승 빨강 · 하락 파랑 (다른 지수와 동일)
         }
     });
 }
@@ -3774,14 +3775,14 @@ function renderMarketSummary() {
     card.classList.remove('hidden');
     var html = '';
     if (econ) html += econ;
-    if (mood) html += '<div class="mb-1.5 text-[12px]"><span class="' + mood.cls + ' font-black">' + mood.icon + ' ' + mood.label + '</span> <span class="text-slate-500">· ' + mood.sub + '</span></div>';
-    function mkLine(flag, label, m) {
+    if (mood) html += '<div class="ms-mood mb-1.5 text-[12px]"><span class="' + mood.cls + ' font-black">' + mood.label + '</span> <span class="text-slate-500">· ' + mood.sub + '</span></div>';
+    function mkLine(label, m) {
         if (!m || !m.reason) return '';
         var ar = (m.dir === 'up') ? '<span class="text-red-400 font-bold">▲</span>' : ((m.dir === 'down') ? '<span class="text-blue-400 font-bold">▼</span>' : '<span class="text-slate-400">—</span>');
-        return '<div class="text-[12px] leading-relaxed mb-0.5"><span class="font-bold text-slate-200">' + flag + ' ' + label + '</span> ' + ar + ' <span class="text-slate-400">' + escapeHtml(m.reason) + '</span></div>';
+        return '<div class="ms-line text-[12px] leading-relaxed mb-0.5"><span class="font-bold text-slate-200">' + label + '</span> ' + ar + ' <span class="text-slate-400">' + escapeHtml(m.reason) + '</span></div>';
     }
     if (mk && (mk.us || mk.kr)) {
-        html += mkLine('🇺🇸', '미국', mk.us) + mkLine('🇰🇷', '한국', mk.kr);
+        html += mkLine('미국', mk.us) + mkLine('한국', mk.kr);
     } else if (overview) {
         // 아직 markets 데이터가 없으면(구버전 캐시) 첫 문장 폴백
         html += '<span class="text-slate-300 text-[12px]">' + escapeHtml(_firstSentence(overview)) + '</span>';

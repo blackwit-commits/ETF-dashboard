@@ -451,10 +451,10 @@ html.light #marketList > div > button {
 html.light #marketList > div > button > .absolute { display: none; }
 html.light #marketList > div > button .text-xs.font-black { font-size: 15px; font-weight: 700; color: #111418; }
 html.light #marketList > div > button .text-xs.font-black > span {
-    background: #111418 !important; color: #ffffff !important; font-size: 10px; padding: 2px 7px; border-radius: 6px;
+    background: #111418 !important; color: #ffffff !important; font-size: 11px; padding: 2px 7px; border-radius: 6px;
 }
-html.light #marketList > div > button .text-\[9px\] { font-size: 12px; color: #6b7280; }
-html.light #marketList > div > button .flex.items-center.gap-2 > span { color: #6b7280 !important; font-size: 12px; }
+html.light #marketList > div > button .text-\[9px\] { font-size: 13px; color: #6b7280; }
+html.light #marketList > div > button .flex.items-center.gap-2 > span { color: #6b7280 !important; font-size: 13px; }
 html.light #marketList [id^="etfSector"].grid { margin: 0 !important; gap: 0 !important; }
 html.light #marketList [id^="card-"].glass-panel {
     background: transparent;
@@ -468,7 +468,7 @@ html.light #marketList [id^="card-"] .w-10.h-10 {
 }
 html.light #marketList [id^="card-"] [class*="badge-"] { background: #f4f6f9; color: #3b4250; border-color: transparent; }
 html.light #marketList [id^="card-"] .text-sm { font-size: 15px; }
-html.light #marketList [id^="card-"] .text-\[10px\] { font-size: 12px; }
+html.light #marketList [id^="card-"] .text-\[10px\] { font-size: 13px; }
 
 /* 매수/매도: 한국식 색을 연하게 (매수 빨강 · 매도 파랑) */
 html.light .btn-buy.btn-buy {
@@ -520,9 +520,9 @@ html.light #indexGrid > .glass-panel:nth-child(3n+1) { border-left: 0; padding-l
 html.light #indexGrid > .glass-panel:hover { background: transparent; }
 html.light #indexGrid > .glass-panel { display: flex; flex-direction: column; }
 html.light #indexGrid > .glass-panel > div:first-child { display: contents; }
-html.light #indexGrid > .glass-panel > div:first-child > span:first-child { order: 1; font-size: 12px; font-weight: 500; color: #6b7280; }
-html.light #indexGrid > .glass-panel > div:nth-child(2) { order: 2; font-size: 16px; font-weight: 600; letter-spacing: -0.4px; margin-top: 3px; }
-html.light #indexGrid > .glass-panel > div:first-child > span:last-child { order: 3; font-size: 12px; font-weight: 600; }
+html.light #indexGrid > .glass-panel > div:first-child > span:first-child { order: 1; font-size: 13px; font-weight: 500; color: #6b7280; }
+html.light #indexGrid > .glass-panel > div:nth-child(2) { order: 2; font-size: 15px; font-weight: 700; letter-spacing: -0.4px; margin-top: 3px; }
+html.light #indexGrid > .glass-panel > div:first-child > span:last-child { order: 3; font-size: 13px; font-weight: 600; }
 html.light #indexGrid > .glass-panel > div:nth-child(3) { order: 4; margin-top: 6px; }
 
 /* 핵심 지표: 박스 제거 → 구분선 위 5칸 */
@@ -531,8 +531,8 @@ html.light #marketIndicators { border-top: 1px solid #eef0f3; padding-top: 14px;
 html.light #marketIndicators > .glass-panel { background: transparent; padding: 0 2px; }
 html.light #marketIndicators > .glass-panel > div:nth-child(1) { font-size: 11px; font-weight: 600; color: #8b929c; letter-spacing: 0.3px; }
 html.light #marketIndicators > .glass-panel > div:nth-child(2) { display: none; }
-html.light #marketIndicators > .glass-panel > div:nth-child(3) { font-size: 14px; font-weight: 600; margin-top: 4px; }
-html.light #marketIndicators > .glass-panel > div:nth-child(4) { font-size: 11px; }
+html.light #marketIndicators > .glass-panel > div:nth-child(3) { font-size: 15px; font-weight: 600; margin-top: 4px; }
+html.light #marketIndicators > .glass-panel > div:nth-child(4) { font-size: 13px; font-weight: 600; }
 html.light #marketSummaryCard.glass-panel { background: #f7f8fa; padding: 14px 16px; }
 
 /* 시그니처 카드 (Quad): 잉크 바탕. 내부 색은 theme-light.css §7 이 뒤집음 */
@@ -575,3 +575,58 @@ html.light #hotEtfList > button { margin-top: 10px; }
 /* Quad 카드 (흰 카드 · 잉크 카드 철회): 라벨은 캡션, 국면명은 섹션 제목급 */
 html.light #quadDashboardCard:not(.ink) h2 { font-size: 11px; letter-spacing: 1.2px; color: #8b929c; }
 html.light #quadDashboardCard:not(.ink) #quadCompactSub { font-size: 13px; font-weight: 500; color: #6b7280; }
+
+/* ═══════════ 홈 최종 정돈 — "색은 등락에만, 글자는 4단계" ═══════════
+   18 섹션 제목 / 15 이름·핵심 숫자 / 13 설명·보조 숫자 / 11 캡션·칩
+   빨강·파랑 = 오르고 내림 전용. 그 외 장식색(보라·초록·주황 칩, 색 아이콘)은 회색으로 */
+
+/* 장식 아이콘 회색 (섹터·Quad 그룹·카드 머리) */
+html.light #tab-home :is(#sectorFlowSummary, #marketSummaryCard > div:first-child, #marketList > div > button) i { color: #9aa1ab !important; }
+
+/* 칩·배지: 전부 같은 회색 칩 (애프터·확신도·근거·레버리지) */
+html.light #tab-home :is(#recommendationList, #marketList, #hotEtfList, #sectorFlowSummary) span.rounded[class*="bg-"],
+html.light #tab-home #recommendationList [class*="badge-"] {
+    background: #f1f3f6 !important;
+    color: #4b5260 !important;
+    border-color: transparent !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    padding: 2px 6px !important;
+    border-radius: 6px !important;
+}
+
+/* 시장 요약: 제목 15 · 내용 13 보통 굵기 · 항목 이름만 굵게 */
+html.light #marketSummaryCard > div:first-child { font-size: 15px; font-weight: 700; color: #111418; margin-bottom: 8px; }
+html.light #marketSummaryCard > div:first-child #marketSummaryTime { font-size: 11px; color: #8b929c; font-weight: 500; }
+html.light #marketSummaryText > div { font-size: 13px; line-height: 1.6; margin-bottom: 4px; color: #4b5260; }
+html.light #marketSummaryText > div > span.font-bold:first-child { color: #111418 !important; font-weight: 600; }
+html.light #marketSummaryText .ms-mood { font-weight: 500; }
+html.light #marketSummaryText button { font-size: 13px; font-weight: 600; color: #1f5fd6 !important; }
+
+/* 경제 이벤트: 날짜 보조 · 이름 본문 */
+html.light #upcomingEventsList { font-size: 15px; }
+
+/* 자금 흐름: 소제목 13 · 섹터명/등락 15 · 설명 13 회색 */
+html.light #sectorFlowSummary > .text-\[10px\] { font-size: 13px; font-weight: 600; color: #111418; margin: 6px 0 8px; }
+html.light #sectorFlowSummary > .text-\[10px\] .font-normal { color: #8b929c; font-weight: 500; }
+html.light #sectorFlowSummary .glass-panel .font-bold:is(.text-xs, .text-sm, .text-\[13px\]) { font-size: 15px; }
+
+/* AI 매수 포착: 이름·가격 15 · 설명 13 · 성향 라벨 캡션 회색 */
+html.light #recommendationList > .glass-panel { padding: 16px; }
+html.light #recommendationList .font-black.text-white { font-size: 15px; }
+html.light #recommendationList .text-\[10px\].text-slate-400 { font-size: 13px; line-height: 1.55; color: #6b7280; margin-top: 4px; }
+html.light #recommendationList .text-\[9px\].text-red-400 { color: #8b929c !important; font-size: 11px; }
+
+/* 지금 뜨는 ETF: 등락 16 → 15 */
+html.light #hotEtfList .text-base { font-size: 15px; }
+/* 현재 Quad 표시는 검정 칩 유지 (회색 칩 규칙보다 우선) */
+html.light #tab-home #marketList > div > button .text-xs.font-black > span.rounded {
+    background: #111418 !important; color: #ffffff !important;
+}
+/* 지금 뜨는 ETF: 더보기·내 레버리지 칩도 무채색 */
+html.light #hotEtfList > button { color: #3b4250 !important; font-size: 13px; font-weight: 600; background: #f4f6f9 !important; }
+html.light #hotEtfList > button i { color: #9aa1ab !important; }
+html.light #hotEtfList .glass-panel :is(a, button, span)[class*="bg-red"],
+html.light #hotEtfList .glass-panel :is(a, button, span)[class*="bg-rose"] {
+    background: #f1f3f6 !important; color: #3b4250 !important; border-color: transparent !important;
+}
