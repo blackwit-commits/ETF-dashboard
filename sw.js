@@ -1,7 +1,8 @@
 // UMT 서비스워커 — 설치형(PWA) + 정적 자원 오프라인 폴백
 // 핵심: HTML 문서는 HTTP 캐시를 우회(no-store)해 '켤 때마다 최신' → 배포 즉시 반영.
 //      그 외 동일 출처 자원은 네트워크 우선 → 실패 시 캐시. API/CDN은 그대로 통과.
-const CACHE = 'umt-cache-v2';
+// 캐시 이름을 바꾸면 sw.js 가 바뀐 것으로 인식 → 새 SW 활성화 → 열린 앱이 자동 새로고침(controllerchange)
+const CACHE = 'umt-cache-v3';
 
 self.addEventListener('install', function (e) { self.skipWaiting(); });
 
