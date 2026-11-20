@@ -2614,7 +2614,10 @@ function scoreEtfMulti(e, md, quadNow) {
 function renderConfidence(confidence, factors) {
     var cls = confidence >= 70 ? 'text-red-300 bg-red-500/15 border border-red-500/30' : (confidence >= 45 ? 'text-amber-300 bg-amber-500/15 border border-amber-500/30' : 'text-slate-400 bg-slate-700/40');
     var badges = (factors || []).map(function (f) { return '<span class="text-[8px] px-1 py-0.5 rounded bg-slate-700/70 text-emerald-300 font-bold">' + f + '✓</span>'; }).join(' ');
-    return '<div class="flex items-center gap-1.5 flex-wrap mt-1.5"><span class="text-[9px] font-black px-1.5 py-0.5 rounded ' + cls + '">확신도 ' + confidence + '%</span>' + badges + '</div>';
+    // 확신도가 너무 낮으면(데이터 부족·감점 상쇄) '확신도 0%' 같은 모순 표시 대신 근거만
+    var confChip = confidence >= 20 ? '<span class="text-[9px] font-black px-1.5 py-0.5 rounded ' + cls + '">확신도 ' + confidence + '%</span>' : '';
+    if (!confChip && !badges) return '';
+    return '<div class="flex items-center gap-1.5 flex-wrap mt-1.5">' + confChip + badges + '</div>';
 }
 
 function updateRecommendationsUI() {
@@ -2636,18 +2639,17 @@ function updateRecommendationsUI() {
                 var modeColors = {aggressive:'text-red-400', balanced:'text-yellow-400', defensive:'text-blue-400'};
                 var price = md.price ? '$'+md.price.toFixed(2) : '--';
 
+                // 폰 폭 대응: 1줄 = 이름·배율·성향 | 가격, 2줄 = 등락(오른쪽), 설명은 카드 전체 폭
                 return '<div class="glass-panel p-3 rounded-xl border border-slate-700/70 cursor-pointer mb-2 active:bg-slate-800 transition" onclick="openAnalysisModal(\''+rec.ticker+'\')">'
-                    + '<div class="flex justify-between items-start">'
-                    + '<div class="min-w-0">'
-                    + '<div class="flex items-center gap-2"><span class="font-black text-white">'+rec.ticker+'</span><span class="text-[10px] px-1.5 py-0.5 rounded font-bold '+badge+'">'+(meta.lev||'')+'</span>'
+                    + '<div class="flex justify-between items-center gap-2">'
+                    + '<div class="flex items-center gap-2 min-w-0"><span class="font-black text-white">'+rec.ticker+'</span><span class="text-[10px] px-1.5 py-0.5 rounded font-bold '+badge+'">'+(meta.lev||'')+'</span>'
                     + '<span class="text-[9px] font-bold '+(modeColors[rec.mode]||'text-slate-400')+'">'+(modeLabels[rec.mode]||rec.mode)+'</span></div>'
-                    + '<div class="text-[10px] text-slate-400 mt-0.5">'+escapeHtml(rec.reason||'')+'</div>'
-                    + renderConfidence(conf.confidence, conf.factors)
+                    + '<div class="text-sm font-bold text-white shrink-0">'+price+'</div>'
                     + '</div>'
-                    + '<div class="text-right shrink-0 ml-2"><div class="text-sm font-bold text-white">'+price+'</div>'
-                    + '<div class="mt-0.5">'+chgWithExtHtml(md)+'</div>'
-                    + '<div class="text-[9px] text-slate-500 font-bold mt-0.5">Quad '+quadNow+' 수혜</div></div>'
-                    + '</div></div>';
+                    + '<div class="flex justify-end mt-0.5">'+chgWithExtHtml(md)+'</div>'
+                    + '<div class="text-[10px] text-slate-400 mt-1">'+escapeHtml(rec.reason||'')+'</div>'
+                    + renderConfidence(conf.confidence, conf.factors)
+                    + '</div>';
             }).join('');
             return;
         }
@@ -2818,6 +2820,11 @@ function renderQuadMatrix(quad) {
         + '</div>'
         + '</div>';
 
+    // 현재 국면 블록은 접힌 상태에서도 보이도록 카드 머리(quadCompactSub)에 둠 — 펼치면 나머지 국면만 추가로
+    var subBox = document.getElementById('quadCompactSub');
+    if (subBox) { subBox.innerHTML = html; subBox.className = 'mt-2.5 cursor-pointer'; }
+    html = '';
+
     // 2) 나머지 국면 목록 (번호순, 차분하게)
     var others = [1,2,3,4].filter(function(n){ return n !== cur; });
     html += '<div class="mt-1.5">';
@@ -2833,14 +2840,9 @@ function renderQuadMatrix(quad) {
 
     box.innerHTML = html;
 
-    // 접힘 헤더용 컴팩트 요약 (Q2 과열 · 확신 85%)
+    // 머리 줄 제목은 비움 — 국면명·근거·확신도는 아래 현재 국면 블록이 보여줌 (중복 방지)
     var cmp = document.getElementById('quadCompact');
-    if (cmp) {
-        cmp.innerHTML = '<i class="fa-solid ' + (mc.icon || '') + ' ' + (mc.txt || '') + ' mr-1"></i>Q' + cur + ' ' + (quad.name || mc.name || '') + ' <span class="text-slate-500 text-[11px] font-bold">· 확신 ' + conf + '%</span>';
-        cmp.className = 'quad-title text-[13px] font-black truncate ' + (mc.txt || 'text-white');
-    }
-    var sub = document.getElementById('quadCompactSub');
-    if (sub) sub.innerText = g + ' · ' + i;
+    if (cmp) { cmp.innerHTML = ''; cmp.className = 'hidden'; }
 }
 
 function toggleQuadDetail() {
@@ -4459,7 +4461,7 @@ function _hotCard(sym, theme, desc, lev, rank, subLine, rightBig, rightCls, righ
     var descHtml = desc ? '<div class="text-[9px] text-slate-500 truncate leading-tight">' + escapeHtml(desc) + '</div>' : '';
     var bridge = lev
         ? '<button type="button" onclick="event.stopPropagation();openAnalysisModal(\'' + lev + '\')" class="mt-1 text-[9px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 font-bold whitespace-nowrap">' + lev + ' ↗</button>'
-        : '<div class="mt-1 text-[9px] text-slate-600">레버리지 없음</div>';
+        : '';   // '레버리지 없음' 반복 표시 제거 — 있을 때만 바로가기 칩
     return '<div class="glass-panel p-3 rounded-xl flex justify-between items-center cursor-pointer hover:bg-slate-800 transition" onclick="openIndexChart(\'' + sym + '\',\'' + theme + ' (' + sym + ')\')">'
         + '<div class="flex items-center gap-3 min-w-0">'
         +   '<div class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center font-black text-white text-[10px] shadow-inner shrink-0">' + sym + '</div>'
@@ -4511,7 +4513,8 @@ function renderHotEtf() {
     var rows = _hotExpanded ? all : all.slice(0, 3);
     var cardHtml = rows.map(function (r, i) {
         var sub = '<div class="text-[10px] text-slate-500 mt-0.5">1주 <span class="' + chgClass(r.w) + '">' + fmtChgPct(r.w) + '</span> · 1개월 <span class="' + chgClass(r.m) + '">' + fmtChgPct(r.m) + '</span></div>';
-        return _hotCard(r.h.sym, r.h.theme, r.h.desc, r.h.lev, i + 1, sub, fmtChgPct(r.m), chgClass(r.m), '<div class="text-[8px] text-slate-500 -mt-0.5">1개월</div>');
+        // 큰 숫자 = 1개월 수익률 (기간은 하단 안내문에 명시, 매 줄 '1개월' 반복 제거)
+        return _hotCard(r.h.sym, r.h.theme, r.h.desc, r.h.lev, i + 1, sub, fmtChgPct(r.m), chgClass(r.m), '');
     }).join('');
     box.innerHTML = cardHtml + _hotMoreBtn(all.length);
 }

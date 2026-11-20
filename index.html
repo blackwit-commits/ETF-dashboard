@@ -22,7 +22,7 @@
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
     <link rel="stylesheet" href="theme-light.css?v=20261118c">
-    <link rel="stylesheet" href="style.css?v=20261119b">
+    <link rel="stylesheet" href="style.css?v=20261120a">
 </head>
 <body class="min-h-screen pb-24 bg-[#0f172a] text-slate-200">
 
@@ -110,7 +110,7 @@
                         <i class="fa-solid fa-chevron-down text-[11px] text-slate-500 transition-transform" id="quadChev" style="transform:rotate(-90deg)"></i>
                     </div>
                 </div>
-                <div id="quadCompactSub" class="text-[11px] text-slate-300 font-bold mt-1.5 ml-0.5"></div>
+                <div id="quadCompactSub" class="text-[11px] text-slate-300 font-bold mt-1.5 ml-0.5" onclick="toggleQuadDetail()"></div>
                 <div id="quadDetail" class="hidden mt-3">
                     <div id="quadList"></div>
                     <!-- 판정 근거 (시장 나우캐스트 — 실시간 지표) -->
@@ -1082,7 +1082,7 @@
             <button onclick="closeIosInstallGuide()" class="btn-primary w-full mt-4 py-2.5 bg-blue-600 rounded-xl text-white font-bold text-sm">확인</button>
         </div>
     </div>
-    <script src="script.js?v=20261119b"></script>
+    <script src="script.js?v=20261120b"></script>
     <script>
     if('serviceWorker' in navigator){
         window.addEventListener('load',function(){

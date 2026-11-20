@@ -630,3 +630,6 @@ html.light #hotEtfList .glass-panel :is(a, button, span)[class*="bg-red"],
 html.light #hotEtfList .glass-panel :is(a, button, span)[class*="bg-rose"] {
     background: #f1f3f6 !important; color: #3b4250 !important; border-color: transparent !important;
 }
+/* Quad 카드: 접힌 상태에서도 현재 국면 블록(국면명 · 근거 · 확신도 막대) 표시 */
+html.light #quadDashboardCard #quadCompactSub .text-\[15px\] { font-size: 18px; letter-spacing: -0.3px; }
+html.light #quadDashboardCard #quadCompactSub > .rounded-xl { padding: 14px 16px; }
