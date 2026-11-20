@@ -2493,18 +2493,15 @@ function renderInitialMarketList() {
         const cards = groups[sector].map(e => {
             let badge = e.lev==='3x'?'badge-3x':(e.lev==='2x'?'badge-2x':'badge-inv');
             return `
-            <div id="card-${e.sym}" class="glass-panel p-3 rounded-xl flex justify-between items-center cursor-pointer hover:bg-slate-800 transition" onclick="openAnalysisModal('${e.sym}')">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center font-black text-white text-xs shadow-inner">${e.sym}</div>
-                    <div>
-                        <div class="flex items-center gap-2"><span class="font-bold text-white text-sm">${e.name}</span><span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${badge}">${e.lev}</span></div>
-                        <div id="desc-${e.sym}" class="text-[10px] text-slate-500 mt-0.5">데이터 수신 중...</div>
+            <div id="card-${e.sym}" class="glass-panel p-3 rounded-xl flex justify-between items-center gap-3 cursor-pointer hover:bg-slate-800 transition" onclick="openAnalysisModal('${e.sym}')">
+                <div class="flex items-center gap-3 min-w-0 flex-1">
+                    <div class="w-10 h-10 rounded-lg bg-slate-800 border border-slate-600 flex items-center justify-center font-black text-white text-xs shadow-inner shrink-0">${e.sym}</div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-1.5 min-w-0"><span class="font-bold text-white text-sm truncate">${e.name}</span><span class="etf-lev text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${badge}">${e.lev}</span></div>
+                        <div id="desc-${e.sym}" class="text-[10px] text-slate-500 mt-0.5 truncate">데이터 수신 중...</div>
                     </div>
                 </div>
-                <div class="text-right">
-                    <div id="price-${e.sym}" class="text-sm font-bold text-slate-500">로딩중</div>
-                    <div class="text-[10px] text-slate-400 font-medium tracking-tight mt-1">${e.holdings}</div>
-                </div>
+                <div id="price-${e.sym}" class="text-right shrink-0 text-sm font-bold text-slate-500">로딩중</div>
             </div>`;
         }).join('');
         // 현재 Quad 수혜 섹터만 펼침, 나머지 접기
@@ -2560,24 +2557,18 @@ function updateSingleCard(sym, md) {
         return;
     }
 
-    let stColor = md.price < md.ma200 ? 'text-blue-400' : (md.rsi < 60 ? 'text-green-400' : 'text-red-400');   // 한국식: 하락 파랑 · 상승 빨강
-    let stText = md.price < md.ma200 ? '하락추세' : (md.rsi < 60 ? '매수적기' : '상승추세'); 
+    // 색은 오르내림 전용: 하락추세 파랑 · 상승추세 빨강 · 매수적기(MA200 위 + RSI<60)는 무채색
+    let stColor = md.price < md.ma200 ? 'text-blue-400' : (md.rsi < 60 ? 'text-slate-300' : 'text-red-400');
+    let stText = md.price < md.ma200 ? '하락추세' : (md.rsi < 60 ? '매수적기' : '상승추세');
 
-    pEl.innerHTML = '$' + md.price.toFixed(2) + ' ' + chgWithExtHtml(md);
-    pEl.className = "text-sm font-bold text-white";
-    
+    // 오른쪽: 가격(1줄) + 등락(2줄) — 폰 폭에서 줄바꿈 없이
+    pEl.innerHTML = '<div class="whitespace-nowrap">$' + md.price.toFixed(2) + '</div><div class="etf-chg mt-0.5 whitespace-nowrap">' + chgWithExtHtml(md) + '</div>';
+    pEl.className = "text-right shrink-0 text-sm font-bold text-white";
+
     const e = ETF_DB.find(x => x.sym === sym);
     if(e) {
-        let maText = '';
-        if (md.ma200 && md.ma200 > 0) {
-            if (md.price >= md.ma200) {
-                const dist = ((md.price - md.ma200) / md.ma200) * 100;
-                maText = `<span class="ml-1 text-[10px] text-slate-400 font-bold">MA200 +${dist.toFixed(1)}%</span>`;
-            } else {
-                maText = `<span class="ml-1 text-[10px] text-slate-500 font-bold">MA200 아래</span>`;
-            }
-        }
-        dEl.innerHTML = `${e.desc} <span class="ml-1 font-bold ${stColor}">● ${stText}</span>${maText}`;
+        // 설명 한 줄: '대형 에너지 · 하락추세' (MA200 문구는 추세와 같은 뜻이라 생략)
+        dEl.innerHTML = `${e.desc} · <span class="${stColor} font-semibold">${stText}</span>`;
     }
     const homeTab = document.getElementById('tab-home');
     if (homeTab && !homeTab.classList.contains('hidden')) renderMarketHeatmap();
