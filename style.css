@@ -617,8 +617,9 @@ html.light #recommendationList .font-black.text-white { font-size: 15px; }
 html.light #recommendationList .text-\[10px\].text-slate-400 { font-size: 13px; line-height: 1.55; color: #6b7280; margin-top: 4px; }
 html.light #recommendationList .text-\[9px\].text-red-400 { color: #8b929c !important; font-size: 11px; }
 
-/* 지금 뜨는 ETF: 등락 16 → 15 */
-html.light #hotEtfList .text-base { font-size: 15px; }
+/* 등락률은 홈 전체 13px 규칙 (지금 뜨는 ETF·AI 카드도 자금 흐름·Quad 리스트·지수와 동일) */
+html.light #hotEtfList .text-base { font-size: 13px; }
+html.light #recommendationList .glass-panel > .flex.justify-end span { font-size: 13px; }
 /* 현재 Quad 표시는 검정 칩 유지 (회색 칩 규칙보다 우선) */
 html.light #tab-home #marketList > div > button .text-xs.font-black > span.rounded {
     background: #111418 !important; color: #ffffff !important;
@@ -633,3 +634,7 @@ html.light #hotEtfList .glass-panel :is(a, button, span)[class*="bg-rose"] {
 /* Quad 카드: 접힌 상태에서도 현재 국면 블록(국면명 · 근거 · 확신도 막대) 표시 */
 html.light #quadDashboardCard #quadCompactSub .text-\[15px\] { font-size: 18px; letter-spacing: -0.3px; }
 html.light #quadDashboardCard #quadCompactSub > .rounded-xl { padding: 14px 16px; }
+/* 항목 이름은 홈 전체 15px (자금 흐름 섹터명 13 → 15, 지금 뜨는 ETF·Quad 리스트·AI 카드와 동일) */
+html.light #sectorFlowSummary .flow-name { font-size: 15px; color: #111418 !important; }
+/* 지금 뜨는 ETF 제목 줄 좌우 여백을 다른 카드와 맞춤 */
+html.light #hotEtfCard > div:first-child { padding-left: 0; padding-right: 0; }

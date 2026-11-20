@@ -4716,7 +4716,7 @@ function _flowCard(x, rank, curQuad) {
         + '<div class="flex items-center gap-1.5">'
         +   '<span class="text-[13px]">' + medal + '</span>'
         +   '<i class="fa-solid ' + x.icon + ' ' + x.color + ' text-[11px]"></i>'
-        +   '<span class="text-[12px] font-black text-white">' + x.name + '</span>'
+        +   '<span class="flow-name text-[12px] font-black text-white">' + x.name + '</span>'
         +   quadTag
         +   '<span class="text-[12px] font-black ml-auto ' + chgClass(chg) + '">' + (chg > 0 ? '+' : '') + chg.toFixed(2) + '%</span>'
         + '</div>'
@@ -4729,7 +4729,7 @@ function _flowMini(x) {
     var chg = _flowPeriodVal(x);
     return '<button type="button" onclick="openSectorChart(\'' + x.sym + '\',\'' + x.name + '\')" class="text-left rounded-lg bg-slate-800/30 border border-slate-700/40 px-2 py-1.5 active:opacity-70">'
         + '<div class="flex items-center gap-1"><i class="fa-solid ' + x.icon + ' ' + x.color + ' text-[10px]"></i>'
-        + '<span class="text-[11px] font-bold text-slate-300 truncate">' + x.name + '</span>'
+        + '<span class="flow-name text-[11px] font-bold text-slate-300 truncate">' + x.name + '</span>'
         + '<span class="text-[11px] font-black ml-auto ' + chgClass(chg) + '">' + (chg > 0 ? '+' : '') + chg.toFixed(1) + '%</span></div></button>';
 }
 
